@@ -57,119 +57,127 @@ export default function Layout({ children, currentPageName }) {
   return (
     <SidebarProvider>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
         
         :root {
-          --mac-beige: #ede6d6;
-          --mac-dark: #2b2b2b;
-          --mac-border: #000000;
-          --mac-shadow: rgba(0, 0, 0, 0.3);
-          --mac-highlight: #ffffff;
-        }
-        
-        body {
-          font-family: 'VT323', monospace;
-          background: var(--mac-beige);
-        }
-        
-        .mac-window {
-          background: var(--mac-beige);
-          border: 3px solid var(--mac-border);
-          box-shadow: 
-            inset 2px 2px 0 var(--mac-highlight),
-            inset -2px -2px 0 var(--mac-dark),
-            4px 4px 0 var(--mac-shadow);
-        }
-        
-        .mac-button {
-          background: var(--mac-beige);
-          border: 2px solid var(--mac-border);
-          box-shadow: 
-            inset 1px 1px 0 var(--mac-highlight),
-            inset -1px -1px 0 var(--mac-dark);
-          font-family: 'VT323', monospace;
-          font-size: 18px;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-        
-        .mac-button:hover {
-          background: #d4cdb8;
-        }
-        
-        .mac-button:active {
-          box-shadow: 
-            inset -1px -1px 0 var(--mac-highlight),
-            inset 1px 1px 0 var(--mac-dark);
-        }
-        
-        .mac-title-bar {
-          background: repeating-linear-gradient(
-            90deg,
-            #000 0px,
-            #000 2px,
-            #fff 2px,
-            #fff 4px
-          );
-          height: 24px;
-        }
-        
-        .mac-menu-item {
-          border: 2px solid transparent;
-          font-family: 'VT323', monospace;
-          font-size: 20px;
-          letter-spacing: 1px;
-        }
-        
-        .mac-menu-item:hover {
-          background: var(--mac-dark);
-          color: var(--mac-beige);
-          border: 2px solid var(--mac-border);
-        }
-        
-        .mac-menu-item.active {
-          background: var(--mac-dark);
-          color: var(--mac-beige);
-          border: 2px solid var(--mac-border);
-        }
-        
-        .mac-pixel-border {
-          border: 3px solid var(--mac-border);
-          background: var(--mac-beige);
-          image-rendering: pixelated;
+          --win98-blue: #0000aa;
+          --win98-title: #1084d0;
+          --win98-gray: #c0c0c0;
+          --win98-light: #dfdfdf;
+          --win98-dark: #808080;
+          --win98-teal: #008080;
+          --win98-purple: #a000a0;
         }
         
         * {
-          letter-spacing: 0.5px;
+          font-family: 'Comic Neue', 'Trebuchet MS', sans-serif;
         }
         
-        h1, h2, h3, h4, h5, h6 {
-          font-family: 'VT323', monospace;
-          font-weight: normal;
-          letter-spacing: 2px;
+        body {
+          background: var(--win98-teal);
+        }
+        
+        .win98-window {
+          background: var(--win98-gray);
+          border-top: 2px solid #ffffff;
+          border-left: 2px solid #ffffff;
+          border-right: 2px solid #000000;
+          border-bottom: 2px solid #000000;
+          box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+        }
+        
+        .win98-titlebar {
+          background: linear-gradient(90deg, #0000aa 0%, #1084d0 100%);
+          color: white;
+          padding: 3px 6px;
+          font-weight: bold;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .win98-button {
+          background: var(--win98-gray);
+          border-top: 2px solid #ffffff;
+          border-left: 2px solid #ffffff;
+          border-right: 2px solid #000000;
+          border-bottom: 2px solid #000000;
+          padding: 6px 16px;
+          font-weight: bold;
+          cursor: pointer;
+          transition: all 0.1s;
+        }
+        
+        .win98-button:hover {
+          background: var(--win98-light);
+        }
+        
+        .win98-button:active {
+          border-top: 2px solid #000000;
+          border-left: 2px solid #000000;
+          border-right: 2px solid #ffffff;
+          border-bottom: 2px solid #ffffff;
+        }
+        
+        .win98-button-pressed {
+          background: var(--win98-dark);
+          border-top: 2px solid #000000;
+          border-left: 2px solid #000000;
+          border-right: 2px solid #ffffff;
+          border-bottom: 2px solid #ffffff;
+          color: white;
+        }
+        
+        .win98-panel {
+          background: var(--win98-gray);
+          border-top: 2px solid #808080;
+          border-left: 2px solid #808080;
+          border-right: 2px solid #ffffff;
+          border-bottom: 2px solid #ffffff;
+          padding: 12px;
+        }
+        
+        .win98-sidebar {
+          background: var(--win98-gray);
+          border-right: 2px solid #808080;
+        }
+        
+        .gradient-bg {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+        }
+        
+        .win98-icon {
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, #ff6b9d 0%, #c06c84 100%);
+          border: 2px solid #fff;
+          box-shadow: 2px 2px 0 rgba(0,0,0,0.3);
         }
       `}</style>
-      <div className="min-h-screen flex w-full bg-[#ede6d6]">
-        <Sidebar className="border-r-4 border-black bg-[#ede6d6]">
-          <SidebarHeader className="border-b-4 border-black p-4 bg-[#ede6d6]">
-            <div className="mac-window p-3">
-              <div className="mac-title-bar mb-2"></div>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 border-4 border-black bg-white flex items-center justify-center">
-                  <Download className="w-8 h-8 text-black" style={{ strokeWidth: 3 }} />
+      <div className="min-h-screen flex w-full gradient-bg">
+        <Sidebar className="win98-sidebar">
+          <SidebarHeader className="p-3">
+            <div className="win98-window">
+              <div className="win98-titlebar">
+                <div className="win98-icon">
+                  <Download className="w-5 h-5 text-white" />
                 </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-black uppercase">Social Archive</h2>
-                  <p className="text-sm text-black uppercase tracking-wider">v1.0</p>
-                </div>
+                <span>Social Archive v1.0</span>
+              </div>
+              <div className="p-4 text-center">
+                <h2 className="text-2xl font-bold text-[#0000aa] mb-1">Social Archive</h2>
+                <p className="text-sm font-bold text-[#a000a0]">Backup & Delete Tool</p>
               </div>
             </div>
           </SidebarHeader>
           
-          <SidebarContent className="p-3 bg-[#ede6d6]">
+          <SidebarContent className="p-3">
             <SidebarGroup>
-              <SidebarGroupLabel className="text-lg font-bold text-black uppercase tracking-wider px-2 py-3 border-b-2 border-black mb-2">
-                :: Navigation ::
+              <SidebarGroupLabel className="text-base font-bold text-[#0000aa] uppercase px-2 py-2 mb-2">
+                Navigation Menu
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -177,13 +185,13 @@ export default function Layout({ children, currentPageName }) {
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton 
                         asChild 
-                        className={`mac-menu-item mb-2 ${
-                          location.pathname === item.url ? 'active' : ''
+                        className={`mb-2 ${
+                          location.pathname === item.url ? 'win98-button-pressed' : 'win98-button'
                         }`}
                       >
-                        <Link to={item.url} className="flex items-center gap-3 px-3 py-3">
-                          <item.icon className="w-5 h-5" style={{ strokeWidth: 3 }} />
-                          <span className="font-bold uppercase">{item.title}</span>
+                        <Link to={item.url} className="flex items-center gap-3 px-3 py-2">
+                          <item.icon className="w-5 h-5" />
+                          <span className="font-bold">{item.title}</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -193,47 +201,56 @@ export default function Layout({ children, currentPageName }) {
             </SidebarGroup>
           </SidebarContent>
 
-          <SidebarFooter className="border-t-4 border-black p-3 bg-[#ede6d6]">
+          <SidebarFooter className="p-3 border-t-2 border-[#808080]">
             {user && (
               <div className="space-y-3">
-                <div className="mac-window p-3">
+                <div className="win98-panel">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 border-3 border-black bg-white flex items-center justify-center">
-                      <span className="text-black font-bold text-xl">
+                    <div className="w-12 h-12 flex items-center justify-center bg-gradient-to-br from-[#ff6b9d] to-[#c06c84] border-2 border-white rounded-full shadow-lg">
+                      <span className="text-white font-bold text-xl">
                         {user.full_name?.[0]?.toUpperCase() || 'U'}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-black text-lg uppercase truncate">{user.full_name}</p>
-                      <p className="text-sm text-black truncate">{user.email}</p>
+                      <p className="font-bold text-[#0000aa] truncate">{user.full_name}</p>
+                      <p className="text-xs text-[#808080] truncate">{user.email}</p>
                     </div>
                   </div>
                 </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full mac-button"
+                <button 
+                  className="win98-button w-full flex items-center justify-center gap-2"
                   onClick={handleLogout}
                 >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  LOGOUT
-                </Button>
+                  <LogOut className="w-4 h-4" />
+                  <span>Logout</span>
+                </button>
               </div>
             )}
           </SidebarFooter>
         </Sidebar>
 
-        <main className="flex-1 flex flex-col bg-[#ede6d6]">
-          <header className="bg-[#ede6d6] border-b-4 border-black px-6 py-4 md:hidden sticky top-0 z-10">
+        <main className="flex-1 flex flex-col">
+          <header className="win98-sidebar px-6 py-3 md:hidden sticky top-0 z-10 border-b-2 border-[#808080]">
             <div className="flex items-center gap-4">
-              <SidebarTrigger className="mac-button p-2" />
-              <h1 className="text-2xl font-bold uppercase">Social Archive</h1>
+              <SidebarTrigger className="win98-button" />
+              <h1 className="text-xl font-bold text-[#0000aa]">Social Archive</h1>
             </div>
           </header>
 
-          <div className="flex-1 overflow-auto p-6">
-            <div className="mac-window p-6 min-h-full">
-              {children}
+          <div className="flex-1 overflow-auto p-4">
+            <div className="win98-window min-h-full">
+              <div className="win98-titlebar">
+                <div className="w-4 h-4 bg-white"></div>
+                <span>{currentPageName || "Social Archive System"}</span>
+                <div className="ml-auto flex gap-1">
+                  <div className="w-5 h-5 bg-[#c0c0c0] border border-black flex items-center justify-center text-xs">_</div>
+                  <div className="w-5 h-5 bg-[#c0c0c0] border border-black flex items-center justify-center text-xs">□</div>
+                  <div className="w-5 h-5 bg-[#c0c0c0] border border-black flex items-center justify-center text-xs">×</div>
+                </div>
+              </div>
+              <div className="p-6 bg-white">
+                {children}
+              </div>
             </div>
           </div>
         </main>
