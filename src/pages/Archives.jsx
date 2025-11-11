@@ -16,9 +16,12 @@ import {
   CheckCircle2,
   Clock,
   FolderOpen,
-  Calendar
+  Calendar,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { format } from "date-fns";
+import ArchiveDataViewer from "../components/ArchiveDataViewer";
 
 const statusColors = {
   not_started: "bg-gray-100 text-gray-800",
@@ -45,6 +48,7 @@ export default function Archives() {
     notes: ""
   });
   const [uploading, setUploading] = useState(false);
+  const [expandedArchive, setExpandedArchive] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -104,6 +108,10 @@ export default function Archives() {
     const mb = bytes / (1024 * 1024);
     if (mb < 1024) return `${mb.toFixed(2)} MB`;
     return `${(mb / 1024).toFixed(2)} GB`;
+  };
+
+  const toggleArchiveExpansion = (archiveId) => {
+    setExpandedArchive(expandedArchive === archiveId ? null : archiveId);
   };
 
   return (
@@ -212,9 +220,10 @@ export default function Archives() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="space-y-6">
             {archives.map((archive) => {
               const StatusIcon = statusIcons[archive.status];
+              const isExpanded = expandedArchive === archive.id;
               
               return (
                 <Card key={archive.id} className="border-none shadow-lg hover:shadow-xl transition-all duration-300">
@@ -238,19 +247,21 @@ export default function Archives() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {archive.file_size && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <FileArchive className="w-4 h-4" />
-                        <span>Size: {formatFileSize(archive.file_size)}</span>
-                      </div>
-                    )}
-                    
-                    {archive.download_date && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Calendar className="w-4 h-4" />
-                        <span>Downloaded: {format(new Date(archive.download_date), 'MMM d, yyyy')}</span>
-                      </div>
-                    )}
+                    <div className="flex flex-wrap gap-4">
+                      {archive.file_size && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <FileArchive className="w-4 h-4" />
+                          <span>Size: {formatFileSize(archive.file_size)}</span>
+                        </div>
+                      )}
+                      
+                      {archive.download_date && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Calendar className="w-4 h-4" />
+                          <span>Downloaded: {format(new Date(archive.download_date), 'MMM d, yyyy')}</span>
+                        </div>
+                      )}
+                    </div>
 
                     {archive.notes && (
                       <div className="p-3 bg-gray-50 rounded-lg">
@@ -279,14 +290,33 @@ export default function Archives() {
 
                     <div className="flex gap-2 pt-2">
                       {archive.file_url && (
-                        <Button 
-                          variant="outline" 
-                          className="flex-1"
-                          onClick={() => window.open(archive.file_url, '_blank')}
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download
-                        </Button>
+                        <>
+                          <Button 
+                            variant="outline" 
+                            className="flex-1"
+                            onClick={() => window.open(archive.file_url, '_blank')}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            className="flex-1"
+                            onClick={() => toggleArchiveExpansion(archive.id)}
+                          >
+                            {isExpanded ? (
+                              <>
+                                <ChevronUp className="w-4 h-4 mr-2" />
+                                Hide Analysis
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="w-4 h-4 mr-2" />
+                                View Analysis
+                              </>
+                            )}
+                          </Button>
+                        </>
                       )}
                       <Button 
                         variant="outline" 
@@ -297,6 +327,12 @@ export default function Archives() {
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
+
+                    {isExpanded && archive.file_url && (
+                      <div className="pt-4 border-t">
+                        <ArchiveDataViewer archive={archive} />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );
