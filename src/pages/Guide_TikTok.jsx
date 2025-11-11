@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { base44 } from "@/api/base44Client";
-import { useMutation, useQueryClient } from "@antml/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   ArrowLeft, 
   ExternalLink, 
