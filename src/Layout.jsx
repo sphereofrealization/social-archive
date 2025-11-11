@@ -57,127 +57,167 @@ export default function Layout({ children, currentPageName }) {
   return (
     <SidebarProvider>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Charcoal&display=swap');
         
         :root {
-          --win98-blue: #0000aa;
-          --win98-title: #1084d0;
-          --win98-gray: #c0c0c0;
-          --win98-light: #dfdfdf;
-          --win98-dark: #808080;
-          --win98-teal: #008080;
-          --win98-purple: #a000a0;
+          --mac-platinum: #dddddd;
+          --mac-dark: #777777;
+          --mac-light: #ffffff;
+          --mac-accent: #0066cc;
+          --mac-shadow: rgba(0,0,0,0.3);
         }
         
         * {
-          font-family: 'Comic Neue', 'Trebuchet MS', sans-serif;
+          font-family: -apple-system, 'Lucida Grande', 'Geneva', 'Helvetica', sans-serif;
         }
         
         body {
-          background: var(--win98-teal);
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
         }
         
-        .win98-window {
-          background: var(--win98-gray);
-          border-top: 2px solid #ffffff;
-          border-left: 2px solid #ffffff;
-          border-right: 2px solid #000000;
-          border-bottom: 2px solid #000000;
-          box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+        .mac-window {
+          background: var(--mac-platinum);
+          border: 1px solid #999;
+          border-radius: 8px;
+          box-shadow: 0 4px 16px var(--mac-shadow);
+          overflow: hidden;
         }
         
-        .win98-titlebar {
-          background: linear-gradient(90deg, #0000aa 0%, #1084d0 100%);
-          color: white;
-          padding: 3px 6px;
-          font-weight: bold;
+        .mac-titlebar {
+          background: linear-gradient(180deg, 
+            #f0f0f0 0%, 
+            #e0e0e0 3%, 
+            #d8d8d8 3%, 
+            #d0d0d0 6%,
+            #c8c8c8 6%,
+            #c0c0c0 9%,
+            #b8b8b8 9%,
+            #b0b0b0 12%,
+            #a8a8a8 12%,
+            #a0a0a0 100%
+          );
+          padding: 4px 8px;
+          border-bottom: 1px solid #888;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
+          font-size: 13px;
+          font-weight: bold;
+          color: #333;
         }
         
-        .win98-button {
-          background: var(--win98-gray);
-          border-top: 2px solid #ffffff;
-          border-left: 2px solid #ffffff;
-          border-right: 2px solid #000000;
-          border-bottom: 2px solid #000000;
-          padding: 6px 16px;
-          font-weight: bold;
+        .mac-titlebar-active {
+          background: linear-gradient(180deg,
+            #e8e8ff 0%,
+            #d0d0ff 3%,
+            #c8c8f8 3%,
+            #b8b8f0 6%,
+            #a8a8e8 6%,
+            #9898e0 9%,
+            #8888d8 9%,
+            #7878d0 12%,
+            #6868c8 12%,
+            #5858c0 100%
+          );
+          color: #000;
+        }
+        
+        .mac-button {
+          background: linear-gradient(180deg, #fdfdfd 0%, #e8e8e8 50%, #d0d0d0 100%);
+          border: 1px solid #888;
+          border-radius: 4px;
+          padding: 6px 20px;
+          font-size: 13px;
+          font-weight: 500;
           cursor: pointer;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
           transition: all 0.1s;
         }
         
-        .win98-button:hover {
-          background: var(--win98-light);
+        .mac-button:hover {
+          background: linear-gradient(180deg, #ffffff 0%, #f0f0f0 50%, #e0e0e0 100%);
+          border-color: #666;
         }
         
-        .win98-button:active {
-          border-top: 2px solid #000000;
-          border-left: 2px solid #000000;
-          border-right: 2px solid #ffffff;
-          border-bottom: 2px solid #ffffff;
+        .mac-button:active {
+          background: linear-gradient(180deg, #c0c0c0 0%, #d8d8d8 50%, #e8e8e8 100%);
+          box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
         }
         
-        .win98-button-pressed {
-          background: var(--win98-dark);
-          border-top: 2px solid #000000;
-          border-left: 2px solid #000000;
-          border-right: 2px solid #ffffff;
-          border-bottom: 2px solid #ffffff;
+        .mac-button-active {
+          background: linear-gradient(180deg, #4a90e2 0%, #357abd 50%, #2868ab 100%);
+          border-color: #1a5490;
           color: white;
+          box-shadow: inset 0 1px 2px rgba(255,255,255,0.3);
         }
         
-        .win98-panel {
-          background: var(--win98-gray);
-          border-top: 2px solid #808080;
-          border-left: 2px solid #808080;
-          border-right: 2px solid #ffffff;
-          border-bottom: 2px solid #ffffff;
+        .mac-panel {
+          background: var(--mac-platinum);
+          border: 1px solid #999;
+          border-radius: 4px;
           padding: 12px;
+          box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
         }
         
-        .win98-sidebar {
-          background: var(--win98-gray);
-          border-right: 2px solid #808080;
+        .mac-sidebar {
+          background: linear-gradient(180deg, #f5f5f5 0%, #e8e8e8 100%);
+          border-right: 1px solid #aaa;
+        }
+        
+        .mac-dots {
+          display: flex;
+          gap: 6px;
+        }
+        
+        .mac-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          border: 1px solid rgba(0,0,0,0.3);
+          box-shadow: inset 0 1px 1px rgba(255,255,255,0.5);
+        }
+        
+        .mac-dot-close {
+          background: linear-gradient(135deg, #ff6b6b 0%, #ee5555 100%);
+        }
+        
+        .mac-dot-minimize {
+          background: linear-gradient(135deg, #ffd93d 0%, #ffcd1f 100%);
+        }
+        
+        .mac-dot-maximize {
+          background: linear-gradient(135deg, #6bcf7f 0%, #51be67 100%);
         }
         
         .gradient-bg {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
         }
-        
-        .win98-icon {
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: linear-gradient(135deg, #ff6b9d 0%, #c06c84 100%);
-          border: 2px solid #fff;
-          box-shadow: 2px 2px 0 rgba(0,0,0,0.3);
-        }
       `}</style>
       <div className="min-h-screen flex w-full gradient-bg">
-        <Sidebar className="win98-sidebar">
-          <SidebarHeader className="p-3">
-            <div className="win98-window">
-              <div className="win98-titlebar">
-                <div className="win98-icon">
-                  <Download className="w-5 h-5 text-white" />
+        <Sidebar className="mac-sidebar">
+          <SidebarHeader className="p-4">
+            <div className="mac-window">
+              <div className="mac-titlebar mac-titlebar-active">
+                <div className="mac-dots">
+                  <div className="mac-dot mac-dot-close"></div>
+                  <div className="mac-dot mac-dot-minimize"></div>
+                  <div className="mac-dot mac-dot-maximize"></div>
                 </div>
-                <span>Social Archive v1.0</span>
               </div>
-              <div className="p-4 text-center">
-                <h2 className="text-2xl font-bold text-[#0000aa] mb-1">Social Archive</h2>
-                <p className="text-sm font-bold text-[#a000a0]">Backup & Delete Tool</p>
+              <div className="p-6 text-center bg-gradient-to-br from-blue-50 to-purple-50">
+                <div className="w-16 h-16 mx-auto mb-3 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                  <Download className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-1">Social Archive</h2>
+                <p className="text-sm text-gray-600">Backup & Delete Tool</p>
               </div>
             </div>
           </SidebarHeader>
           
-          <SidebarContent className="p-3">
+          <SidebarContent className="p-4">
             <SidebarGroup>
-              <SidebarGroupLabel className="text-base font-bold text-[#0000aa] uppercase px-2 py-2 mb-2">
-                Navigation Menu
+              <SidebarGroupLabel className="text-xs font-bold text-gray-600 uppercase px-2 mb-3">
+                Navigation
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -186,12 +226,12 @@ export default function Layout({ children, currentPageName }) {
                       <SidebarMenuButton 
                         asChild 
                         className={`mb-2 ${
-                          location.pathname === item.url ? 'win98-button-pressed' : 'win98-button'
+                          location.pathname === item.url ? 'mac-button-active' : 'mac-button'
                         }`}
                       >
                         <Link to={item.url} className="flex items-center gap-3 px-3 py-2">
                           <item.icon className="w-5 h-5" />
-                          <span className="font-bold">{item.title}</span>
+                          <span className="font-medium">{item.title}</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -201,24 +241,24 @@ export default function Layout({ children, currentPageName }) {
             </SidebarGroup>
           </SidebarContent>
 
-          <SidebarFooter className="p-3 border-t-2 border-[#808080]">
+          <SidebarFooter className="p-4 border-t border-gray-300">
             {user && (
               <div className="space-y-3">
-                <div className="win98-panel">
+                <div className="mac-panel">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 flex items-center justify-center bg-gradient-to-br from-[#ff6b9d] to-[#c06c84] border-2 border-white rounded-full shadow-lg">
-                      <span className="text-white font-bold text-xl">
+                    <div className="w-12 h-12 flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500 rounded-full shadow-md border-2 border-white">
+                      <span className="text-white font-bold text-lg">
                         {user.full_name?.[0]?.toUpperCase() || 'U'}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-[#0000aa] truncate">{user.full_name}</p>
-                      <p className="text-xs text-[#808080] truncate">{user.email}</p>
+                      <p className="font-semibold text-gray-800 truncate text-sm">{user.full_name}</p>
+                      <p className="text-xs text-gray-600 truncate">{user.email}</p>
                     </div>
                   </div>
                 </div>
                 <button 
-                  className="win98-button w-full flex items-center justify-center gap-2"
+                  className="mac-button w-full flex items-center justify-center gap-2 text-sm"
                   onClick={handleLogout}
                 >
                   <LogOut className="w-4 h-4" />
@@ -230,25 +270,24 @@ export default function Layout({ children, currentPageName }) {
         </Sidebar>
 
         <main className="flex-1 flex flex-col">
-          <header className="win98-sidebar px-6 py-3 md:hidden sticky top-0 z-10 border-b-2 border-[#808080]">
+          <header className="mac-sidebar px-6 py-3 md:hidden sticky top-0 z-10 border-b border-gray-300">
             <div className="flex items-center gap-4">
-              <SidebarTrigger className="win98-button" />
-              <h1 className="text-xl font-bold text-[#0000aa]">Social Archive</h1>
+              <SidebarTrigger className="mac-button" />
+              <h1 className="text-lg font-bold text-gray-800">Social Archive</h1>
             </div>
           </header>
 
-          <div className="flex-1 overflow-auto p-4">
-            <div className="win98-window min-h-full">
-              <div className="win98-titlebar">
-                <div className="w-4 h-4 bg-white"></div>
-                <span>{currentPageName || "Social Archive System"}</span>
-                <div className="ml-auto flex gap-1">
-                  <div className="w-5 h-5 bg-[#c0c0c0] border border-black flex items-center justify-center text-xs">_</div>
-                  <div className="w-5 h-5 bg-[#c0c0c0] border border-black flex items-center justify-center text-xs">□</div>
-                  <div className="w-5 h-5 bg-[#c0c0c0] border border-black flex items-center justify-center text-xs">×</div>
+          <div className="flex-1 overflow-auto p-6">
+            <div className="mac-window min-h-full">
+              <div className="mac-titlebar mac-titlebar-active">
+                <div className="mac-dots">
+                  <div className="mac-dot mac-dot-close"></div>
+                  <div className="mac-dot mac-dot-minimize"></div>
+                  <div className="mac-dot mac-dot-maximize"></div>
                 </div>
+                <span className="flex-1 text-center">{currentPageName || "Social Archive System"}</span>
               </div>
-              <div className="p-6 bg-white">
+              <div className="p-8 bg-white">
                 {children}
               </div>
             </div>
