@@ -19,50 +19,53 @@ import {
 const steps = [
   {
     title: "Access LinkedIn Settings",
-    description: "Navigate to your data privacy settings",
+    description: "Navigate to Settings & Privacy",
     details: [
-      "Log into LinkedIn on web (linkedin.com)",
-      "Click on your profile picture in top right",
-      "Select 'Settings & Privacy' from dropdown",
-      "Click on 'Data privacy' in the left sidebar"
+      "Log into LinkedIn at linkedin.com",
+      "Click the 'Me' icon at the top of your homepage",
+      "Select 'Settings & Privacy' from the dropdown menu",
+      "Click 'Data Privacy' in the left sidebar"
     ]
   },
   {
-    title: "Find Get a Copy of Your Data",
-    description: "Locate the data download section",
+    title: "Find Data Download Section",
+    description: "Locate the data export option",
     details: [
-      "Scroll to 'How LinkedIn uses your data' section",
-      "Click on 'Get a copy of your data'",
-      "You'll see options for what data to download"
+      "Under 'How LinkedIn uses your data' section",
+      "Click 'Get a copy of your data'",
+      "You'll see options for what data to download",
+      "Note: This feature is only available on desktop, not mobile"
     ]
   },
   {
-    title: "Select What to Download",
-    description: "Choose which data you want",
+    title: "Select Data to Download",
+    description: "Choose which information you want",
     details: [
-      "Option 1: 'Download larger data archive' - Full comprehensive archive (recommended)",
-      "Option 2: Select specific categories like Profile, Connections, Messages, Activity",
-      "For complete backup, choose 'Want something specific? Select the data files'",
-      "Check all relevant categories for comprehensive backup"
+      "Option 1: Select 'Download larger data archive' for comprehensive backup",
+      "Option 2: Choose 'Want something specific?' to select individual categories",
+      "Categories include: Profile, Connections, Messages, Activity, and more",
+      "For complete backup, select all applicable categories",
+      "Click 'Request archive' when ready"
     ]
   },
   {
-    title: "Request Your Archive",
-    description: "Submit your data request",
+    title: "Verify Your Request",
+    description: "Confirm your identity if needed",
     details: [
-      "Review your selections",
-      "Click 'Request archive' button",
-      "Verify your email address if prompted",
-      "You'll receive a confirmation that request was received"
+      "Review your selections carefully",
+      "You may need to verify your email address",
+      "LinkedIn will confirm your request was received",
+      "You can only have one active request at a time"
     ]
   },
   {
     title: "Wait for Processing",
-    description: "LinkedIn prepares your data",
+    description: "LinkedIn prepares your data export",
     details: [
-      "Processing typically takes 24 hours",
-      "Large profiles may take up to 72 hours",
-      "You'll receive an email when your archive is ready",
+      "Small data requests: Available within 10 minutes",
+      "Larger archive: Typically ready within 24 hours",
+      "Very large profiles may take up to 72 hours",
+      "You'll receive an email notification when ready",
       "Download link is valid for 72 hours after creation"
     ]
   },
@@ -70,12 +73,13 @@ const steps = [
     title: "Download Your Archive",
     description: "Get your LinkedIn data",
     details: [
-      "Check your email for download notification",
+      "Check your email for the download notification",
       "Click the download link in the email OR",
-      "Return to 'Get a copy of your data' page",
+      "Return to Settings & Privacy > Data Privacy > Get a copy of your data",
       "Click 'Download' on your available archive",
-      "Save the ZIP file securely",
-      "Archive includes CSV files for easy viewing"
+      "Archive will be in ZIP format with CSV files",
+      "Save to a secure location with backup",
+      "Download only on a personal computer, not public device"
     ]
   }
 ];
@@ -119,7 +123,7 @@ export default function GuideLinkedIn() {
         <Button 
           variant="outline" 
           onClick={() => navigate(createPageUrl("Guides"))}
-          className="mb-6"
+          className="mb-6 mac-button"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Guides
@@ -132,7 +136,7 @@ export default function GuideLinkedIn() {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">LinkedIn Data Download</h1>
-              <p className="text-gray-600">Complete guide to downloading your LinkedIn archive</p>
+              <p className="text-gray-600">Official guide to downloading your LinkedIn archive</p>
             </div>
           </div>
 
@@ -167,10 +171,12 @@ export default function GuideLinkedIn() {
               <div>
                 <h3 className="font-semibold text-orange-900 mb-2">Important Information</h3>
                 <ul className="text-sm text-orange-800 space-y-1">
-                  <li>• Processing time: 24-72 hours typically</li>
+                  <li>• Small requests: Available within 10 minutes</li>
+                  <li>• Large archive: Ready within 24-72 hours</li>
                   <li>• Download link expires after 72 hours</li>
                   <li>• Data provided in CSV format for easy viewing</li>
-                  <li>• Includes connections, messages, posts, profile info</li>
+                  <li>• Only available on desktop, not mobile devices</li>
+                  <li>• Includes connections, messages, posts, profile info, and more</li>
                 </ul>
               </div>
             </div>
@@ -179,9 +185,14 @@ export default function GuideLinkedIn() {
 
         <div className="space-y-4">
           {steps.map((step, index) => (
-            <Card key={index} className="border-none shadow-md overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-blue-50 to-white">
-                <div className="flex items-start gap-4">
+            <Card key={index} className="border-none shadow-md overflow-hidden mac-window">
+              <CardHeader className="mac-titlebar">
+                <div className="mac-dots">
+                  <div className="mac-dot mac-dot-close"></div>
+                  <div className="mac-dot mac-dot-minimize"></div>
+                  <div className="mac-dot mac-dot-maximize"></div>
+                </div>
+                <div className="flex items-start gap-4 flex-1 ml-2">
                   <div className="flex items-center gap-3 flex-1">
                     <Checkbox
                       checked={completedSteps.includes(index)}
@@ -197,13 +208,13 @@ export default function GuideLinkedIn() {
                           <CheckCircle2 className="w-5 h-5 text-green-600" />
                         )}
                       </div>
-                      <CardTitle className="text-xl">{step.title}</CardTitle>
-                      <p className="text-sm text-gray-600 mt-1">{step.description}</p>
+                      <CardTitle className="text-xl text-gray-900">{step.title}</CardTitle>
+                      <p className="text-sm text-gray-700 mt-1">{step.description}</p>
                     </div>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="pt-6">
+              <CardContent className="pt-6 bg-white">
                 <ul className="space-y-2">
                   {step.details.map((detail, i) => (
                     <li key={i} className="flex items-start gap-2 text-gray-700">
@@ -217,11 +228,16 @@ export default function GuideLinkedIn() {
           ))}
         </div>
 
-        <Card className="mt-8 border-none shadow-lg">
-          <CardHeader>
-            <CardTitle>Next Steps</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <Card className="mt-8 border-none shadow-lg mac-window">
+          <div className="mac-titlebar">
+            <div className="mac-dots">
+              <div className="mac-dot mac-dot-close"></div>
+              <div className="mac-dot mac-dot-minimize"></div>
+              <div className="mac-dot mac-dot-maximize"></div>
+            </div>
+            <span className="ml-2">Next Steps</span>
+          </div>
+          <CardContent className="space-y-4 bg-white p-6">
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <Upload className="w-4 h-4 text-purple-600" />
@@ -236,14 +252,14 @@ export default function GuideLinkedIn() {
             <Button 
               onClick={() => navigate(createPageUrl("Archives"))}
               variant="outline"
-              className="w-full"
+              className="w-full mac-button"
             >
               Go to My Archives
             </Button>
           </CardContent>
         </Card>
 
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+        <div className="mt-6 mac-panel">
           <h3 className="font-semibold mb-2 flex items-center gap-2">
             <ExternalLink className="w-4 h-4" />
             Official LinkedIn Help
@@ -251,12 +267,12 @@ export default function GuideLinkedIn() {
           <p className="text-sm text-gray-600">
             For more information, visit{" "}
             <a 
-              href="https://www.linkedin.com/help/linkedin/answer/50191" 
+              href="https://www.linkedin.com/help/linkedin/answer/a1339364" 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-blue-700 hover:underline"
             >
-              LinkedIn's official guide
+              LinkedIn's official data download guide
             </a>
           </p>
         </div>

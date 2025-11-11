@@ -19,63 +19,67 @@ import {
 const steps = [
   {
     title: "Open TikTok Settings",
-    description: "Access your account settings",
+    description: "Access your account settings in the app",
     details: [
-      "Open TikTok app on your mobile device",
-      "Tap 'Profile' icon in the bottom right",
-      "Tap the three horizontal lines (☰) in top right",
+      "Open the TikTok app on your mobile device",
+      "Tap 'Profile' icon at the bottom right",
+      "Tap the three horizontal lines (☰) menu at the top right",
       "Select 'Settings and privacy'"
     ]
   },
   {
-    title: "Navigate to Privacy Settings",
+    title: "Navigate to Account Settings",
     description: "Find the data download option",
     details: [
-      "Tap on 'Privacy' in the Settings menu",
-      "Scroll down to 'Data' section",
-      "Tap 'Download your data'",
-      "You'll see two options: TXT or JSON format"
+      "In Settings, tap 'Account'",
+      "Scroll down to find 'Download your data'",
+      "Tap 'Download your data' to proceed",
+      "You'll see options for data format"
     ]
   },
   {
     title: "Select Download Format",
     description: "Choose how to receive your data",
     details: [
-      "Option 1: 'Download your data' (TXT file) - Human-readable format",
-      "Option 2: 'Request data file' (JSON) - Machine-readable format with more details",
-      "For complete backup, choose JSON format",
-      "Select what data categories to include (or select all)"
+      "Option 1: 'Download your data' - TXT format (human-readable)",
+      "Option 2: 'Request data file' - JSON format (more comprehensive)",
+      "JSON format recommended for complete backup with all details",
+      "Select specific data categories or choose 'Select all'",
+      "Data includes videos, likes, comments, messages, and more"
     ]
   },
   {
-    title: "Verify Your Request",
-    description: "Confirm your identity",
+    title: "Request Your Archive",
+    description: "Submit and verify your request",
     details: [
+      "Review your data selection carefully",
       "You may need to verify your phone number or email",
-      "Enter verification code sent to you",
-      "Review your selections",
-      "Tap 'Request data' or 'Download'"
+      "Enter any verification code sent to you",
+      "Tap 'Request data' or 'Download' to submit",
+      "You'll receive confirmation of your request"
     ]
   },
   {
     title: "Wait for Processing",
-    description: "TikTok prepares your archive",
+    description: "TikTok prepares your data archive",
     details: [
-      "Processing time: Up to 4 days",
-      "You'll receive a notification in-app when ready",
+      "Processing time: Up to 4 days typically",
+      "You'll receive an in-app notification when ready",
       "Check your email for download notification",
-      "File will be available in 'Download your data' section"
+      "File will be available in the 'Download your data' section",
+      "Large accounts may take the full 4 days"
     ]
   },
   {
     title: "Download Your Archive",
     description: "Get your TikTok data",
     details: [
-      "Return to Settings > Privacy > Download your data",
-      "Tap on 'Download data' when available",
-      "File will download to your device",
-      "For JSON format, you may get multiple files",
-      "Save all files securely with backups"
+      "Return to Settings > Account > Download your data",
+      "Tap 'Download data' when the file is available",
+      "The file(s) will download to your device",
+      "JSON format may result in multiple files",
+      "Save all files securely with backup copies",
+      "Videos are included in the archive at original quality"
     ]
   }
 ];
@@ -119,7 +123,7 @@ export default function GuideTikTok() {
         <Button 
           variant="outline" 
           onClick={() => navigate(createPageUrl("Guides"))}
-          className="mb-6"
+          className="mb-6 mac-button"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Guides
@@ -132,7 +136,7 @@ export default function GuideTikTok() {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">TikTok Data Download</h1>
-              <p className="text-gray-600">Complete guide to downloading your TikTok archive</p>
+              <p className="text-gray-600">Official guide to downloading your TikTok archive</p>
             </div>
           </div>
 
@@ -168,9 +172,11 @@ export default function GuideTikTok() {
                 <h3 className="font-semibold text-orange-900 mb-2">Important Information</h3>
                 <ul className="text-sm text-orange-800 space-y-1">
                   <li>• Processing time: Up to 4 days</li>
-                  <li>• Download link available for limited time after creation</li>
-                  <li>• Videos are included in the archive</li>
-                  <li>• JSON format provides more comprehensive data</li>
+                  <li>• TXT format for quick viewing, JSON for complete data</li>
+                  <li>• Videos are included at original quality</li>
+                  <li>• Large accounts may receive multiple archive files</li>
+                  <li>• Download available for limited time after creation</li>
+                  <li>• Must use TikTok mobile app to request download</li>
                 </ul>
               </div>
             </div>
@@ -179,9 +185,14 @@ export default function GuideTikTok() {
 
         <div className="space-y-4">
           {steps.map((step, index) => (
-            <Card key={index} className="border-none shadow-md overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-gray-50 to-white">
-                <div className="flex items-start gap-4">
+            <Card key={index} className="border-none shadow-md overflow-hidden mac-window">
+              <CardHeader className="mac-titlebar">
+                <div className="mac-dots">
+                  <div className="mac-dot mac-dot-close"></div>
+                  <div className="mac-dot mac-dot-minimize"></div>
+                  <div className="mac-dot mac-dot-maximize"></div>
+                </div>
+                <div className="flex items-start gap-4 flex-1 ml-2">
                   <div className="flex items-center gap-3 flex-1">
                     <Checkbox
                       checked={completedSteps.includes(index)}
@@ -197,13 +208,13 @@ export default function GuideTikTok() {
                           <CheckCircle2 className="w-5 h-5 text-green-600" />
                         )}
                       </div>
-                      <CardTitle className="text-xl">{step.title}</CardTitle>
-                      <p className="text-sm text-gray-600 mt-1">{step.description}</p>
+                      <CardTitle className="text-xl text-gray-900">{step.title}</CardTitle>
+                      <p className="text-sm text-gray-700 mt-1">{step.description}</p>
                     </div>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="pt-6">
+              <CardContent className="pt-6 bg-white">
                 <ul className="space-y-2">
                   {step.details.map((detail, i) => (
                     <li key={i} className="flex items-start gap-2 text-gray-700">
@@ -217,11 +228,16 @@ export default function GuideTikTok() {
           ))}
         </div>
 
-        <Card className="mt-8 border-none shadow-lg">
-          <CardHeader>
-            <CardTitle>Next Steps</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <Card className="mt-8 border-none shadow-lg mac-window">
+          <div className="mac-titlebar">
+            <div className="mac-dots">
+              <div className="mac-dot mac-dot-close"></div>
+              <div className="mac-dot mac-dot-minimize"></div>
+              <div className="mac-dot mac-dot-maximize"></div>
+            </div>
+            <span className="ml-2">Next Steps</span>
+          </div>
+          <CardContent className="space-y-4 bg-white p-6">
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <Upload className="w-4 h-4 text-purple-600" />
@@ -236,14 +252,14 @@ export default function GuideTikTok() {
             <Button 
               onClick={() => navigate(createPageUrl("Archives"))}
               variant="outline"
-              className="w-full"
+              className="w-full mac-button"
             >
               Go to My Archives
             </Button>
           </CardContent>
         </Card>
 
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+        <div className="mt-6 mac-panel">
           <h3 className="font-semibold mb-2 flex items-center gap-2">
             <ExternalLink className="w-4 h-4" />
             Official TikTok Help
@@ -256,7 +272,7 @@ export default function GuideTikTok() {
               rel="noopener noreferrer"
               className="text-gray-900 hover:underline"
             >
-              TikTok's official guide
+              TikTok's official data request guide
             </a>
           </p>
         </div>

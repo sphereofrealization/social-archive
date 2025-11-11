@@ -18,61 +18,67 @@ import {
 
 const steps = [
   {
-    title: "Access Facebook Settings",
-    description: "Log into your Facebook account and navigate to Settings & Privacy",
+    title: "Access Settings",
+    description: "Navigate to Facebook Settings",
     details: [
       "Click on your profile picture in the top right corner",
-      "Select 'Settings & Privacy' from the dropdown menu",
-      "Click on 'Settings'"
-    ],
-    image: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&h=400&fit=crop"
-  },
-  {
-    title: "Find 'Your Facebook Information'",
-    description: "Locate the data download section",
-    details: [
-      "In the left sidebar, look for 'Your Facebook Information'",
-      "Click on 'Download Your Information'",
-      "You'll see options to customize what data to download"
+      "Click 'Settings & privacy' from the dropdown menu",
+      "Click 'Settings'",
+      "Click 'Accounts Center' in the left menu"
     ]
   },
   {
-    title: "Select What to Download",
-    description: "Choose which data you want to include",
+    title: "Navigate to Export Your Information",
+    description: "Find the data export section",
     details: [
-      "Select 'All of your Facebook information' or pick specific categories",
-      "Recommended: Posts, Photos and videos, Comments, Messages, Profile information, Friends and followers",
-      "Choose date range (or select 'All time' for complete archive)"
+      "In Accounts Center, click 'Your information and permissions'",
+      "Click 'Export your information'",
+      "Click 'Create export'",
+      "Select the Facebook profile you'd like to export"
     ]
   },
   {
-    title: "Choose Format and Quality",
-    description: "Configure download settings",
+    title: "Choose Export Destination",
+    description: "Select where to export your data",
     details: [
-      "Format: Select 'JSON' for best compatibility (or HTML for easier viewing)",
-      "Media Quality: Choose 'High' for best quality",
-      "Click 'Create File' button"
+      "Select 'Export to device' (recommended for backup)",
+      "Alternatively, select 'Export to external service' for cloud transfer",
+      "Click 'Next' to proceed"
     ]
   },
   {
-    title: "Wait for Processing",
-    description: "Facebook will prepare your archive",
+    title: "Customize Your Export",
+    description: "Select what data and format you want",
     details: [
-      "You'll see a message: 'We're preparing your download'",
-      "This usually takes 24-48 hours for most accounts",
-      "You'll receive an email when it's ready",
-      "Check 'Available Copies' section to see progress"
+      "Choose specific info to export or select all",
+      "Select date range (choose 'All time' for complete backup)",
+      "Choose format: HTML (easy viewing) or JSON (machine-readable)",
+      "Select media quality: High quality recommended for photos/videos",
+      "Choose notification email"
+    ]
+  },
+  {
+    title: "Start Export and Wait",
+    description: "Request your data and wait for processing",
+    details: [
+      "Review your selections carefully",
+      "Click 'Start export' to begin",
+      "Processing typically takes a few hours to several days",
+      "Large accounts may take longer to process",
+      "You'll receive email and Facebook notification when ready"
     ]
   },
   {
     title: "Download Your Archive",
-    description: "Get your data when it's ready",
+    description: "Get your Facebook data",
     details: [
-      "Check your email for the notification",
-      "Return to 'Download Your Information' page",
-      "Click the 'Download' button next to your available file",
+      "Return to Accounts Center > Your information and permissions",
+      "Click 'Export your information'",
+      "Check 'Available downloads' section",
+      "Click 'Download' on your ready export",
       "Enter your password to confirm",
-      "Save the ZIP file to a secure location"
+      "Download will be available for 4 days",
+      "Save the ZIP file to a secure location with backup"
     ]
   }
 ];
@@ -103,7 +109,7 @@ export default function GuideFacebook() {
     createArchiveMutation.mutate({
       platform: "facebook",
       status: "requested",
-      notes: "Data download requested from Facebook"
+      notes: "Data download requested from Facebook via Accounts Center"
     });
     setIsRequested(true);
   };
@@ -116,7 +122,7 @@ export default function GuideFacebook() {
         <Button 
           variant="outline" 
           onClick={() => navigate(createPageUrl("Guides"))}
-          className="mb-6"
+          className="mb-6 mac-button"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Guides
@@ -129,7 +135,7 @@ export default function GuideFacebook() {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Facebook Data Download</h1>
-              <p className="text-gray-600">Complete guide to downloading your Facebook archive</p>
+              <p className="text-gray-600">Official guide using Facebook Accounts Center</p>
             </div>
           </div>
 
@@ -141,7 +147,7 @@ export default function GuideFacebook() {
                   <div className="flex-1">
                     <h3 className="font-semibold text-green-900 mb-2">All steps completed!</h3>
                     <p className="text-sm text-green-800 mb-4">
-                      Have you successfully requested your Facebook data download?
+                      Have you successfully requested your Facebook data export?
                     </p>
                     <Button 
                       onClick={handleMarkRequested}
@@ -164,10 +170,11 @@ export default function GuideFacebook() {
               <div>
                 <h3 className="font-semibold text-orange-900 mb-2">Important Information</h3>
                 <ul className="text-sm text-orange-800 space-y-1">
-                  <li>• Processing time: Usually 24-48 hours (may take longer for large accounts)</li>
-                  <li>• Download link expires after 4 days</li>
-                  <li>• File size can range from 100MB to several GB</li>
-                  <li>• You'll need to enter your password to download</li>
+                  <li>• Processing time: Few hours to several days depending on account size</li>
+                  <li>• Download link available for 4 days after creation</li>
+                  <li>• Choose HTML format for easy viewing or JSON for data portability</li>
+                  <li>• Includes posts, photos, videos, messages, friends list, and more</li>
+                  <li>• You must enter your password to download the archive</li>
                 </ul>
               </div>
             </div>
@@ -176,9 +183,14 @@ export default function GuideFacebook() {
 
         <div className="space-y-4">
           {steps.map((step, index) => (
-            <Card key={index} className="border-none shadow-md overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-blue-50 to-white">
-                <div className="flex items-start gap-4">
+            <Card key={index} className="border-none shadow-md overflow-hidden mac-window">
+              <CardHeader className="mac-titlebar">
+                <div className="mac-dots">
+                  <div className="mac-dot mac-dot-close"></div>
+                  <div className="mac-dot mac-dot-minimize"></div>
+                  <div className="mac-dot mac-dot-maximize"></div>
+                </div>
+                <div className="flex items-start gap-4 flex-1 ml-2">
                   <div className="flex items-center gap-3 flex-1">
                     <Checkbox
                       checked={completedSteps.includes(index)}
@@ -194,20 +206,13 @@ export default function GuideFacebook() {
                           <CheckCircle2 className="w-5 h-5 text-green-600" />
                         )}
                       </div>
-                      <CardTitle className="text-xl">{step.title}</CardTitle>
-                      <p className="text-sm text-gray-600 mt-1">{step.description}</p>
+                      <CardTitle className="text-xl text-gray-900">{step.title}</CardTitle>
+                      <p className="text-sm text-gray-700 mt-1">{step.description}</p>
                     </div>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="pt-6">
-                {step.image && (
-                  <img 
-                    src={step.image} 
-                    alt={step.title}
-                    className="w-full rounded-lg mb-4 shadow-sm"
-                  />
-                )}
+              <CardContent className="pt-6 bg-white">
                 <ul className="space-y-2">
                   {step.details.map((detail, i) => (
                     <li key={i} className="flex items-start gap-2 text-gray-700">
@@ -221,11 +226,16 @@ export default function GuideFacebook() {
           ))}
         </div>
 
-        <Card className="mt-8 border-none shadow-lg">
-          <CardHeader>
-            <CardTitle>Next Steps</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <Card className="mt-8 border-none shadow-lg mac-window">
+          <div className="mac-titlebar">
+            <div className="mac-dots">
+              <div className="mac-dot mac-dot-close"></div>
+              <div className="mac-dot mac-dot-minimize"></div>
+              <div className="mac-dot mac-dot-maximize"></div>
+            </div>
+            <span className="ml-2">Next Steps</span>
+          </div>
+          <CardContent className="space-y-4 bg-white p-6">
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <Upload className="w-4 h-4 text-purple-600" />
@@ -233,21 +243,21 @@ export default function GuideFacebook() {
               <div>
                 <h4 className="font-semibold mb-1">After Download</h4>
                 <p className="text-sm text-gray-600">
-                  Once you've downloaded your archive, upload it to the "My Archives" section to organize and review your data.
+                  Upload your archive to "My Archives" to extract and organize your data with AI assistance.
                 </p>
               </div>
             </div>
             <Button 
               onClick={() => navigate(createPageUrl("Archives"))}
               variant="outline"
-              className="w-full"
+              className="w-full mac-button"
             >
               Go to My Archives
             </Button>
           </CardContent>
         </Card>
 
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+        <div className="mt-6 mac-panel">
           <h3 className="font-semibold mb-2 flex items-center gap-2">
             <ExternalLink className="w-4 h-4" />
             Official Facebook Help
@@ -260,7 +270,7 @@ export default function GuideFacebook() {
               rel="noopener noreferrer"
               className="text-blue-600 hover:underline"
             >
-              Facebook's official guide
+              Facebook's official export guide
             </a>
           </p>
         </div>
