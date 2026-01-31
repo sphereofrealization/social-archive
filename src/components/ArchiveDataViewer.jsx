@@ -19,23 +19,47 @@ export default function ArchiveDataViewer({ archive }) {
     
     try {
       // Use LLM to analyze and extract insights from the archive
-      const prompt = `Analyze this ${archive.platform} data archive and extract key insights. 
+      const platformSpecificPrompts = {
+        facebook: `Analyze this Facebook data archive ZIP file. Facebook archives contain HTML files and folders with your data.
+        Look for: posts.html, friends.html, messages folder, photos_and_videos folder, comments, likes, and your_activity.
+        Extract comprehensive insights about this person's Facebook history.`,
+        instagram: `Analyze this Instagram data archive ZIP file. Instagram archives contain JSON files with your posts, stories, messages, followers, and media.
+        Look for: posts_1.json, followers.json, messages.json, media folder, stories.json.
+        Extract insights about their Instagram activity and content.`,
+        twitter: `Analyze this Twitter/X data archive ZIP file. It contains 'Your archive.html' and a data folder with JSON files.
+        Look for: tweets.js, direct-messages.js, followers.js, following.js in the data folder.
+        Extract insights about their Twitter history.`,
+        linkedin: `Analyze this LinkedIn data archive ZIP file. LinkedIn provides CSV files for different data categories.
+        Look for: Profile.csv, Connections.csv, Messages.csv, Positions.csv, Recommendations.csv.
+        Extract professional insights from their LinkedIn data.`,
+        tiktok: `Analyze this TikTok data archive. TikTok provides JSON files with video data, comments, likes, and user info.
+        Look for: user_data.json, video.json, comment.json, like_list.json.
+        Extract insights about their TikTok content and engagement.`
+      };
+
+      const basePrompt = platformSpecificPrompts[archive.platform] || 
+        `Analyze this ${archive.platform} social media archive and extract key insights.`;
+
+      const prompt = `${basePrompt}
+      
       Provide a comprehensive summary in JSON format with the following structure:
       {
-        "summary": "Brief overview of the archive",
+        "summary": "Brief overview of what this archive contains and the person's activity on the platform",
         "statistics": {
-          "total_posts": number,
-          "total_photos": number,
-          "total_videos": number,
-          "date_range": {"start": "date", "end": "date"},
-          "top_themes": ["theme1", "theme2", "theme3"]
+          "total_posts": number (0 if not found),
+          "total_photos": number (0 if not found),
+          "total_videos": number (0 if not found),
+          "date_range": {"start": "YYYY-MM-DD or earliest date found", "end": "YYYY-MM-DD or latest date found"},
+          "top_themes": ["theme1", "theme2", "theme3"] (topics/interests based on content)
         },
         "highlights": [
-          {"title": "highlight name", "description": "details", "date": "date if available"}
+          {"title": "Most memorable moment or significant post", "description": "what happened", "date": "date if available"}
         ],
-        "connections_count": number,
-        "messages_count": number
-      }`;
+        "connections_count": number (friends/followers/connections - 0 if not found),
+        "messages_count": number (total DMs/messages - 0 if not found)
+      }
+      
+      Important: Extract real numbers from the archive files. Be thorough in analyzing the structure.`;
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt: prompt,
