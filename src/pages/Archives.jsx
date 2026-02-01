@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import ArchiveDataViewer from "../components/ArchiveDataViewer";
+import VideoMessageExtractor from "../components/VideoMessageExtractor";
 
 const statusColors = {
   not_started: "bg-gray-100 text-gray-800",
@@ -122,14 +123,18 @@ export default function Archives() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">My Archives</h1>
             <p className="text-gray-600">Manage and organize your downloaded social media archives</p>
           </div>
-          <Button 
-            onClick={() => setShowUploadForm(!showUploadForm)}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Upload Archive
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => setShowUploadForm(!showUploadForm)}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Upload Archive
+            </Button>
+          </div>
         </div>
+
+        <VideoMessageExtractor />
 
         {showUploadForm && (
           <Card className="mb-8 border-none shadow-lg">
