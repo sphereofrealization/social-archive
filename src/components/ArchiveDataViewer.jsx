@@ -260,69 +260,88 @@ export default function ArchiveDataViewer({ archive }) {
             }
           }
 
-          if (path.includes("likes_and_reactions") || path.includes("likes")) {
-            const likeMatches = content.match(/>([^<]+)<\/a>/g) || [];
-            for (let i = 0; i < Math.min(likeMatches.length, 200); i++) {
-              const match = likeMatches[i].match(/>([^<]+)</);
-              if (match) {
-                const text = parseHTML(content.substring(content.indexOf(match[0]) - 100, content.indexOf(match[0]) + 200));
-                const timestamp = extractTimestamp(text);
-                data.likes.push({ item: match[1].trim(), timestamp });
+          // Likes and reactions - check your_facebook_activity/likes_and_reactions/
+          if ((path.includes("likes_and_reactions") || path.includes("reactions_and_likes")) && path.endsWith(".html") && !path.includes("no-data")) {
+            const likeMatches = content.split(/<div[^>]*>/gi);
+            for (const chunk of likeMatches) {
+              const linkMatch = chunk.match(/>([^<]+)<\/a>/);
+              if (linkMatch && chunk.length > 20 && chunk.length < 1000) {
+                const text = parseHTML(chunk);
+                const timestamp = extractTimestamp(chunk);
+                if (linkMatch[1].trim().length > 2) {
+                  data.likes.push({ item: linkMatch[1].trim(), timestamp });
+                }
               }
             }
           }
 
-          if (path.includes("check-ins") || path.includes("checkins") || path.includes("places")) {
-            const checkinMatches = content.split(/<div[^>]*>/gi).filter(chunk => chunk.length > 50);
-            for (let i = 0; i < Math.min(checkinMatches.length, 100); i++) {
-              const text = parseHTML(checkinMatches[i].substring(0, 500));
-              const timestamp = extractTimestamp(checkinMatches[i]);
-              if (text.length > 10) {
-                data.checkins.push({ location: text.substring(0, 200), timestamp });
+          // Check-ins - check your_facebook_activity/your_places/ or location_history/
+          if ((path.includes("your_places") || path.includes("check") || path.includes("location")) && path.endsWith(".html") && !path.includes("no-data")) {
+            const locationMatches = content.split(/<div[^>]*>/gi);
+            for (const chunk of locationMatches) {
+              if (chunk.length > 30 && chunk.length < 2000) {
+                const text = parseHTML(chunk);
+                const timestamp = extractTimestamp(chunk);
+                if (text.length > 15 && text.length < 500 && (chunk.includes("checked in") || chunk.includes("location") || path.includes("places"))) {
+                  data.checkins.push({ location: text.substring(0, 200), timestamp });
+                }
               }
             }
           }
 
+          // Events - check your_facebook_activity/events/
           if (path.includes("events") && path.endsWith(".html") && !path.includes("no-data")) {
-            const eventMatches = content.match(/>([^<]+)<\/a>/g) || [];
-            for (let i = 0; i < Math.min(eventMatches.length, 200); i++) {
-              const match = eventMatches[i].match(/>([^<]+)</);
-              if (match && match[1].length > 3) {
-                const text = parseHTML(content.substring(content.indexOf(match[0]) - 100, content.indexOf(match[0]) + 200));
-                const timestamp = extractTimestamp(text);
-                data.events.push({ name: match[1].trim(), timestamp });
+            const eventSections = content.split(/<div[^>]*>/gi);
+            for (const section of eventSections) {
+              const linkMatch = section.match(/>([^<]+)<\/a>/);
+              if (linkMatch && section.length > 20 && section.length < 1500) {
+                const eventName = linkMatch[1].trim();
+                const timestamp = extractTimestamp(section);
+                if (eventName.length > 2 && eventName.length < 200 && !eventName.includes("@") && !eventName.includes("http")) {
+                  data.events.push({ name: eventName, timestamp });
+                }
               }
             }
           }
 
-          if (path.includes("reviews") && path.endsWith(".html")) {
-            const reviewMatches = content.split(/<div[^>]*>/gi).filter(chunk => chunk.length > 50);
-            for (let i = 0; i < Math.min(reviewMatches.length, 100); i++) {
-              const text = parseHTML(reviewMatches[i].substring(0, 1000));
-              const timestamp = extractTimestamp(reviewMatches[i]);
-              if (text.length > 20) {
-                data.reviews.push({ text: text.substring(0, 300), timestamp });
+          // Reviews - check your_facebook_activity/reviews/
+          if (path.includes("reviews") && path.endsWith(".html") && !path.includes("no-data")) {
+            const reviewSections = content.split(/<div[^>]*>/gi);
+            for (const section of reviewSections) {
+              if (section.length > 50 && section.length < 3000) {
+                const text = parseHTML(section);
+                const timestamp = extractTimestamp(section);
+                if (text.length > 30 && (section.includes("star") || section.includes("review") || section.includes("rating"))) {
+                  data.reviews.push({ text: text.substring(0, 400), timestamp });
+                }
               }
             }
           }
 
+          // Groups - check your_facebook_activity/groups/ or connections/groups/
           if (path.includes("groups") && path.endsWith(".html") && !path.includes("no-data")) {
-            const groupMatches = content.match(/>([^<]+)<\/a>/g) || [];
-            for (let i = 0; i < Math.min(groupMatches.length, 200); i++) {
-              const match = groupMatches[i].match(/>([^<]+)</);
-              if (match && match[1].length > 3) {
-                data.groups.push({ name: match[1].trim() });
+            const groupMatches = content.split(/<div[^>]*>/gi);
+            for (const chunk of groupMatches) {
+              const linkMatch = chunk.match(/>([^<]+)<\/a>/);
+              if (linkMatch && chunk.length > 15 && chunk.length < 800) {
+                const groupName = linkMatch[1].trim();
+                if (groupName.length > 2 && groupName.length < 150 && !groupName.includes("@") && !groupName.includes("http")) {
+                  data.groups.push({ name: groupName });
+                }
               }
             }
           }
 
+          // Reels - check your_facebook_activity/reels/
           if (path.includes("reels") && path.endsWith(".html") && !path.includes("no-data")) {
-            const reelMatches = content.split(/<div[^>]*>/gi).filter(chunk => chunk.length > 50);
-            for (let i = 0; i < Math.min(reelMatches.length, 100); i++) {
-              const text = parseHTML(reelMatches[i].substring(0, 500));
-              const timestamp = extractTimestamp(reelMatches[i]);
-              if (text.length > 10) {
-                data.reels.push({ text: text.substring(0, 300), timestamp });
+            const reelSections = content.split(/<div[^>]*>/gi);
+            for (const section of reelSections) {
+              if (section.length > 40 && section.length < 2000) {
+                const text = parseHTML(section);
+                const timestamp = extractTimestamp(section);
+                if (text.length > 20 && text.length < 600) {
+                  data.reels.push({ text: text.substring(0, 400), timestamp });
+                }
               }
             }
           }
@@ -339,8 +358,12 @@ export default function ArchiveDataViewer({ archive }) {
         messages: data.messages.length,
         photos: data.photos.length,
         comments: data.comments.length,
-        samplePost: data.posts[0],
-        samplePhoto: data.photos[0]
+        reels: data.reels.length,
+        checkins: data.checkins.length,
+        likes: data.likes.length,
+        events: data.events.length,
+        reviews: data.reviews.length,
+        groups: data.groups.length
       });
       setExtractedData(data);
 
