@@ -16,8 +16,10 @@ Deno.serve(async (req) => {
     const zipBuffer = await zipBlob.arrayBuffer();
     
     // Import JSZip for unzipping
-    const JSZip = (await import("npm:jszip@3.10.1")).default;
-    const zip = await JSZip.loadAsync(zipBuffer);
+    const jsZipModule = await import("npm:jszip@3.10.1");
+    const JSZip = jsZipModule.default || jsZipModule;
+    const zip = new JSZip();
+    await zip.loadAsync(zipBuffer);
     
     // Initialize data structure
     const data = {
@@ -176,8 +178,10 @@ Deno.serve(async (req) => {
     
   } catch (error) {
     console.error("Archive extraction error:", error);
+    console.error("Error stack:", error.stack);
     return Response.json({ 
-      error: error.message || "Failed to extract archive" 
+      error: error.message || "Failed to extract archive",
+      details: error.stack
     }, { status: 500 });
   }
 });
