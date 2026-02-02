@@ -57,113 +57,100 @@ export default function Layout({ children, currentPageName }) {
   return (
     <SidebarProvider>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Charcoal&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
         :root {
-          --mac-platinum: #dddddd;
-          --mac-dark: #777777;
-          --mac-light: #ffffff;
-          --mac-accent: #0066cc;
-          --mac-shadow: rgba(0,0,0,0.3);
+          --klingon-black: #0a0a0a;
+          --klingon-steel: #1a1a1a;
+          --klingon-metal: #2a2a2a;
+          --klingon-red: #8b0000;
+          --klingon-amber: #ff6600;
+          --klingon-glow: rgba(139, 0, 0, 0.5);
         }
-        
+
         * {
-          font-family: -apple-system, 'Lucida Grande', 'Geneva', 'Helvetica', sans-serif;
+          font-family: 'Orbitron', monospace, sans-serif;
         }
-        
+
         body {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+          background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #2a2a2a 100%);
         }
-        
+
         .mac-window {
-          background: var(--mac-platinum);
-          border: 1px solid #999;
-          border-radius: 8px;
-          box-shadow: 0 4px 16px var(--mac-shadow);
+          background: linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%);
+          border: 2px solid #000;
+          border-radius: 0;
+          box-shadow: 0 0 20px rgba(139, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
           overflow: hidden;
         }
-        
+
         .mac-titlebar {
-          background: linear-gradient(180deg, 
-            #f0f0f0 0%, 
-            #e0e0e0 3%, 
-            #d8d8d8 3%, 
-            #d0d0d0 6%,
-            #c8c8c8 6%,
-            #c0c0c0 9%,
-            #b8b8b8 9%,
-            #b0b0b0 12%,
-            #a8a8a8 12%,
-            #a0a0a0 100%
-          );
-          padding: 4px 8px;
-          border-bottom: 1px solid #888;
+          background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+          padding: 8px 12px;
+          border-bottom: 2px solid #8b0000;
           display: flex;
           align-items: center;
-          gap: 6px;
-          font-size: 13px;
-          font-weight: bold;
-          color: #333;
+          gap: 8px;
+          font-size: 11px;
+          font-weight: 900;
+          color: #ff6600;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          box-shadow: 0 2px 0 rgba(139, 0, 0, 0.5);
         }
-        
+
         .mac-titlebar-active {
-          background: linear-gradient(180deg,
-            #e8e8ff 0%,
-            #d0d0ff 3%,
-            #c8c8f8 3%,
-            #b8b8f0 6%,
-            #a8a8e8 6%,
-            #9898e0 9%,
-            #8888d8 9%,
-            #7878d0 12%,
-            #6868c8 12%,
-            #5858c0 100%
-          );
-          color: #000;
+          background: linear-gradient(180deg, #3a0000 0%, #1a0000 100%);
+          color: #ff3300;
+          text-shadow: 0 0 10px rgba(255, 51, 0, 0.8);
         }
-        
+
         .mac-button {
-          background: linear-gradient(180deg, #fdfdfd 0%, #e8e8e8 50%, #d0d0d0 100%);
-          border: 1px solid #888;
-          border-radius: 4px;
-          padding: 6px 20px;
-          font-size: 13px;
-          font-weight: 500;
+          background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+          border: 1px solid #000;
+          border-radius: 0;
+          padding: 8px 24px;
+          font-size: 11px;
+          font-weight: 700;
           cursor: pointer;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+          box-shadow: 0 2px 0 rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05);
           transition: all 0.1s;
+          color: #ff6600;
+          text-transform: uppercase;
+          letter-spacing: 1px;
         }
-        
+
         .mac-button:hover {
-          background: linear-gradient(180deg, #ffffff 0%, #f0f0f0 50%, #e0e0e0 100%);
-          border-color: #666;
+          background: linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 100%);
+          box-shadow: 0 0 10px rgba(255, 102, 0, 0.5);
+          color: #ff8800;
         }
-        
+
         .mac-button:active {
-          background: linear-gradient(180deg, #c0c0c0 0%, #d8d8d8 50%, #e8e8e8 100%);
-          box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+          background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%);
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
         }
-        
+
         .mac-button-active {
-          background: linear-gradient(180deg, #4a90e2 0%, #357abd 50%, #2868ab 100%);
-          border-color: #1a5490;
-          color: white;
-          box-shadow: inset 0 1px 2px rgba(255,255,255,0.3);
+          background: linear-gradient(180deg, #8b0000 0%, #5a0000 100%);
+          border-color: #ff0000;
+          color: #ffffff;
+          box-shadow: 0 0 15px rgba(139, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1);
         }
-        
+
         .mac-panel {
-          background: var(--mac-platinum);
-          border: 1px solid #999;
-          border-radius: 4px;
+          background: linear-gradient(180deg, #1f1f1f 0%, #0f0f0f 100%);
+          border: 1px solid #000;
+          border-radius: 0;
           padding: 12px;
-          box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+          box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
         }
-        
+
         .mac-sidebar {
-          background: linear-gradient(180deg, #f5f5f5 0%, #e8e8e8 100%);
-          border-right: 1px solid #aaa;
+          background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%);
+          border-right: 2px solid #8b0000;
         }
-        
+
         .mac-dots {
           display: flex;
           gap: 4px;
@@ -173,23 +160,24 @@ export default function Layout({ children, currentPageName }) {
           width: 18px;
           height: 18px;
           border-radius: 0;
-          border: 1px solid #1a1a1a;
+          border: 1px solid #000;
           background: linear-gradient(180deg, #3a3a3a 0%, #1a1a1a 100%);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 1px 2px rgba(0,0,0,0.8);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 0 5px rgba(139, 0, 0, 0.5);
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 10px;
           font-weight: bold;
-          color: #606060;
+          color: #666;
           font-family: monospace;
           cursor: pointer;
           transition: all 0.1s;
         }
 
         .mac-dot:hover {
-          background: linear-gradient(180deg, #4a4a4a 0%, #2a2a2a 100%);
-          color: #808080;
+          background: linear-gradient(180deg, #4a0000 0%, #2a0000 100%);
+          color: #ff3300;
+          box-shadow: 0 0 10px rgba(255, 51, 0, 0.8);
         }
 
         .mac-dot-close::before {
@@ -205,9 +193,9 @@ export default function Layout({ children, currentPageName }) {
           content: '⇔';
           font-size: 11px;
         }
-        
+
         .gradient-bg {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+          background: linear-gradient(135deg, #0a0a0a 0%, #1a0000 50%, #0a0a0a 100%);
         }
       `}</style>
       <div className="min-h-screen flex w-full gradient-bg">
