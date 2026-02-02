@@ -108,12 +108,14 @@ export default function ArchiveDataViewer({ archive }) {
               const commentsMatch = postHtml.match(/(\d+)\s*comment/i);
 
               if (text.length > 10) {
+                const hasPhoto = postHtml.match(/<img|photo|image/i) || postHtml.includes('attached') || postHtml.includes('album');
                 const imgMatch = postHtml.match(/<img[^>]+src=["']([^"']+)["']/i);
                 data.posts.push({
                   text: text.substring(0, 500),
                   timestamp,
                   likes_count: likesMatch ? parseInt(likesMatch[1]) : 0,
                   comments_count: commentsMatch ? parseInt(commentsMatch[1]) : 0,
+                  has_photo: !!hasPhoto,
                   photo_url: imgMatch ? imgMatch[1] : null
                 });
               }
