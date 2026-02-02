@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Loader2, Sparkles, FileText, Image as ImageIcon, MessageSquare, Users } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -10,10 +11,28 @@ export default function ArchiveDataViewer({ archive }) {
   const [extracting, setExtracting] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
   const [error, setError] = useState(null);
+  const [individualFile, setIndividualFile] = useState(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
-  const handleExtractData = async () => {
-    if (!archive.file_url) return;
+  const handleFileUploadForAnalysis = async () => {
+    if (!individualFile) return;
     
+    setUploadingFile(true);
+    setError(null);
+    
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file: individualFile });
+      await analyzeFile(file_url);
+    } catch (err) {
+      const errorMessage = err?.message || err?.toString() || "Unknown error";
+      setError(`Failed to analyze file: ${errorMessage}`);
+      console.error("Full error:", err);
+    }
+    
+    setUploadingFile(false);
+  };
+
+  const analyzeFile = async (fileUrl) => {
     setExtracting(true);
     setError(null);
     
@@ -63,7 +82,7 @@ export default function ArchiveDataViewer({ archive }) {
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt: prompt,
-        file_urls: [archive.file_url],
+        file_urls: [fileUrl],
         response_json_schema: {
           type: "object",
           properties: {
@@ -104,12 +123,14 @@ export default function ArchiveDataViewer({ archive }) {
       setExtractedData(result);
     } catch (err) {
       const errorMessage = err?.message || err?.toString() || "Unknown error";
-      setError(`Failed to extract data: ${errorMessage}. Note: ZIP files may need to be extracted first - the AI can analyze individual HTML, JSON, or CSV files from your archive.`);
+      setError(`Failed to extract data: ${errorMessage}`);
       console.error("Full error:", err);
     }
     
     setExtracting(false);
   };
+
+  const isZipFile = archive.file_name?.toLowerCase().endsWith('.zip');
 
   if (error) {
     return (
@@ -120,6 +141,62 @@ export default function ArchiveDataViewer({ archive }) {
   }
 
   if (!extractedData) {
+    if (isZipFile) {
+      return (
+        <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-white">
+          <CardContent className="p-6 space-y-4">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FileText className="w-8 h-8 text-amber-600" />
+              </div>
+              <h3 className="font-semibold text-lg mb-2">Extract Your Archive First</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                ZIP files need to be extracted. Upload an individual file from your archive for AI analysis.
+              </p>
+            </div>
+
+            <div className="bg-white rounded-lg p-4 text-left space-y-3">
+              <p className="font-medium text-sm text-gray-900">For Facebook archives, look for:</p>
+              <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
+                <li><code className="bg-gray-100 px-1 rounded">index.html</code> - Main overview</li>
+                <li><code className="bg-gray-100 px-1 rounded">posts/your_posts_1.html</code> - Your posts</li>
+                <li><code className="bg-gray-100 px-1 rounded">friends/friends.html</code> - Friends list</li>
+                <li><code className="bg-gray-100 px-1 rounded">messages/inbox/</code> - Message threads (HTML files)</li>
+                <li><code className="bg-gray-100 px-1 rounded">comments/comments.html</code> - Your comments</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Upload a file from your extracted archive</label>
+              <Input
+                type="file"
+                accept=".html,.json,.csv,.txt"
+                onChange={(e) => setIndividualFile(e.target.files[0])}
+              />
+            </div>
+
+            <Button 
+              onClick={handleFileUploadForAnalysis}
+              disabled={!individualFile || uploadingFile || extracting}
+              className="w-full bg-purple-600 hover:bg-purple-700"
+            >
+              {uploadingFile || extracting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Analyze with AI
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      );
+    }
+
     return (
       <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-white">
         <CardContent className="p-6">
@@ -132,7 +209,7 @@ export default function ArchiveDataViewer({ archive }) {
               Use AI to analyze your archive and extract key insights, statistics, and highlights
             </p>
             <Button 
-              onClick={handleExtractData}
+              onClick={() => analyzeFile(archive.file_url)}
               disabled={extracting}
               className="bg-purple-600 hover:bg-purple-700"
             >
@@ -255,15 +332,33 @@ export default function ArchiveDataViewer({ archive }) {
         </Card>
       )}
 
-      <Button 
-        onClick={handleExtractData}
-        variant="outline"
-        size="sm"
-        className="w-full"
-      >
-        <Sparkles className="w-4 h-4 mr-2" />
-        Re-analyze Archive
-      </Button>
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-gray-700">Analyze another file from your archive</label>
+        <Input
+          type="file"
+          accept=".html,.json,.csv,.txt"
+          onChange={(e) => setIndividualFile(e.target.files[0])}
+        />
+        <Button 
+          onClick={handleFileUploadForAnalysis}
+          disabled={!individualFile || uploadingFile || extracting}
+          variant="outline"
+          size="sm"
+          className="w-full"
+        >
+          {uploadingFile || extracting ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Analyzing...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Analyze Another File
+            </>
+          )}
+        </Button>
+      </div>
     </div>
   );
 }
