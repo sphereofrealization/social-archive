@@ -76,6 +76,8 @@ export default function ArchiveDataViewer({ archive }) {
         try {
           const content = await file.async("text");
 
+          console.log("Processing file:", path);
+
           if (path.includes("profile_information") || path.includes("about_you")) {
             const nameMatch = content.match(/name["\s:]+([^<\n"]+)/i);
             const emailMatch = content.match(/[\w\.-]+@[\w\.-]+\.\w+/);
@@ -83,13 +85,26 @@ export default function ArchiveDataViewer({ archive }) {
             if (emailMatch) data.profile.email = emailMatch[0];
           }
 
-          if (path.includes("posts") && path.endsWith(".html")) {
-            const postMatches = content.split(/<div[^>]*class="[^"]*post[^"]*"[^>]*>/gi);
+          if ((path.includes("posts") || path.includes("your_posts")) && path.endsWith(".html")) {
+            // Try multiple splitting patterns for posts
+            let postMatches = content.split(/<div[^>]*class="[^"]*post[^"]*"[^>]*>/gi);
+            if (postMatches.length < 2) {
+              postMatches = content.split(/data-ft=\{[^}]*"mf_story_key"/gi);
+            }
+            if (postMatches.length < 2) {
+              // Try splitting by common Facebook post markers
+              postMatches = content.split(/<div[^>]*>/gi).filter(chunk => 
+                chunk.includes('timestamp') || chunk.length > 100
+              );
+            }
+
+            console.log(`Found ${postMatches.length} potential posts in ${path}`);
+
             for (let i = 1; i < Math.min(postMatches.length, 101); i++) {
               const postHtml = postMatches[i];
               const text = parseHTML(postHtml.substring(0, 2000));
               const timestamp = extractTimestamp(postHtml);
-              const likesMatch = postHtml.match(/(\d+)\s*like/i);
+              const likesMatch = postHtml.match(/(\d+)\s*(like|reaction)/i);
               const commentsMatch = postHtml.match(/(\d+)\s*comment/i);
 
               if (text.length > 10) {
@@ -147,14 +162,44 @@ export default function ArchiveDataViewer({ archive }) {
             }
           }
 
-          if (path.includes("photos") && path.endsWith(".html")) {
-            const photoMatches = content.split(/<div[^>]*class="[^"]*photo[^"]*"[^>]*>/gi);
-            for (let i = 1; i < Math.min(photoMatches.length, 201); i++) {
-              const photoHtml = photoMatches[i];
-              const description = parseHTML(photoHtml.substring(0, 500));
-              const timestamp = extractTimestamp(photoHtml);
-              data.photos.push({ description: description.substring(0, 200), timestamp });
+          if ((path.includes("photos") || path.includes("album")) && (path.endsWith(".html") || path.endsWith(".json"))) {
+            if (path.endsWith(".json")) {
+              try {
+                const jsonData = JSON.parse(content);
+                if (jsonData.photos) {
+                  jsonData.photos.forEach(photo => {
+                    data.photos.push({
+                      description: photo.title || photo.description || "",
+                      timestamp: new Date(photo.creation_timestamp * 1000).toLocaleDateString()
+                    });
+                  });
+                }
+              } catch (e) {
+                console.log("Failed to parse photo JSON:", e);
+              }
+            } else {
+              const photoMatches = content.split(/<div[^>]*class="[^"]*photo[^"]*"[^>]*>/gi);
+              if (photoMatches.length < 2) {
+                // Try alternative patterns
+                const imgMatches = content.match(/<img[^>]+>/gi) || [];
+                imgMatches.forEach(img => {
+                  const altMatch = img.match(/alt="([^"]+)"/);
+                  if (altMatch) {
+                    data.photos.push({
+                      description: altMatch[1],
+                      timestamp: ""
+                    });
+                  }
+                });
+              }
+              for (let i = 1; i < Math.min(photoMatches.length, 201); i++) {
+                const photoHtml = photoMatches[i];
+                const description = parseHTML(photoHtml.substring(0, 500));
+                const timestamp = extractTimestamp(photoHtml);
+                data.photos.push({ description: description.substring(0, 200), timestamp });
+              }
             }
+            console.log(`Found ${data.photos.length} total photos so far`);
           }
 
           if (path.includes("comments") && path.endsWith(".html")) {
@@ -180,7 +225,16 @@ export default function ArchiveDataViewer({ archive }) {
         }
       }
 
-      console.log("Extraction complete!", data);
+      console.log("Extraction complete!", {
+        profile: data.profile,
+        posts: data.posts.length,
+        friends: data.friends.length,
+        messages: data.messages.length,
+        photos: data.photos.length,
+        comments: data.comments.length,
+        samplePost: data.posts[0],
+        samplePhoto: data.photos[0]
+      });
       setExtractedData(data);
 
     } catch (err) {
