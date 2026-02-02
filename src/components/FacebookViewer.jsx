@@ -144,6 +144,12 @@ export default function FacebookViewer({ data }) {
                         )}
                       </div>
                       <p className="text-gray-700 whitespace-pre-wrap">{post.text}</p>
+                      {post.has_photo && (
+                        <div className="mt-3 p-3 bg-gray-100 rounded-lg flex items-center gap-2 text-gray-600">
+                          <ImageIcon className="w-4 h-4" />
+                          <span className="text-sm">Photo attached</span>
+                        </div>
+                      )}
                       <div className="flex gap-4 mt-3 text-sm text-gray-500">
                         {post.likes_count > 0 && (
                           <span className="flex items-center gap-1">
