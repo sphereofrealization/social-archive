@@ -146,21 +146,20 @@ export default function FacebookViewer({ data }) {
                       </div>
                       <p className="text-gray-700 whitespace-pre-wrap">{post.text}</p>
                       {post.photo_url && (
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <button className="mt-3 p-3 bg-blue-50 hover:bg-blue-100 rounded-lg flex items-center gap-2 text-blue-700 w-full transition-colors">
-                              <ImageIcon className="w-5 h-5" />
-                              <span className="text-sm font-medium">View Photo</span>
-                            </button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-4xl">
-                            <img 
-                              src={post.photo_url} 
-                              alt="Post photo" 
-                              className="w-full h-auto rounded-lg"
-                            />
-                          </DialogContent>
-                        </Dialog>
+                        <img 
+                          src={post.photo_url} 
+                          alt="Post photo" 
+                          className="mt-3 rounded-lg w-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={(e) => {
+                            const img = e.target;
+                            if (img.style.maxHeight === 'none') {
+                              img.style.maxHeight = '24rem';
+                            } else {
+                              img.style.maxHeight = 'none';
+                            }
+                          }}
+                          style={{ maxHeight: '24rem' }}
+                        />
                       )}
                       <div className="flex gap-4 mt-3 text-sm text-gray-500">
                         {post.likes_count > 0 && (

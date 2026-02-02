@@ -123,6 +123,13 @@ export default function ArchiveDataViewer({ archive }) {
 
             console.log(`Found ${postMatches.length} potential posts in ${path}`);
 
+            // Get all available post photos ONCE before processing posts
+            const postsPhotos = Object.keys(data.photoFiles)
+              .filter(p => p.includes('posts') || p.includes('media'))
+              .map(path => data.photoFiles[path]);
+            
+            console.log(`Found ${postsPhotos.length} photos in posts/media folders`);
+
             for (let i = 1; i < Math.min(postMatches.length, 101); i++) {
               const postHtml = postMatches[i];
               const text = parseHTML(postHtml.substring(0, 2000));
@@ -131,38 +138,14 @@ export default function ArchiveDataViewer({ archive }) {
               const commentsMatch = postHtml.match(/(\d+)\s*comment/i);
 
               if (text.length > 10) {
-                const hasPhoto = postHtml.match(/<img|photo|image/i) || postHtml.includes('attached') || postHtml.includes('album');
-
-                // Try to find photo reference - be aggressive about matching
-                let photoUrl = null;
-
-                // Look for any image references in the post HTML
-                const allImageRefs = postHtml.match(/\w+\.(jpg|jpeg|png|gif|webp)/gi) || [];
-
-                for (const ref of allImageRefs) {
-                  const photoPath = Object.keys(data.photoFiles).find(p => p.endsWith(ref));
-                  if (photoPath) {
-                    photoUrl = data.photoFiles[photoPath];
-                    console.log(`Matched photo: ${ref} -> ${photoPath}`);
-                    break;
-                  }
-                }
-
-                // If still no match and has photo indicator, use first available photo from posts directory
-                if (!photoUrl && hasPhoto && data.posts.length < 10) {
-                  const postsPhotos = Object.keys(data.photoFiles).filter(p => p.includes('posts/media'));
-                  if (postsPhotos.length > data.posts.length) {
-                    photoUrl = data.photoFiles[postsPhotos[data.posts.length]];
-                    console.log(`Using sequential photo match: ${postsPhotos[data.posts.length]}`);
-                  }
-                }
+                // Assign photos sequentially - one photo per post
+                const photoUrl = postsPhotos[data.posts.length] || null;
 
                 data.posts.push({
                   text: text.substring(0, 500),
                   timestamp,
                   likes_count: likesMatch ? parseInt(likesMatch[1]) : 0,
                   comments_count: commentsMatch ? parseInt(commentsMatch[1]) : 0,
-                  has_photo: !!hasPhoto,
                   photo_url: photoUrl
                 });
               }
