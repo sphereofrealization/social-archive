@@ -335,7 +335,14 @@ export default function Archives() {
 
                     {isExpanded && archive.file_url && (
                       <div className="pt-4 border-t">
-                        <ArchiveDataViewer archive={archive} />
+                        <ArchiveDataViewer 
+                          archive={archive} 
+                          onExtractionComplete={() => {
+                            if (archive.status !== 'organized') {
+                              handleStatusChange(archive.id, 'organized');
+                            }
+                          }}
+                        />
                       </div>
                     )}
                   </CardContent>

@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import FacebookViewer from "./FacebookViewer";
 import JSZip from "jszip";
 
-export default function ArchiveDataViewer({ archive }) {
+export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
   const [extracting, setExtracting] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
   const [error, setError] = useState(null);
@@ -366,6 +366,11 @@ export default function ArchiveDataViewer({ archive }) {
         groups: data.groups.length
       });
       setExtractedData(data);
+      
+      // Mark archive as organized after successful extraction
+      if (onExtractionComplete) {
+        onExtractionComplete();
+      }
 
     } catch (err) {
       const errorMessage = err?.message || err?.toString() || "Unknown error";
