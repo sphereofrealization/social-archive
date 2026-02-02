@@ -53,7 +53,8 @@ export default function ArchiveDataViewer({ archive }) {
         friends: [],
         messages: [],
         photos: [],
-        comments: []
+        comments: [],
+        photoFiles: {} // Store photo file paths and their data URLs
       };
 
       const parseHTML = (html) => {
@@ -70,6 +71,28 @@ export default function ArchiveDataViewer({ archive }) {
         return dateMatch ? dateMatch[0] : "";
       };
 
+      // First pass - extract all image files as data URLs
+      for (const [path, file] of Object.entries(zip.files)) {
+        if (file.dir) continue;
+
+        if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+          try {
+            const blob = await file.async("blob");
+            const dataUrl = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.readAsDataURL(blob);
+            });
+            data.photoFiles[path] = dataUrl;
+          } catch (err) {
+            console.error(`Error loading image ${path}:`, err);
+          }
+        }
+      }
+
+      console.log(`Loaded ${Object.keys(data.photoFiles).length} photo files`);
+
+      // Second pass - extract text content and link to photos
       for (const [path, file] of Object.entries(zip.files)) {
         if (file.dir) continue;
 
@@ -109,14 +132,35 @@ export default function ArchiveDataViewer({ archive }) {
 
               if (text.length > 10) {
                 const hasPhoto = postHtml.match(/<img|photo|image/i) || postHtml.includes('attached') || postHtml.includes('album');
+
+                // Try to find photo reference in the HTML
+                let photoUrl = null;
                 const imgMatch = postHtml.match(/<img[^>]+src=["']([^"']+)["']/i);
+                if (imgMatch) {
+                  const src = imgMatch[1];
+                  // Check if it's a relative path in our zip
+                  const photoPath = Object.keys(data.photoFiles).find(p => 
+                    p.includes(src) || src.includes(p.split('/').pop())
+                  );
+                  photoUrl = photoPath ? data.photoFiles[photoPath] : src;
+                }
+
+                // If no photo found but has photo indicator, try to find nearby photo
+                if (!photoUrl && hasPhoto) {
+                  const postDir = path.substring(0, path.lastIndexOf('/'));
+                  const nearbyPhotos = Object.keys(data.photoFiles).filter(p => p.startsWith(postDir));
+                  if (nearbyPhotos.length > 0) {
+                    photoUrl = data.photoFiles[nearbyPhotos[0]];
+                  }
+                }
+
                 data.posts.push({
                   text: text.substring(0, 500),
                   timestamp,
                   likes_count: likesMatch ? parseInt(likesMatch[1]) : 0,
                   comments_count: commentsMatch ? parseInt(commentsMatch[1]) : 0,
                   has_photo: !!hasPhoto,
-                  photo_url: imgMatch ? imgMatch[1] : null
+                  photo_url: photoUrl
                 });
               }
             }

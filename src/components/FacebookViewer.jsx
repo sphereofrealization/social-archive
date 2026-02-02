@@ -170,7 +170,7 @@ export default function FacebookViewer({ data }) {
                       ) : post.has_photo && (
                         <div className="mt-3 p-3 bg-gray-100 rounded-lg flex items-center gap-2 text-gray-600">
                           <ImageIcon className="w-4 h-4" />
-                          <span className="text-sm">Photo attached</span>
+                          <span className="text-sm">Photo attached (not available in archive)</span>
                         </div>
                       )}
                       <div className="flex gap-4 mt-3 text-sm text-gray-500">
