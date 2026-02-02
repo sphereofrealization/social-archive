@@ -63,8 +63,7 @@ export default function ArchiveDataViewer({ archive }) {
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt: prompt,
-        file_urls: archive.file_url,
-        add_context_from_internet: false,
+        file_urls: [archive.file_url],
         response_json_schema: {
           type: "object",
           properties: {
@@ -104,8 +103,9 @@ export default function ArchiveDataViewer({ archive }) {
 
       setExtractedData(result);
     } catch (err) {
-      setError("Failed to extract data. The archive might be too large or in an unsupported format.");
-      console.error(err);
+      const errorMessage = err?.message || err?.toString() || "Unknown error";
+      setError(`Failed to extract data: ${errorMessage}. Note: ZIP files may need to be extracted first - the AI can analyze individual HTML, JSON, or CSV files from your archive.`);
+      console.error("Full error:", err);
     }
     
     setExtracting(false);
