@@ -12,14 +12,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: "Failed to download archive" }, { status: 400 });
     }
     
-    const zipBlob = await zipResponse.blob();
-    const zipBuffer = await zipBlob.arrayBuffer();
+    const zipBlob = await zipResponse.arrayBuffer();
     
-    // Import JSZip for unzipping
-    const jsZipModule = await import("npm:jszip@3.10.1");
-    const JSZip = jsZipModule.default || jsZipModule;
-    const zip = new JSZip();
-    await zip.loadAsync(zipBuffer);
+    // Import and use JSZip
+    const JSZip = (await import("https://cdn.skypack.dev/jszip@3.10.1")).default;
+    const zip = await JSZip.loadAsync(zipBlob);
     
     // Initialize data structure
     const data = {
