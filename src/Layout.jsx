@@ -166,27 +166,44 @@ export default function Layout({ children, currentPageName }) {
         
         .mac-dots {
           display: flex;
-          gap: 6px;
+          gap: 4px;
         }
-        
+
         .mac-dot {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          border: 1px solid rgba(0,0,0,0.3);
-          box-shadow: inset 0 1px 1px rgba(255,255,255,0.5);
+          width: 18px;
+          height: 18px;
+          border-radius: 0;
+          border: 1px solid #1a1a1a;
+          background: linear-gradient(180deg, #3a3a3a 0%, #1a1a1a 100%);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 1px 2px rgba(0,0,0,0.8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 10px;
+          font-weight: bold;
+          color: #606060;
+          font-family: monospace;
+          cursor: pointer;
+          transition: all 0.1s;
         }
-        
-        .mac-dot-close {
-          background: linear-gradient(135deg, #ff6b6b 0%, #ee5555 100%);
+
+        .mac-dot:hover {
+          background: linear-gradient(180deg, #4a4a4a 0%, #2a2a2a 100%);
+          color: #808080;
         }
-        
-        .mac-dot-minimize {
-          background: linear-gradient(135deg, #ffd93d 0%, #ffcd1f 100%);
+
+        .mac-dot-close::before {
+          content: '×';
+          font-size: 14px;
         }
-        
-        .mac-dot-maximize {
-          background: linear-gradient(135deg, #6bcf7f 0%, #51be67 100%);
+
+        .mac-dot-minimize::before {
+          content: '−';
+        }
+
+        .mac-dot-maximize::before {
+          content: '⇔';
+          font-size: 11px;
         }
         
         .gradient-bg {
@@ -199,9 +216,9 @@ export default function Layout({ children, currentPageName }) {
             <div className="mac-window">
               <div className="mac-titlebar mac-titlebar-active">
                 <div className="mac-dots">
-                  <div className="mac-dot mac-dot-close"></div>
-                  <div className="mac-dot mac-dot-minimize"></div>
-                  <div className="mac-dot mac-dot-maximize"></div>
+                  <div className="mac-dot mac-dot-close" title="Close"></div>
+                  <div className="mac-dot mac-dot-minimize" title="Minimize"></div>
+                  <div className="mac-dot mac-dot-maximize" title="Maximize"></div>
                 </div>
               </div>
               <div className="p-6 text-center bg-gradient-to-br from-blue-50 to-purple-50">
