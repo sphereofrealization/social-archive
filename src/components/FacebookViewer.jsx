@@ -123,7 +123,7 @@ export default function FacebookViewer({ data }) {
 
       {/* Content Tabs */}
       <Tabs defaultValue="posts" className="w-full">
-        <div className="flex flex-wrap gap-2 mb-6">
+        <TabsList className="flex flex-wrap gap-2 mb-6 bg-transparent h-auto p-0">
           <TabsTrigger value="posts" className="bg-red-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-red-600">Posts</TabsTrigger>
           <TabsTrigger value="friends" className="bg-orange-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-orange-600">Friends</TabsTrigger>
           <TabsTrigger value="messages" className="bg-yellow-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-yellow-600">Messages</TabsTrigger>
@@ -135,7 +135,7 @@ export default function FacebookViewer({ data }) {
           <TabsTrigger value="events" className="bg-rose-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-rose-600">Events</TabsTrigger>
           <TabsTrigger value="reviews" className="bg-fuchsia-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-fuchsia-600">Reviews</TabsTrigger>
           <TabsTrigger value="groups" className="bg-violet-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-violet-600">Groups</TabsTrigger>
-        </div>
+        </TabsList>
 
         <TabsContent value="posts" className="space-y-4 mt-4">
           {filteredPosts.length === 0 ? (
