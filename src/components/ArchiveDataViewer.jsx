@@ -63,7 +63,8 @@ export default function ArchiveDataViewer({ archive }) {
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt: prompt,
-        file_urls: [archive.file_url],
+        file_urls: archive.file_url,
+        add_context_from_internet: false,
         response_json_schema: {
           type: "object",
           properties: {
