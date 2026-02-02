@@ -26,6 +26,12 @@ export default function FacebookViewer({ data }) {
   const messages = data?.messages || [];
   const photos = data?.photos || [];
   const comments = data?.comments || [];
+  const reels = data?.reels || [];
+  const checkins = data?.checkins || [];
+  const likes = data?.likes || [];
+  const events = data?.events || [];
+  const reviews = data?.reviews || [];
+  const groups = data?.groups || [];
 
   const filteredPosts = posts.filter(post => 
     post.text?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -59,7 +65,7 @@ export default function FacebookViewer({ data }) {
       </Card>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
             <FileText className="w-6 h-6 text-blue-600 mx-auto mb-2" />
@@ -95,6 +101,13 @@ export default function FacebookViewer({ data }) {
             <p className="text-sm text-gray-600">Comments</p>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <ThumbsUp className="w-6 h-6 text-red-600 mx-auto mb-2" />
+            <p className="text-2xl font-bold">{likes.length}</p>
+            <p className="text-sm text-gray-600">Likes</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Search */}
@@ -110,12 +123,18 @@ export default function FacebookViewer({ data }) {
 
       {/* Content Tabs */}
       <Tabs defaultValue="posts" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-5 md:grid-cols-11 overflow-x-auto">
           <TabsTrigger value="posts">Posts</TabsTrigger>
           <TabsTrigger value="friends">Friends</TabsTrigger>
           <TabsTrigger value="messages">Messages</TabsTrigger>
           <TabsTrigger value="photos">Photos</TabsTrigger>
           <TabsTrigger value="comments">Comments</TabsTrigger>
+          <TabsTrigger value="reels">Reels</TabsTrigger>
+          <TabsTrigger value="checkins">Check-ins</TabsTrigger>
+          <TabsTrigger value="likes">Likes</TabsTrigger>
+          <TabsTrigger value="events">Events</TabsTrigger>
+          <TabsTrigger value="reviews">Reviews</TabsTrigger>
+          <TabsTrigger value="groups">Groups</TabsTrigger>
         </TabsList>
 
         <TabsContent value="posts" className="space-y-4 mt-4">
@@ -345,6 +364,123 @@ export default function FacebookViewer({ data }) {
                 </CardContent>
               </Card>
             ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="reels" className="space-y-4 mt-4">
+          {reels.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                No reels found
+              </CardContent>
+            </Card>
+          ) : (
+            reels.map((reel, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <p className="text-gray-700">{reel.text}</p>
+                  {reel.timestamp && <p className="text-xs text-gray-500 mt-2">{reel.timestamp}</p>}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="checkins" className="space-y-4 mt-4">
+          {checkins.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                No check-ins found
+              </CardContent>
+            </Card>
+          ) : (
+            checkins.map((checkin, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <p className="text-gray-700">{checkin.location}</p>
+                  {checkin.timestamp && <p className="text-xs text-gray-500 mt-2">{checkin.timestamp}</p>}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="likes" className="space-y-4 mt-4">
+          {likes.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                No likes found
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {likes.map((like, i) => (
+                <Card key={i}>
+                  <CardContent className="p-3">
+                    <p className="text-sm text-gray-700">{like.item}</p>
+                    {like.timestamp && <p className="text-xs text-gray-500 mt-1">{like.timestamp}</p>}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="events" className="space-y-4 mt-4">
+          {events.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                No events found
+              </CardContent>
+            </Card>
+          ) : (
+            events.map((event, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <p className="font-medium text-gray-900">{event.name}</p>
+                  {event.timestamp && <p className="text-xs text-gray-500 mt-1">{event.timestamp}</p>}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="reviews" className="space-y-4 mt-4">
+          {reviews.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                No reviews found
+              </CardContent>
+            </Card>
+          ) : (
+            reviews.map((review, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <p className="text-gray-700">{review.text}</p>
+                  {review.timestamp && <p className="text-xs text-gray-500 mt-2">{review.timestamp}</p>}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="groups" className="space-y-4 mt-4">
+          {groups.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                No groups found
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {groups.map((group, i) => (
+                <Card key={i}>
+                  <CardContent className="p-3">
+                    <p className="font-medium text-gray-900">{group.name}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </TabsContent>
       </Tabs>

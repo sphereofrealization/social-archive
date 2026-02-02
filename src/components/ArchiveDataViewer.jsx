@@ -54,6 +54,12 @@ export default function ArchiveDataViewer({ archive }) {
         messages: [],
         photos: [],
         comments: [],
+        reels: [],
+        checkins: [],
+        likes: [],
+        events: [],
+        reviews: [],
+        groups: [],
         photoFiles: {} // Store photo file paths and their data URLs
       };
 
@@ -250,6 +256,73 @@ export default function ArchiveDataViewer({ archive }) {
                   timestamp,
                   on_post_by: onPostMatch ? onPostMatch[1].trim() : ""
                 });
+              }
+            }
+          }
+
+          if (path.includes("likes_and_reactions") || path.includes("likes")) {
+            const likeMatches = content.match(/>([^<]+)<\/a>/g) || [];
+            for (let i = 0; i < Math.min(likeMatches.length, 200); i++) {
+              const match = likeMatches[i].match(/>([^<]+)</);
+              if (match) {
+                const text = parseHTML(content.substring(content.indexOf(match[0]) - 100, content.indexOf(match[0]) + 200));
+                const timestamp = extractTimestamp(text);
+                data.likes.push({ item: match[1].trim(), timestamp });
+              }
+            }
+          }
+
+          if (path.includes("check-ins") || path.includes("checkins") || path.includes("places")) {
+            const checkinMatches = content.split(/<div[^>]*>/gi).filter(chunk => chunk.length > 50);
+            for (let i = 0; i < Math.min(checkinMatches.length, 100); i++) {
+              const text = parseHTML(checkinMatches[i].substring(0, 500));
+              const timestamp = extractTimestamp(checkinMatches[i]);
+              if (text.length > 10) {
+                data.checkins.push({ location: text.substring(0, 200), timestamp });
+              }
+            }
+          }
+
+          if (path.includes("events") && path.endsWith(".html") && !path.includes("no-data")) {
+            const eventMatches = content.match(/>([^<]+)<\/a>/g) || [];
+            for (let i = 0; i < Math.min(eventMatches.length, 200); i++) {
+              const match = eventMatches[i].match(/>([^<]+)</);
+              if (match && match[1].length > 3) {
+                const text = parseHTML(content.substring(content.indexOf(match[0]) - 100, content.indexOf(match[0]) + 200));
+                const timestamp = extractTimestamp(text);
+                data.events.push({ name: match[1].trim(), timestamp });
+              }
+            }
+          }
+
+          if (path.includes("reviews") && path.endsWith(".html")) {
+            const reviewMatches = content.split(/<div[^>]*>/gi).filter(chunk => chunk.length > 50);
+            for (let i = 0; i < Math.min(reviewMatches.length, 100); i++) {
+              const text = parseHTML(reviewMatches[i].substring(0, 1000));
+              const timestamp = extractTimestamp(reviewMatches[i]);
+              if (text.length > 20) {
+                data.reviews.push({ text: text.substring(0, 300), timestamp });
+              }
+            }
+          }
+
+          if (path.includes("groups") && path.endsWith(".html") && !path.includes("no-data")) {
+            const groupMatches = content.match(/>([^<]+)<\/a>/g) || [];
+            for (let i = 0; i < Math.min(groupMatches.length, 200); i++) {
+              const match = groupMatches[i].match(/>([^<]+)</);
+              if (match && match[1].length > 3) {
+                data.groups.push({ name: match[1].trim() });
+              }
+            }
+          }
+
+          if (path.includes("reels") && path.endsWith(".html") && !path.includes("no-data")) {
+            const reelMatches = content.split(/<div[^>]*>/gi).filter(chunk => chunk.length > 50);
+            for (let i = 0; i < Math.min(reelMatches.length, 100); i++) {
+              const text = parseHTML(reelMatches[i].substring(0, 500));
+              const timestamp = extractTimestamp(reelMatches[i]);
+              if (text.length > 10) {
+                data.reels.push({ text: text.substring(0, 300), timestamp });
               }
             }
           }
