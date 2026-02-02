@@ -133,24 +133,31 @@ export default function ArchiveDataViewer({ archive }) {
               if (text.length > 10) {
                 const hasPhoto = postHtml.match(/<img|photo|image/i) || postHtml.includes('attached') || postHtml.includes('album');
 
-                // Try to find photo reference in the HTML
+                // Try to find photo reference in the HTML - look for all possible image references
                 let photoUrl = null;
-                const imgMatch = postHtml.match(/<img[^>]+src=["']([^"']+)["']/i);
-                if (imgMatch) {
-                  const src = imgMatch[1];
-                  // Check if it's a relative path in our zip
-                  const photoPath = Object.keys(data.photoFiles).find(p => 
-                    p.includes(src) || src.includes(p.split('/').pop())
-                  );
-                  photoUrl = photoPath ? data.photoFiles[photoPath] : src;
-                }
 
-                // If no photo found but has photo indicator, try to find nearby photo
-                if (!photoUrl && hasPhoto) {
-                  const postDir = path.substring(0, path.lastIndexOf('/'));
-                  const nearbyPhotos = Object.keys(data.photoFiles).filter(p => p.startsWith(postDir));
-                  if (nearbyPhotos.length > 0) {
-                    photoUrl = data.photoFiles[nearbyPhotos[0]];
+                // Try multiple patterns to find image references
+                const imgSrcMatch = postHtml.match(/<img[^>]+src=["']([^"']+)["']/i);
+                const hrefMatch = postHtml.match(/href=["']([^"']*\.(jpg|jpeg|png|gif|webp)[^"']*)["']/i);
+                const fileRefMatch = postHtml.match(/([^"'\s]+\.(jpg|jpeg|png|gif|webp))/i);
+
+                const potentialRefs = [
+                  imgSrcMatch?.[1],
+                  hrefMatch?.[1],
+                  fileRefMatch?.[1]
+                ].filter(Boolean);
+
+                for (const ref of potentialRefs) {
+                  const photoPath = Object.keys(data.photoFiles).find(p => {
+                    const fileName = p.split('/').pop();
+                    const refFileName = ref.split('/').pop();
+                    return p.includes(ref) || ref.includes(fileName) || fileName === refFileName;
+                  });
+
+                  if (photoPath) {
+                    photoUrl = data.photoFiles[photoPath];
+                    console.log(`Matched photo for post: ${ref} -> ${photoPath}`);
+                    break;
                   }
                 }
 
