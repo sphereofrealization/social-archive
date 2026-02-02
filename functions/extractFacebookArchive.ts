@@ -1,3 +1,5 @@
+import { unzipSync } from "https://deno.land/x/zipjs@v2.7.34/index.js";
+
 Deno.serve(async (req) => {
   try {
     const { fileUrl } = await req.json();
@@ -6,17 +8,23 @@ Deno.serve(async (req) => {
       return Response.json({ error: "fileUrl is required" }, { status: 400 });
     }
 
+    console.log("Downloading archive from:", fileUrl);
+    
     // Download the ZIP file
     const zipResponse = await fetch(fileUrl);
     if (!zipResponse.ok) {
       return Response.json({ error: "Failed to download archive" }, { status: 400 });
     }
     
-    const zipBlob = await zipResponse.arrayBuffer();
+    const zipBytes = new Uint8Array(await zipResponse.arrayBuffer());
     
-    // Import and use JSZip
-    const JSZip = (await import("https://cdn.skypack.dev/jszip@3.10.1")).default;
-    const zip = await JSZip.loadAsync(zipBlob);
+    console.log("Archive downloaded, size:", zipBytes.length);
+    
+    // Use fflate for decompression
+    const fflate = await import("https://esm.sh/fflate@0.8.1");
+    const unzipped = fflate.unzipSync(zipBytes);
+    
+    console.log("Archive unzipped, files:", Object.keys(unzipped).length);
     
     // Initialize data structure
     const data = {
@@ -30,7 +38,6 @@ Deno.serve(async (req) => {
     
     // Helper to parse HTML content
     const parseHTML = (html) => {
-      // Basic HTML parsing without DOM
       const textContent = html
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -40,18 +47,18 @@ Deno.serve(async (req) => {
       return textContent;
     };
     
-    // Helper to extract timestamps from HTML
+    // Helper to extract timestamps
     const extractTimestamp = (html) => {
       const dateMatch = html.match(/(\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2})/);
       return dateMatch ? dateMatch[0] : "";
     };
     
-    // Process each file in the archive
-    for (const [path, file] of Object.entries(zip.files)) {
-      if (file.dir) continue;
+    // Process each file
+    for (const [path, fileData] of Object.entries(unzipped)) {
+      if (path.endsWith('/')) continue;
       
       try {
-        const content = await file.async("text");
+        const content = new TextDecoder().decode(fileData);
         
         // Profile data
         if (path.includes("profile_information") || path.includes("about_you")) {
@@ -64,7 +71,7 @@ Deno.serve(async (req) => {
         // Posts
         if (path.includes("posts") && path.endsWith(".html")) {
           const postMatches = content.split(/<div[^>]*class="[^"]*post[^"]*"[^>]*>/gi);
-          for (let i = 1; i < postMatches.length && i < 101; i++) {
+          for (let i = 1; i < Math.min(postMatches.length, 101); i++) {
             const postHtml = postMatches[i];
             const text = parseHTML(postHtml.substring(0, 2000));
             const timestamp = extractTimestamp(postHtml);
@@ -91,10 +98,7 @@ Deno.serve(async (req) => {
               const name = nameMatch[1].trim();
               if (name.length > 2 && name.length < 100) {
                 const timestamp = extractTimestamp(content.substring(Math.max(0, content.indexOf(name) - 200), content.indexOf(name) + 200));
-                data.friends.push({
-                  name,
-                  date_added: timestamp
-                });
+                data.friends.push({ name, date_added: timestamp });
               }
             }
           }
@@ -138,11 +142,7 @@ Deno.serve(async (req) => {
             const photoHtml = photoMatches[i];
             const description = parseHTML(photoHtml.substring(0, 500));
             const timestamp = extractTimestamp(photoHtml);
-            
-            data.photos.push({
-              description: description.substring(0, 200),
-              timestamp
-            });
+            data.photos.push({ description: description.substring(0, 200), timestamp });
           }
         }
         
@@ -166,19 +166,24 @@ Deno.serve(async (req) => {
         }
         
       } catch (err) {
-        console.error(`Error processing ${path}:`, err);
-        // Continue processing other files
+        console.error(`Error processing ${path}:`, err.message);
       }
     }
+    
+    console.log("Extraction complete:", {
+      posts: data.posts.length,
+      friends: data.friends.length,
+      messages: data.messages.length
+    });
     
     return Response.json({ success: true, data });
     
   } catch (error) {
-    console.error("Archive extraction error:", error);
-    console.error("Error stack:", error.stack);
+    console.error("EXTRACTION ERROR:", error.message);
+    console.error("Stack:", error.stack);
     return Response.json({ 
-      error: error.message || "Failed to extract archive",
-      details: error.stack
+      error: error.message,
+      stack: error.stack
     }, { status: 500 });
   }
 });
