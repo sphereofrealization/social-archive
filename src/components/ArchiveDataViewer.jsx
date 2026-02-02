@@ -38,93 +38,15 @@ export default function ArchiveDataViewer({ archive }) {
     setError(null);
     
     try {
-      // Define schema based on platform
-      const facebookSchema = {
-        type: "object",
-        properties: {
-          profile: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              email: { type: "string" }
-            }
-          },
-          posts: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                text: { type: "string" },
-                timestamp: { type: "string" },
-                likes_count: { type: "number" },
-                comments_count: { type: "number" }
-              }
-            }
-          },
-          friends: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                name: { type: "string" },
-                date_added: { type: "string" }
-              }
-            }
-          },
-          messages: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                conversation_with: { type: "string" },
-                messages: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      sender: { type: "string" },
-                      text: { type: "string" },
-                      timestamp: { type: "string" }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          photos: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                description: { type: "string" },
-                timestamp: { type: "string" }
-              }
-            }
-          },
-          comments: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                text: { type: "string" },
-                timestamp: { type: "string" },
-                on_post_by: { type: "string" }
-              }
-            }
-          }
-        }
-      };
-
-      const result = await base44.integrations.Core.ExtractDataFromUploadedFile({
-        file_url: fileUrl,
-        json_schema: facebookSchema
+      const result = await base44.functions.invoke('extractFacebookArchive', {
+        fileUrl: fileUrl
       });
 
-      if (result.status === "error") {
-        throw new Error(result.details || "Failed to extract data");
+      if (result.error) {
+        throw new Error(result.error);
       }
 
-      setExtractedData(result.output);
+      setExtractedData(result.data);
     } catch (err) {
       const errorMessage = err?.message || err?.toString() || "Unknown error";
       setError(`Failed to extract data: ${errorMessage}`);
