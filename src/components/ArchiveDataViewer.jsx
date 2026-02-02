@@ -133,31 +133,27 @@ export default function ArchiveDataViewer({ archive }) {
               if (text.length > 10) {
                 const hasPhoto = postHtml.match(/<img|photo|image/i) || postHtml.includes('attached') || postHtml.includes('album');
 
-                // Try to find photo reference in the HTML - look for all possible image references
+                // Try to find photo reference - be aggressive about matching
                 let photoUrl = null;
 
-                // Try multiple patterns to find image references
-                const imgSrcMatch = postHtml.match(/<img[^>]+src=["']([^"']+)["']/i);
-                const hrefMatch = postHtml.match(/href=["']([^"']*\.(jpg|jpeg|png|gif|webp)[^"']*)["']/i);
-                const fileRefMatch = postHtml.match(/([^"'\s]+\.(jpg|jpeg|png|gif|webp))/i);
+                // Look for any image references in the post HTML
+                const allImageRefs = postHtml.match(/\w+\.(jpg|jpeg|png|gif|webp)/gi) || [];
 
-                const potentialRefs = [
-                  imgSrcMatch?.[1],
-                  hrefMatch?.[1],
-                  fileRefMatch?.[1]
-                ].filter(Boolean);
-
-                for (const ref of potentialRefs) {
-                  const photoPath = Object.keys(data.photoFiles).find(p => {
-                    const fileName = p.split('/').pop();
-                    const refFileName = ref.split('/').pop();
-                    return p.includes(ref) || ref.includes(fileName) || fileName === refFileName;
-                  });
-
+                for (const ref of allImageRefs) {
+                  const photoPath = Object.keys(data.photoFiles).find(p => p.endsWith(ref));
                   if (photoPath) {
                     photoUrl = data.photoFiles[photoPath];
-                    console.log(`Matched photo for post: ${ref} -> ${photoPath}`);
+                    console.log(`Matched photo: ${ref} -> ${photoPath}`);
                     break;
+                  }
+                }
+
+                // If still no match and has photo indicator, use first available photo from posts directory
+                if (!photoUrl && hasPhoto && data.posts.length < 10) {
+                  const postsPhotos = Object.keys(data.photoFiles).filter(p => p.includes('posts/media'));
+                  if (postsPhotos.length > data.posts.length) {
+                    photoUrl = data.photoFiles[postsPhotos[data.posts.length]];
+                    console.log(`Using sequential photo match: ${postsPhotos[data.posts.length]}`);
                   }
                 }
 
