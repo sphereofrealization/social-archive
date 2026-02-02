@@ -145,7 +145,7 @@ export default function FacebookViewer({ data }) {
                         )}
                       </div>
                       <p className="text-gray-700 whitespace-pre-wrap">{post.text}</p>
-                      {post.photo_url ? (
+                      {post.photo_url && (
                         <Dialog>
                           <DialogTrigger asChild>
                             <button className="mt-3 w-full">
@@ -153,9 +153,6 @@ export default function FacebookViewer({ data }) {
                                 src={post.photo_url} 
                                 alt="Post photo" 
                                 className="rounded-lg max-h-96 w-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                onError={(e) => {
-                                  e.target.style.display = 'none';
-                                }}
                               />
                             </button>
                           </DialogTrigger>
@@ -167,11 +164,6 @@ export default function FacebookViewer({ data }) {
                             />
                           </DialogContent>
                         </Dialog>
-                      ) : post.has_photo && (
-                        <div className="mt-3 p-3 bg-gray-100 rounded-lg flex items-center gap-2 text-gray-600">
-                          <ImageIcon className="w-4 h-4" />
-                          <span className="text-sm">Photo attached (not available in archive)</span>
-                        </div>
                       )}
                       <div className="flex gap-4 mt-3 text-sm text-gray-500">
                         {post.likes_count > 0 && (
