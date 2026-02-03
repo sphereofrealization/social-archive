@@ -202,7 +202,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
           // Friends - connections/friends/ folder
           if ((path.includes("connections/friends") || path.includes("/friends/")) && (path.endsWith(".html") || path.endsWith(".json"))) {
             console.log("🔍 FRIENDS FILE:", path);
-            console.log("   First 1000 chars:", content.substring(0, 1000));
+            console.log("   First 1500 chars:", content.substring(0, 1500));
 
             if (path.endsWith(".json")) {
               try {
@@ -226,15 +226,22 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 console.log("   ⚠️ Failed to parse JSON:", e.message);
               }
             } else {
-              // HTML - extract names from table or list structure
-              const nameMatches = content.match(/<td[^>]*>([^<]+)<\/td>/gi) || [];
+              // HTML - look for LINKS (actual friend names), not table cells
+              const linkMatches = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
               let extracted = 0;
 
-              nameMatches.forEach(match => {
-                const textMatch = match.match(/>([^<]+)</);
-                if (textMatch) {
-                  const name = textMatch[1].trim();
-                  if (name.length > 2 && name.length < 100 && !name.includes("@") && !name.includes("http") && !name.match(/^\d+$/)) {
+              const excludeWords = ["disabled", "false", "true", "name", "restricted", "close friends", "acquaintances", "following", "follow"];
+
+              linkMatches.forEach(link => {
+                const nameMatch = link.match(/>([^<]+)</);
+                if (nameMatch) {
+                  const name = nameMatch[1].trim();
+                  const lowerName = name.toLowerCase();
+
+                  // Check if it's NOT a metadata field
+                  const isMetadata = excludeWords.some(word => lowerName === word || lowerName.includes("http") || lowerName.includes("facebook.com"));
+
+                  if (!isMetadata && name.length > 3 && name.length < 50 && name.match(/[a-z]/i)) {
                     data.friends.push({ name, date_added: "" });
                     extracted++;
                   }
@@ -274,47 +281,45 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // Photos - look for your_photos.html or photo-related JSON files
-          if (path.includes("your_photos.html") || (path.includes("/photos") && path.endsWith(".json") && !path.includes("review"))) {
+          // Photos - look for your_photos.html or posts with photos
+          if ((path.includes("your_photos.html") || path.includes("your_uncategorized_photos")) && path.endsWith(".html")) {
             console.log("🔍 PHOTOS FILE:", path);
             console.log("   First 1000 chars:", content.substring(0, 1000));
 
-            if (path.endsWith(".json")) {
-              try {
-                const jsonData = JSON.parse(content);
-                console.log("   JSON keys:", Object.keys(jsonData));
+            // Extract image references and captions
+            const imgMatches = content.match(/<img[^>]+>/gi) || [];
+            console.log(`   Found ${imgMatches.length} img tags`);
 
-                const photosList = jsonData.photos || jsonData.photo_album || [];
-                if (Array.isArray(photosList)) {
-                  photosList.forEach(photo => {
-                    data.photos.push({
-                      description: photo.title || photo.description || photo.uri || "Photo",
-                      timestamp: photo.creation_timestamp ? new Date(photo.creation_timestamp * 1000).toLocaleDateString() : ""
-                    });
+            // Look for photo descriptions in links or text near images
+            const photoSections = content.split(/<img/i);
+            photoSections.forEach(section => {
+              if (section.length > 20) {
+                const text = parseHTML(section.substring(0, 300));
+                if (text.length > 5 && text.length < 200) {
+                  data.photos.push({ 
+                    description: text.substring(0, 150), 
+                    timestamp: extractTimestamp(section) 
                   });
-                  console.log(`   ✅ Extracted ${photosList.length} photos`);
                 }
-              } catch (e) {
-                console.log("   ⚠️ Failed to parse:", e.message);
               }
-            } else {
-              // HTML - extract photo metadata from table rows
-              const rows = content.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-              let extracted = 0;
+            });
 
-              rows.forEach(row => {
-                const cells = row.match(/<td[^>]*>([^<]+)<\/td>/gi);
-                if (cells && cells.length >= 2) {
-                  const description = parseHTML(cells[0]);
-                  const timestamp = parseHTML(cells[1] || "");
-                  if (description.length > 2) {
-                    data.photos.push({ description: description.substring(0, 200), timestamp });
-                    extracted++;
-                  }
-                }
-              });
-
-              console.log(`   ✅ Extracted ${extracted} photos`);
+            console.log(`   ✅ Extracted ${data.photos.length} photos from HTML`);
+          } else if (path.includes("/photos") && path.endsWith(".json") && !path.includes("review")) {
+            try {
+              const jsonData = JSON.parse(content);
+              const photosList = jsonData.photos || jsonData.photo_album || [];
+              if (Array.isArray(photosList)) {
+                photosList.forEach(photo => {
+                  data.photos.push({
+                    description: photo.title || photo.description || photo.uri || "Photo",
+                    timestamp: photo.creation_timestamp ? new Date(photo.creation_timestamp * 1000).toLocaleDateString() : ""
+                  });
+                });
+                console.log(`   ✅ Extracted ${photosList.length} photos from JSON`);
+              }
+            } catch (e) {
+              console.log("   ⚠️ Failed to parse photo JSON:", e.message);
             }
           }
 
@@ -413,31 +418,36 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
           // Reviews - extract from reviews HTML/JSON files
           if (path.includes("review") && (path.endsWith(".html") || path.endsWith(".json"))) {
             console.log("🔍 REVIEWS FILE:", path);
-            console.log("   First 800 chars:", content.substring(0, 800));
+            console.log("   First 1200 chars:", content.substring(0, 1200));
 
             if (path.endsWith(".json")) {
               try {
                 const jsonData = JSON.parse(content);
-                const reviewsList = jsonData.reviews || [];
+                const reviewsList = jsonData.reviews || jsonData.ratings_and_reviews || [];
                 reviewsList.forEach(review => {
-                  data.reviews.push({
-                    text: review.text || review.title || "Review",
-                    timestamp: review.timestamp ? new Date(review.timestamp * 1000).toLocaleDateString() : ""
-                  });
+                  const text = review.text || review.review || review.title || "";
+                  if (text.length > 5) {
+                    data.reviews.push({
+                      text: text,
+                      timestamp: review.timestamp ? new Date(review.timestamp * 1000).toLocaleDateString() : ""
+                    });
+                  }
                 });
                 console.log(`   ✅ Extracted ${reviewsList.length} reviews from JSON`);
               } catch (e) {
                 console.log("   ⚠️ Failed to parse:", e.message);
               }
             } else {
-              // HTML - extract review content
-              const rows = content.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+              // HTML - look for actual review text in divs/paragraphs
+              const reviewMatches = content.match(/<div[^>]*class="[^"]*review[^"]*"[^>]*>[\s\S]{50,2000}?<\/div>/gi) || 
+                                   content.match(/<p[^>]*>[\s\S]{30,1000}?<\/p>/gi) || [];
               let extracted = 0;
 
-              rows.forEach(row => {
-                const text = parseHTML(row);
-                if (text.length > 20 && text.length < 500) {
-                  data.reviews.push({ text: text.substring(0, 400), timestamp: "" });
+              reviewMatches.forEach(match => {
+                const text = parseHTML(match);
+                // Look for actual review content (longer text, not metadata)
+                if (text.length > 30 && text.length < 1000 && !text.match(/^(disabled|false|true|name|rating)$/i)) {
+                  data.reviews.push({ text: text.substring(0, 400), timestamp: extractTimestamp(match) });
                   extracted++;
                 }
               });
