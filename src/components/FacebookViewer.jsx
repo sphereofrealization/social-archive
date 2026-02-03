@@ -229,7 +229,8 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
                   <p className="col-span-2 text-center text-gray-500 py-4">No friends found</p>
                 ) : (
                   filteredFriends.map((friend, i) => {
-                    const conversation = friendConversations[friend.name.toLowerCase()];
+                    const normalized = friend.name.toLowerCase().trim();
+                    const conversation = friendConversations[normalized];
                     return (
                       <button
                         key={i}
