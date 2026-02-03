@@ -50,12 +50,20 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
       
       // Log ALL files in the archive first
       console.log("📁 ALL FILES IN ARCHIVE:");
-      Object.keys(zip.files).forEach(path => {
-        if (!zip.files[path].dir) {
-          console.log("  ", path);
-        }
+      const allFiles = Object.keys(zip.files).filter(path => !zip.files[path].dir);
+      allFiles.forEach(path => {
+        console.log("  ", path);
       });
+      console.log(`Total files: ${allFiles.length}`);
       console.log("========================================");
+
+      // Look specifically for inbox conversations
+      const inboxFiles = allFiles.filter(f => f.includes('/inbox/') && f.endsWith('.json'));
+      console.log(`Found ${inboxFiles.length} inbox conversation files:`, inboxFiles);
+
+      // Look specifically for friends files
+      const friendsFiles = allFiles.filter(f => f.toLowerCase().includes('friend'));
+      console.log(`Found ${friendsFiles.length} friends files:`, friendsFiles);
       
       const data = {
         profile: { name: "", email: "" },

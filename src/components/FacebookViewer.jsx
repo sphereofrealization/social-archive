@@ -68,62 +68,16 @@ export default function FacebookViewer({ data }) {
           <div className="flex items-center gap-4">
             <Avatar className="w-20 h-20 border-4 border-white">
               <AvatarFallback className="bg-blue-700 text-white text-2xl">
-                {profile.name?.[0] || 'U'}
+                {profile.name?.[0]?.toUpperCase() || 'U'}
               </AvatarFallback>
             </Avatar>
             <div>
-              <h2 className="text-2xl font-bold">{profile.name || 'User'}</h2>
+              <h2 className="text-2xl font-bold">{profile.name || 'Facebook User'}</h2>
               {profile.email && <p className="text-blue-100">{profile.email}</p>}
             </div>
           </div>
         </CardContent>
       </Card>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <FileText className="w-6 h-6 text-blue-600 mx-auto mb-2" />
-            <p className="text-2xl font-bold">{posts.length}</p>
-            <p className="text-sm text-gray-600">Posts</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <Users className="w-6 h-6 text-green-600 mx-auto mb-2" />
-            <p className="text-2xl font-bold">{friends.length}</p>
-            <p className="text-sm text-gray-600">Friends</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <MessageSquare className="w-6 h-6 text-purple-600 mx-auto mb-2" />
-            <p className="text-2xl font-bold">{messages.length}</p>
-            <p className="text-sm text-gray-600">Conversations</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <ImageIcon className="w-6 h-6 text-pink-600 mx-auto mb-2" />
-            <p className="text-2xl font-bold">{photos.length}</p>
-            <p className="text-sm text-gray-600">Photos</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <ThumbsUp className="w-6 h-6 text-orange-600 mx-auto mb-2" />
-            <p className="text-2xl font-bold">{comments.length}</p>
-            <p className="text-sm text-gray-600">Comments</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <ThumbsUp className="w-6 h-6 text-red-600 mx-auto mb-2" />
-            <p className="text-2xl font-bold">{likes.length}</p>
-            <p className="text-sm text-gray-600">Likes</p>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Search */}
       <div className="relative">
