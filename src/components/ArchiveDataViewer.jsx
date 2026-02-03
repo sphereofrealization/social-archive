@@ -199,15 +199,15 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // Friends - connections/friends/ folder
-          if ((path.includes("connections/friends") || path.includes("/friends/")) && (path.endsWith(".html") || path.endsWith(".json"))) {
+          // Friends - connections/friends/ folder - ONLY get your_friends.html or friends.json
+          if ((path.includes("your_friends.html") || path.includes("friends.json")) && !path.includes("sent_friend_requests") && !path.includes("people_you_may_know")) {
             console.log("🔍 FRIENDS FILE:", path);
-            console.log("   First 1500 chars:", content.substring(0, 1500));
+            console.log("   FULL CONTENT:", content);
 
             if (path.endsWith(".json")) {
               try {
                 const jsonData = JSON.parse(content);
-                console.log("   JSON keys:", Object.keys(jsonData));
+                console.log("   JSON structure:", JSON.stringify(jsonData, null, 2));
 
                 let friendsList = jsonData.friends_v2 || jsonData.friends || [];
                 if (Array.isArray(friendsList)) {
@@ -226,29 +226,27 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 console.log("   ⚠️ Failed to parse JSON:", e.message);
               }
             } else {
-              // HTML - look for LINKS (actual friend names), not table cells
+              // HTML - extract ALL text from <a> links that look like names
               const linkMatches = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
-              let extracted = 0;
+              console.log(`   Found ${linkMatches.length} total links`);
 
-              const excludeWords = ["disabled", "false", "true", "name", "restricted", "close friends", "acquaintances", "following", "follow"];
+              const badWords = /^(disabled|false|true|name|restricted|close\s*friends|acquaintances|following|follow|blocked|unfriend|hide)$/i;
 
               linkMatches.forEach(link => {
                 const nameMatch = link.match(/>([^<]+)</);
                 if (nameMatch) {
                   const name = nameMatch[1].trim();
-                  const lowerName = name.toLowerCase();
 
-                  // Check if it's NOT a metadata field
-                  const isMetadata = excludeWords.some(word => lowerName === word || lowerName.includes("http") || lowerName.includes("facebook.com"));
+                  // Accept if it has spaces (like "Lucy Davis") or mixed case
+                  const looksLikeName = name.includes(" ") || (name.match(/[A-Z]/) && name.match(/[a-z]/));
 
-                  if (!isMetadata && name.length > 3 && name.length < 50 && name.match(/[a-z]/i)) {
+                  if (looksLikeName && !badWords.test(name) && name.length >= 3 && name.length < 50) {
                     data.friends.push({ name, date_added: "" });
-                    extracted++;
                   }
                 }
               });
 
-              console.log(`   ✅ Extracted ${extracted} friends from HTML`);
+              console.log(`   ✅ Extracted ${data.friends.length} friends from HTML`);
             }
           }
 
