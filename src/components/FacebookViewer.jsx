@@ -30,10 +30,16 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
   const friends = data?.friends || [];
   const messages = data?.messages || [];
   
-  // Map friends to their conversations
+  // Map friends to their conversations with flexible matching
   const friendConversations = {};
   messages.forEach(conv => {
-    friendConversations[conv.conversation_with.toLowerCase()] = conv;
+    const normalized = conv.conversation_with.toLowerCase().trim();
+    friendConversations[normalized] = conv;
+    // Also try to match by first and last name parts
+    const parts = conv.conversation_with.split(/\s+/);
+    if (parts.length > 1) {
+      friendConversations[parts[parts.length - 1].toLowerCase()] = conv;
+    }
   });
   const comments = data?.comments || [];
   const reels = data?.reels || [];
