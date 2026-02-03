@@ -337,38 +337,38 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 console.error("   ❌ Failed to parse friends JSON:", e.message);
               }
             } else {
-              // Parse HTML tables for friends
-              const structuredData = extractStructuredData(content, path);
+              // Parse HTML for friends - look for actual names, not UI labels
               let count = 0;
 
+              // Strategy 1: Extract from structured data, but with strict filtering
+              const structuredData = extractStructuredData(content, path);
+
               structuredData.forEach(item => {
-                if (item.table_row) {
-                  item.table_row.forEach(cellText => {
-                    const name = cellText.trim();
-                    if (name.length >= 3 && name.length < 100 &&
-                        !name.match(/^(disabled|false|true|name|restricted|close|friend|Privacy|Terms|Cookies|Date)$/i)) {
-                      data.friends.push({ name, date_added: "", source: path });
-                      count++;
-                    }
-                  });
-                }
-                if (item.links) {
-                  item.links.forEach(name => {
-                    if (name.length >= 3 && name.length < 100 &&
-                        !name.match(/^(disabled|false|true|name|restricted|close|friend)$/i)) {
-                      data.friends.push({ name, date_added: "", source: path });
-                      count++;
-                    }
-                  });
+                if (item.table_row && item.table_row.length > 0) {
+                  // In a table, the first meaningful cell is usually the friend name
+                  // Skip common headers/labels
+                  const potentialName = item.table_row[0]?.trim();
+                  if (potentialName && 
+                      potentialName.length >= 5 && 
+                      potentialName.length < 100 &&
+                      potentialName.includes(' ') && // Real names usually have spaces
+                      !potentialName.match(/^(Name|Friend|Restricted|Close|Acquaintance|Date|Privacy|Settings|Notification|disabled|false|true)$/i) &&
+                      !potentialName.match(/^Name\s/i)) { // Don't match "Name XYZ"
+                    data.friends.push({ name: potentialName, date_added: "", source: path });
+                    count++;
+                  }
                 }
               });
 
-              // Also try basic link extraction as fallback
-              const linkMatches = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
+              // Strategy 2: Look for links that are likely friend names
+              const linkMatches = content.match(/<a[^>]*href="[^"]*"[^>]*>([^<]{5,100})<\/a>/gi) || [];
               linkMatches.forEach(link => {
                 const name = link.replace(/<[^>]+>/g, '').trim();
-                if (name.length >= 3 && name.length < 100 &&
-                    !name.match(/^(disabled|false|true|name|restricted|close|friend|Privacy|Terms|Cookies)$/i)) {
+                if (name.length >= 5 && 
+                    name.length < 100 &&
+                    name.includes(' ') && // Real names have spaces
+                    !name.match(/^(Name|Friend|Restricted|Close|Acquaintance|Privacy|Terms|Cookies|Settings|Download|Help|disabled|false|true)$/i) &&
+                    !name.match(/^\w+\s+(Friend|List|Group|Page)$/i)) {
                   data.friends.push({ name, date_added: "", source: path });
                   count++;
                 }
