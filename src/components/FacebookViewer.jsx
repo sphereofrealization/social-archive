@@ -19,6 +19,7 @@ import { format } from "date-fns";
 export default function FacebookViewer({ data }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedConversation, setSelectedConversation] = useState(null);
+  const [activeTab, setActiveTab] = useState("posts");
 
   const profile = data?.profile || {};
   const posts = data?.posts || [];
@@ -32,6 +33,20 @@ export default function FacebookViewer({ data }) {
   const events = data?.events || [];
   const reviews = data?.reviews || [];
   const groups = data?.groups || [];
+
+  console.log("FacebookViewer data counts:", {
+    posts: posts.length,
+    friends: friends.length,
+    messages: messages.length,
+    photos: photos.length,
+    comments: comments.length,
+    reels: reels.length,
+    checkins: checkins.length,
+    likes: likes.length,
+    events: events.length,
+    reviews: reviews.length,
+    groups: groups.length
+  });
 
   const filteredPosts = posts.filter(post => 
     post.text?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -122,19 +137,19 @@ export default function FacebookViewer({ data }) {
       </div>
 
       {/* Content Tabs */}
-      <Tabs defaultValue="posts" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex flex-wrap gap-2 mb-6 bg-transparent h-auto p-0">
-          <TabsTrigger value="posts" className="bg-red-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-red-600">Posts</TabsTrigger>
-          <TabsTrigger value="friends" className="bg-orange-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-orange-600">Friends</TabsTrigger>
-          <TabsTrigger value="messages" className="bg-yellow-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-yellow-600">Messages</TabsTrigger>
-          <TabsTrigger value="photos" className="bg-green-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-green-600">Photos</TabsTrigger>
-          <TabsTrigger value="comments" className="bg-blue-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-blue-600">Comments</TabsTrigger>
-          <TabsTrigger value="reels" className="bg-indigo-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-indigo-600">Reels</TabsTrigger>
-          <TabsTrigger value="checkins" className="bg-purple-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-purple-600">Check-ins</TabsTrigger>
-          <TabsTrigger value="likes" className="bg-pink-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-pink-600">Likes</TabsTrigger>
-          <TabsTrigger value="events" className="bg-rose-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-rose-600">Events</TabsTrigger>
-          <TabsTrigger value="reviews" className="bg-fuchsia-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-fuchsia-600">Reviews</TabsTrigger>
-          <TabsTrigger value="groups" className="bg-violet-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-violet-600">Groups</TabsTrigger>
+          <TabsTrigger value="posts" className="bg-red-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-red-600">Posts ({posts.length})</TabsTrigger>
+          <TabsTrigger value="friends" className="bg-orange-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-orange-600">Friends ({friends.length})</TabsTrigger>
+          <TabsTrigger value="messages" className="bg-yellow-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-yellow-600">Conversations ({messages.length})</TabsTrigger>
+          <TabsTrigger value="photos" className="bg-green-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-green-600">Photos ({photos.length})</TabsTrigger>
+          <TabsTrigger value="comments" className="bg-blue-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-blue-600">Comments ({comments.length})</TabsTrigger>
+          <TabsTrigger value="reels" className="bg-indigo-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-indigo-600">Reels ({reels.length})</TabsTrigger>
+          <TabsTrigger value="checkins" className="bg-purple-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-purple-600">Check-ins ({checkins.length})</TabsTrigger>
+          <TabsTrigger value="likes" className="bg-pink-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-pink-600">Likes ({likes.length})</TabsTrigger>
+          <TabsTrigger value="events" className="bg-rose-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-rose-600">Events ({events.length})</TabsTrigger>
+          <TabsTrigger value="reviews" className="bg-fuchsia-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-fuchsia-600">Reviews ({reviews.length})</TabsTrigger>
+          <TabsTrigger value="groups" className="bg-violet-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-violet-600">Groups ({groups.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="posts" className="space-y-4 mt-4">
