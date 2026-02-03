@@ -172,33 +172,62 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          if (path.includes("messages") && path.endsWith(".html")) {
-            const conversationMatch = path.match(/messages\/inbox\/([^\/]+)\//);
-            const conversationWith = conversationMatch ? decodeURIComponent(conversationMatch[1]).replace(/_/g, ' ') : "Unknown";
+          if (path.includes("messages") && (path.endsWith(".html") || path.endsWith(".json"))) {
+            console.log("Found message file:", path);
 
-            const messageBlocks = content.split(/<div[^>]*class="[^"]*message[^"]*"[^>]*>/gi);
-            const messages = [];
+            // Try JSON format first
+            if (path.endsWith(".json")) {
+              try {
+                const jsonData = JSON.parse(content);
+                if (jsonData.messages && Array.isArray(jsonData.messages)) {
+                  const conversationName = jsonData.title || jsonData.thread_path || path.match(/messages\/inbox\/([^\/]+)\//)?.[1]?.replace(/_/g, ' ') || "Unknown";
+                  const messages = jsonData.messages.slice(0, 100).map(msg => ({
+                    sender: msg.sender_name || "Unknown",
+                    text: msg.content || "",
+                    timestamp: msg.timestamp_ms ? new Date(msg.timestamp_ms).toLocaleString() : ""
+                  }));
 
-            for (let i = 1; i < Math.min(messageBlocks.length, 101); i++) {
-              const msgHtml = messageBlocks[i];
-              const senderMatch = msgHtml.match(/class="[^"]*user[^"]*">([^<]+)</i);
-              const text = parseHTML(msgHtml.substring(0, 1000));
-              const timestamp = extractTimestamp(msgHtml);
-
-              if (text.length > 5) {
-                messages.push({
-                  sender: senderMatch ? senderMatch[1].trim() : conversationWith,
-                  text: text.substring(0, 300),
-                  timestamp
-                });
+                  if (messages.length > 0) {
+                    data.messages.push({
+                      conversation_with: conversationName,
+                      messages
+                    });
+                  }
+                  console.log(`Extracted ${messages.length} messages from JSON for ${conversationName}`);
+                }
+              } catch (e) {
+                console.log("Failed to parse message JSON:", e);
               }
-            }
+            } else {
+              // HTML format
+              const conversationMatch = path.match(/messages\/inbox\/([^\/]+)\//);
+              const conversationWith = conversationMatch ? decodeURIComponent(conversationMatch[1]).replace(/_/g, ' ') : "Unknown";
 
-            if (messages.length > 0) {
-              data.messages.push({
-                conversation_with: conversationWith,
-                messages: messages.slice(0, 100)
-              });
+              const messageBlocks = content.split(/<div[^>]*class="[^"]*message[^"]*"[^>]*>/gi);
+              const messages = [];
+
+              for (let i = 1; i < Math.min(messageBlocks.length, 101); i++) {
+                const msgHtml = messageBlocks[i];
+                const senderMatch = msgHtml.match(/class="[^"]*user[^"]*">([^<]+)</i);
+                const text = parseHTML(msgHtml.substring(0, 1000));
+                const timestamp = extractTimestamp(msgHtml);
+
+                if (text.length > 5) {
+                  messages.push({
+                    sender: senderMatch ? senderMatch[1].trim() : conversationWith,
+                    text: text.substring(0, 300),
+                    timestamp
+                  });
+                }
+              }
+
+              if (messages.length > 0) {
+                data.messages.push({
+                  conversation_with: conversationWith,
+                  messages: messages.slice(0, 100)
+                });
+                console.log(`Extracted ${messages.length} messages from HTML for ${conversationWith}`);
+              }
             }
           }
 
