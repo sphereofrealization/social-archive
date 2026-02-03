@@ -16,6 +16,7 @@ import {
   Calendar,
   MapPin
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import AIDataSearch from "./AIDataSearch";
 
@@ -28,6 +29,12 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
   const posts = data?.posts || [];
   const friends = data?.friends || [];
   const messages = data?.messages || [];
+  
+  // Map friends to their conversations
+  const friendConversations = {};
+  messages.forEach(conv => {
+    friendConversations[conv.conversation_with.toLowerCase()] = conv;
+  });
   const comments = data?.comments || [];
   const reels = data?.reels || [];
   const checkins = data?.checkins || [];
@@ -215,21 +222,44 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
                 {filteredFriends.length === 0 ? (
                   <p className="col-span-2 text-center text-gray-500 py-4">No friends found</p>
                 ) : (
-                  filteredFriends.map((friend, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                      <Avatar>
-                        <AvatarFallback className="bg-green-500 text-white">
-                          {friend.name?.[0] || 'F'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{friend.name}</p>
-                        {friend.date_added && (
-                          <p className="text-xs text-gray-500">Friends since {friend.date_added}</p>
+                  filteredFriends.map((friend, i) => {
+                    const conversation = friendConversations[friend.name.toLowerCase()];
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarFallback className="bg-green-500 text-white">
+                              {friend.name?.[0] || 'F'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{friend.name}</p>
+                            {friend.date_added && (
+                              <p className="text-xs text-gray-500">Friends since {friend.date_added}</p>
+                            )}
+                            {conversation && (
+                              <p className="text-xs text-blue-600 mt-1">
+                                {conversation.totalMessages} messages
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {conversation && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedConversation(conversation);
+                              setActiveTab("messages");
+                            }}
+                          >
+                            <MessageSquare className="w-4 h-4 mr-1" />
+                            View
+                          </Button>
                         )}
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </CardContent>
