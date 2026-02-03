@@ -47,6 +47,16 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
       const zip = await JSZip.loadAsync(blob);
 
       console.log("Extracting data...");
+      
+      // Log ALL files in the archive first
+      console.log("📁 ALL FILES IN ARCHIVE:");
+      Object.keys(zip.files).forEach(path => {
+        if (!zip.files[path].dir) {
+          console.log("  ", path);
+        }
+      });
+      console.log("========================================");
+      
       const data = {
         profile: { name: "", email: "" },
         posts: [],
@@ -104,8 +114,12 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
         try {
           const content = await file.async("text");
-
-          console.log("Processing file:", path);
+          
+          // Log first 200 chars of key files
+          if (path.includes("friends") || path.includes("message") || path.includes("comment") || path.includes("photo")) {
+            console.log(`📄 ${path} (${content.length} chars)`);
+            console.log("   Preview:", content.substring(0, 200).replace(/\s+/g, ' '));
+          }
 
           if (path.includes("profile_information") || path.includes("about_you")) {
             const nameMatch = content.match(/name["\s:]+([^<\n"]+)/i);
