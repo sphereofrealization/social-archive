@@ -47,15 +47,37 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
       const zip = await JSZip.loadAsync(blob);
 
       console.log("Extracting data...");
-      
-      // Log ALL files in the archive first
-      console.log("📁 ALL FILES IN ARCHIVE:");
-      const allFiles = Object.keys(zip.files).filter(path => !zip.files[path].dir);
-      allFiles.forEach(path => {
-        console.log("  ", path);
-      });
-      console.log(`Total files: ${allFiles.length}`);
+
+      // Log ALL files in the archive first - COMPLETE SITE MAP
       console.log("========================================");
+      console.log("📁 COMPLETE FACEBOOK ARCHIVE SITE MAP:");
+      console.log("========================================");
+      const allFiles = Object.keys(zip.files).filter(path => !zip.files[path].dir);
+
+      // Group files by top-level folder
+      const filesByFolder = {};
+      allFiles.forEach(path => {
+        const topFolder = path.split('/')[0];
+        if (!filesByFolder[topFolder]) {
+          filesByFolder[topFolder] = [];
+        }
+        filesByFolder[topFolder].push(path);
+      });
+
+      // Log organized structure
+      Object.keys(filesByFolder).sort().forEach(folder => {
+        console.log(`\n📂 ${folder}/ (${filesByFolder[folder].length} files)`);
+        filesByFolder[folder].slice(0, 20).forEach(file => {
+          console.log(`   ${file}`);
+        });
+        if (filesByFolder[folder].length > 20) {
+          console.log(`   ... and ${filesByFolder[folder].length - 20} more files`);
+        }
+      });
+
+      console.log("\n========================================");
+      console.log(`TOTAL FILES: ${allFiles.length}`);
+      console.log("========================================\n");
 
       // Look specifically for inbox conversations
       const inboxFiles = allFiles.filter(f => f.includes('/inbox/') && f.endsWith('.json'));
