@@ -57,6 +57,7 @@ import guideTiktok from './pages/Guide_TikTok';
 import guideTwitter from './pages/Guide_Twitter';
 import Guides from './pages/Guides';
 import Home from './pages/Home';
+import ArchiveFileTree from './pages/ArchiveFileTree';
 import __Layout from './Layout.jsx';
 
 
@@ -71,6 +72,7 @@ export const PAGES = {
     "Guide_Twitter": guideTwitter,
     "Guides": Guides,
     "Home": Home,
+    "ArchiveFileTree": ArchiveFileTree,
 }
 
 export const pagesConfig = {
