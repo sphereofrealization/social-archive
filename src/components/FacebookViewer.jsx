@@ -35,9 +35,9 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
   const reviews = data?.reviews || [];
   const groups = data?.groups || [];
   
-  // Get actual photo image files
+  // Get ALL actual photo image files from the archive
   const actualPhotos = Object.entries(photoFiles).filter(([path]) => 
-    !path.includes('posts') && !path.includes('media') && path.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+    path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')
   );
 
   console.log("FacebookViewer data counts:", {
