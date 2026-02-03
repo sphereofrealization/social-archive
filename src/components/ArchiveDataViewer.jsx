@@ -456,5 +456,5 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
     );
   }
 
-  return <FacebookViewer data={extractedData} photoFiles={extractedData.photoFiles} />;
+  return <FacebookViewer data={extractedData} />;
 }
