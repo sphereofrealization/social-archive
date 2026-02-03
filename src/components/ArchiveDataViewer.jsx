@@ -383,38 +383,32 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 console.error("   ❌ Failed to parse friends JSON:", e.message);
               }
             } else {
-              // Parse HTML for friends - look for actual names, not UI labels
+              // Parse HTML for friends - STRICT FILTERING to avoid UI labels
               let count = 0;
 
-              // Strategy 1: Extract from structured data, but with strict filtering
-              const structuredData = extractStructuredData(content, path);
+              // Common UI labels to explicitly exclude
+              const excludedLabels = new Set([
+                'name', 'friend', 'friends', 'restricted', 'close friends', 'close', 
+                'acquaintances', 'acquaintance', 'date', 'privacy', 'settings', 
+                'notification', 'disabled', 'false', 'true', 'following', 'followers',
+                'list', 'remove', 'unfriend', 'block', 'add', 'hidden', 'hidden from timeline',
+                'r', 'c', 'a', 'd', 'f', // single letters
+                'name r restricted c close friends a acquaintances d disabled false' // compound header
+              ]);
 
-              structuredData.forEach(item => {
-                if (item.table_row && item.table_row.length > 0) {
-                  // In a table, the first meaningful cell is usually the friend name
-                  // Skip common headers/labels
-                  const potentialName = item.table_row[0]?.trim();
-                  if (potentialName && 
-                      potentialName.length >= 5 && 
-                      potentialName.length < 100 &&
-                      potentialName.includes(' ') && // Real names usually have spaces
-                      !potentialName.match(/^(Name|Friend|Restricted|Close|Acquaintance|Date|Privacy|Settings|Notification|disabled|false|true)$/i) &&
-                      !potentialName.match(/^Name\s/i)) { // Don't match "Name XYZ"
-                    data.friends.push({ name: potentialName, date_added: "", source: path });
-                    count++;
-                  }
-                }
-              });
-
-              // Strategy 2: Look for links that are likely friend names
-              const linkMatches = content.match(/<a[^>]*href="[^"]*"[^>]*>([^<]{5,100})<\/a>/gi) || [];
+              // Strategy: Look ONLY for <a> tags with href (actual links to profiles)
+              const linkMatches = content.match(/<a[^>]*href="[^"]*"[^>]*>([^<]{2,100})<\/a>/gi) || [];
               linkMatches.forEach(link => {
                 const name = link.replace(/<[^>]+>/g, '').trim();
-                if (name.length >= 5 && 
+                const nameLower = name.toLowerCase();
+
+                // Must be a real name: has first and last name, not a UI label
+                if (name.length >= 3 && 
                     name.length < 100 &&
-                    name.includes(' ') && // Real names have spaces
-                    !name.match(/^(Name|Friend|Restricted|Close|Acquaintance|Privacy|Terms|Cookies|Settings|Download|Help|disabled|false|true)$/i) &&
-                    !name.match(/^\w+\s+(Friend|List|Group|Page)$/i)) {
+                    !excludedLabels.has(nameLower) &&
+                    !nameLower.match(/^(name|friend|restricted|close|acquaintance|date|privacy|terms|cookies|settings|download|help|disabled|false|true|following|followers|list|remove|unfriend|block|add|hidden)/i) &&
+                    !nameLower.match(/^\w\s/) && // Not "R Restricted" pattern
+                    !nameLower.match(/\b(friend|list|group|page|profile)\b/i)) { // Not metadata
                   data.friends.push({ name, date_added: "", source: path });
                   count++;
                 }
