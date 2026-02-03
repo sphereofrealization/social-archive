@@ -284,28 +284,39 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // ============ MESSAGES ============
-          // Look for ANY json file in inbox folders
-          if (path.includes('inbox') && path.endsWith('.json')) {
-            console.log("📨 FOUND POTENTIAL CONVERSATION:", path);
+          // ============ MESSAGES - READ ALL JSON FILES IN MESSAGES/INBOX FOLDERS ============
+          if ((path.includes('message') || path.includes('inbox')) && path.endsWith('.json')) {
+            console.log("📨 FOUND MESSAGE JSON:", path);
             try {
               const jsonData = JSON.parse(content);
               console.log("   JSON keys:", Object.keys(jsonData));
               console.log("   Has messages array?", Array.isArray(jsonData.messages));
               console.log("   Messages count:", jsonData.messages?.length || 0);
-              
+
               if (jsonData.messages && Array.isArray(jsonData.messages)) {
+                // Get conversation name from JSON title or folder path
                 const pathMatch = path.match(/inbox\/([^\/]+)\//);
                 const conversationName = jsonData.title || (pathMatch ? decodeURIComponent(pathMatch[1]).replace(/_/g, ' ') : "Unknown");
-                const messages = jsonData.messages.slice(0, 100).map(msg => ({
+
+                // Extract ALL messages (no limit)
+                const messages = jsonData.messages.map(msg => ({
                   sender: msg.sender_name || "Unknown",
                   text: msg.content || "",
-                  timestamp: msg.timestamp_ms ? new Date(msg.timestamp_ms).toLocaleString() : ""
-                })).filter(msg => msg.text.length > 0);
-                
+                  timestamp: msg.timestamp_ms ? new Date(msg.timestamp_ms).toLocaleString() : "",
+                  timestamp_ms: msg.timestamp_ms || 0
+                })).filter(msg => msg.text && msg.text.length > 0);
+
                 if (messages.length > 0) {
-                  data.messages.push({ conversation_with: conversationName, messages });
-                  console.log(`   ✅ Added conversation: ${conversationName} (${messages.length} messages)`);
+                  // Get the most recent message timestamp (Facebook stores newest first)
+                  const lastMessageTimestamp = messages[0].timestamp_ms;
+
+                  data.messages.push({ 
+                    conversation_with: conversationName, 
+                    messages,
+                    lastMessageTimestamp,
+                    totalMessages: messages.length
+                  });
+                  console.log(`   ✅ Added conversation: ${conversationName} (${messages.length} messages, last: ${new Date(lastMessageTimestamp).toLocaleString()})`);
                 } else {
                   console.log(`   ⚠️ No valid messages in conversation`);
                 }

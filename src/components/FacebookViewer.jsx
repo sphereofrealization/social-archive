@@ -218,29 +218,42 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
               <CardContent className="p-0 flex-grow overflow-y-auto">
                 <div className="divide-y">
                   {filteredMessages.length === 0 ? (
-                    <p className="p-4 text-center text-gray-500 text-sm">No messages found</p>
+                    <p className="p-4 text-center text-gray-500 text-sm">No conversations found</p>
                   ) : (
-                    filteredMessages.map((conv, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setSelectedConversation(conv)}
-                        className={`w-full text-left p-4 hover:bg-gray-50 transition-colors ${
-                          selectedConversation?.conversation_with === conv.conversation_with ? 'bg-blue-50' : ''
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Avatar className="w-10 h-10">
-                            <AvatarFallback className="bg-purple-500 text-white">
-                              {conv.conversation_with?.[0] || 'M'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium truncate">{conv.conversation_with}</p>
-                            <p className="text-xs text-gray-500">{conv.messages?.length || 0} messages</p>
+                    filteredMessages.map((conv, i) => {
+                      const lastMsg = conv.messages?.[0];
+                      const lastMsgPreview = lastMsg?.text?.substring(0, 50) || '';
+
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => setSelectedConversation(conv)}
+                          className={`w-full text-left p-4 hover:bg-gray-50 transition-colors ${
+                            selectedConversation?.conversation_with === conv.conversation_with ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Avatar className="w-10 h-10">
+                              <AvatarFallback className="bg-purple-500 text-white">
+                                {conv.conversation_with?.[0]?.toUpperCase() || 'M'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold truncate text-sm">{conv.conversation_with}</p>
+                              <p className="text-xs text-gray-500 truncate">{lastMsgPreview}{lastMsgPreview.length >= 50 ? '...' : ''}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge variant="outline" className="text-xs">
+                                  {conv.messages?.length || 0} messages
+                                </Badge>
+                                {lastMsg?.timestamp && (
+                                  <span className="text-xs text-gray-400">{lastMsg.timestamp}</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </button>
-                    ))
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               </CardContent>
