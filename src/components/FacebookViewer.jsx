@@ -25,8 +25,6 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
   const posts = data?.posts || [];
   const friends = data?.friends || [];
   const messages = data?.messages || [];
-  const photos = data?.photos || [];
-  const videos = data?.videos || [];
   const comments = data?.comments || [];
   const reels = data?.reels || [];
   const checkins = data?.checkins || [];
@@ -35,10 +33,15 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
   const reviews = data?.reviews || [];
   const groups = data?.groups || [];
   
-  // Get ALL actual photo image files from the archive
-  const actualPhotos = Object.entries(photoFiles).filter(([path]) => 
+  // Get actual media files from photoFiles and videoFiles objects
+  const photoFilesObj = data?.photoFiles || photoFiles || {};
+  const videoFilesObj = data?.videoFiles || {};
+  
+  const actualPhotos = Object.entries(photoFilesObj).filter(([path]) => 
     path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')
   );
+  
+  const actualVideos = Object.entries(videoFilesObj);
 
   console.log("FacebookViewer data counts:", {
     posts: posts.length,
