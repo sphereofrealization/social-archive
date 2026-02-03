@@ -172,62 +172,65 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          if (path.includes("messages") && (path.endsWith(".html") || path.endsWith(".json"))) {
-            console.log("Found message file:", path);
+          // Messages - look in messages/inbox/*/message_*.json files
+          if (path.match(/messages\/inbox\/[^\/]+\/message.*\.json$/i)) {
+            console.log("Found message JSON file:", path);
 
-            // Try JSON format first
-            if (path.endsWith(".json")) {
-              try {
-                const jsonData = JSON.parse(content);
-                if (jsonData.messages && Array.isArray(jsonData.messages)) {
-                  const conversationName = jsonData.title || jsonData.thread_path || path.match(/messages\/inbox\/([^\/]+)\//)?.[1]?.replace(/_/g, ' ') || "Unknown";
-                  const messages = jsonData.messages.slice(0, 100).map(msg => ({
-                    sender: msg.sender_name || "Unknown",
-                    text: msg.content || "",
-                    timestamp: msg.timestamp_ms ? new Date(msg.timestamp_ms).toLocaleString() : ""
-                  }));
+            try {
+              const jsonData = JSON.parse(content);
+              if (jsonData.messages && Array.isArray(jsonData.messages)) {
+                // Get conversation name from path or title
+                const pathMatch = path.match(/messages\/inbox\/([^\/]+)\//);
+                const conversationName = jsonData.title || (pathMatch ? decodeURIComponent(pathMatch[1]).replace(/_/g, ' ') : "Unknown");
 
-                  if (messages.length > 0) {
-                    data.messages.push({
-                      conversation_with: conversationName,
-                      messages
-                    });
-                  }
-                  console.log(`Extracted ${messages.length} messages from JSON for ${conversationName}`);
-                }
-              } catch (e) {
-                console.log("Failed to parse message JSON:", e);
-              }
-            } else {
-              // HTML format
-              const conversationMatch = path.match(/messages\/inbox\/([^\/]+)\//);
-              const conversationWith = conversationMatch ? decodeURIComponent(conversationMatch[1]).replace(/_/g, ' ') : "Unknown";
+                const messages = jsonData.messages.slice(0, 100).map(msg => ({
+                  sender: msg.sender_name || "Unknown",
+                  text: msg.content || "",
+                  timestamp: msg.timestamp_ms ? new Date(msg.timestamp_ms).toLocaleString() : ""
+                })).filter(msg => msg.text.length > 0);
 
-              const messageBlocks = content.split(/<div[^>]*class="[^"]*message[^"]*"[^>]*>/gi);
-              const messages = [];
-
-              for (let i = 1; i < Math.min(messageBlocks.length, 101); i++) {
-                const msgHtml = messageBlocks[i];
-                const senderMatch = msgHtml.match(/class="[^"]*user[^"]*">([^<]+)</i);
-                const text = parseHTML(msgHtml.substring(0, 1000));
-                const timestamp = extractTimestamp(msgHtml);
-
-                if (text.length > 5) {
-                  messages.push({
-                    sender: senderMatch ? senderMatch[1].trim() : conversationWith,
-                    text: text.substring(0, 300),
-                    timestamp
+                if (messages.length > 0) {
+                  data.messages.push({
+                    conversation_with: conversationName,
+                    messages
                   });
+                  console.log(`✓ Extracted ${messages.length} messages for conversation: ${conversationName}`);
                 }
               }
+            } catch (e) {
+              console.error("Failed to parse message JSON:", path, e);
+            }
+          }
 
-              if (messages.length > 0) {
-                data.messages.push({
-                  conversation_with: conversationWith,
-                  messages: messages.slice(0, 100)
+          // Also try HTML messages
+          if (path.includes("messages") && path.endsWith(".html")) {
+            const conversationMatch = path.match(/messages\/inbox\/([^\/]+)\//);
+            const conversationWith = conversationMatch ? decodeURIComponent(conversationMatch[1]).replace(/_/g, ' ') : "Unknown";
+
+            const messageBlocks = content.split(/<div[^>]*class="[^"]*message[^"]*"[^>]*>/gi);
+            const messages = [];
+
+            for (let i = 1; i < Math.min(messageBlocks.length, 101); i++) {
+              const msgHtml = messageBlocks[i];
+              const senderMatch = msgHtml.match(/class="[^"]*user[^"]*">([^<]+)</i);
+              const text = parseHTML(msgHtml.substring(0, 1000));
+              const timestamp = extractTimestamp(msgHtml);
+
+              if (text.length > 5) {
+                messages.push({
+                  sender: senderMatch ? senderMatch[1].trim() : conversationWith,
+                  text: text.substring(0, 300),
+                  timestamp
                 });
-                console.log(`Extracted ${messages.length} messages from HTML for ${conversationWith}`);
               }
+            }
+
+            if (messages.length > 0) {
+              data.messages.push({
+                conversation_with: conversationWith,
+                messages: messages.slice(0, 100)
+              });
+              console.log(`✓ Extracted ${messages.length} messages from HTML for ${conversationWith}`);
             }
           }
 
@@ -380,20 +383,26 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
         }
       }
 
-      console.log("Extraction complete!", {
-        profile: data.profile,
-        posts: data.posts.length,
-        friends: data.friends.length,
-        messages: data.messages.length,
-        photos: data.photos.length,
-        comments: data.comments.length,
-        reels: data.reels.length,
-        checkins: data.checkins.length,
-        likes: data.likes.length,
-        events: data.events.length,
-        reviews: data.reviews.length,
-        groups: data.groups.length
-      });
+      console.log("========================================");
+      console.log("EXTRACTION COMPLETE!");
+      console.log("========================================");
+      console.log("Profile:", data.profile);
+      console.log("Posts:", data.posts.length);
+      console.log("Friends:", data.friends.length);
+      console.log("CONVERSATIONS:", data.messages.length);
+      console.log("Photos:", data.photos.length);
+      console.log("Comments:", data.comments.length);
+      console.log("Reels:", data.reels.length);
+      console.log("Check-ins:", data.checkins.length);
+      console.log("Likes:", data.likes.length);
+      console.log("Events:", data.events.length);
+      console.log("Reviews:", data.reviews.length);
+      console.log("Groups:", data.groups.length);
+      console.log("========================================");
+
+      if (data.messages.length > 0) {
+        console.log("First conversation:", data.messages[0]);
+      }
       setExtractedData(data);
       
       // Mark archive as organized after successful extraction
