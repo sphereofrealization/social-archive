@@ -391,10 +391,13 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
       console.log("Groups:", data.groups.length);
       console.log("========================================\n");
       
+      // Sort conversations by the most recent message
+      data.messages.sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+
       // Store photo and video files directly in data for viewer
       data.photos = Object.keys(data.photoFiles);
       data.videos = Object.keys(data.videoFiles);
-      
+
       setExtractedData(data);
       
       // Mark archive as organized after successful extraction

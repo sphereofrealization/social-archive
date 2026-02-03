@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import ArchiveDataViewer from "../components/ArchiveDataViewer";
-import VideoMessageExtractor from "../components/VideoMessageExtractor";
+
 
 const statusColors = {
   not_started: "bg-gray-100 text-gray-800",
@@ -134,7 +134,7 @@ export default function Archives() {
           </div>
         </div>
 
-        <VideoMessageExtractor />
+        
 
         {showUploadForm && (
           <Card className="mb-8 border-none shadow-lg">

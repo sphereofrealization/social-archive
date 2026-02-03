@@ -63,8 +63,9 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
     friend.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredMessages = messages.filter(msg =>
-    msg.conversation_with?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredMessages = messages.filter(conv =>
+    conv.conversation_with?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    conv.messages?.some(msg => msg.text?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -208,14 +209,14 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
         </TabsContent>
 
         <TabsContent value="messages" className="mt-4">
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="flex gap-4" style={{ height: 'calc(100vh - 22rem)' }}>
             {/* Conversations List */}
-            <Card className="md:col-span-1">
+            <Card className="w-1/3 flex flex-col">
               <CardHeader>
                 <CardTitle className="text-sm">Conversations</CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                <div className="divide-y max-h-96 overflow-y-auto">
+              <CardContent className="p-0 flex-grow overflow-y-auto">
+                <div className="divide-y">
                   {filteredMessages.length === 0 ? (
                     <p className="p-4 text-center text-gray-500 text-sm">No messages found</p>
                   ) : (
@@ -246,24 +247,24 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
             </Card>
 
             {/* Message Thread */}
-            <Card className="md:col-span-2">
+            <Card className="w-2/3 flex flex-col">
               <CardHeader>
                 <CardTitle className="text-sm">
                   {selectedConversation ? `Chat with ${selectedConversation.conversation_with}` : 'Select a conversation'}
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex-grow overflow-y-auto">
                 {selectedConversation ? (
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                  <div className="space-y-3 p-4">
                     {selectedConversation.messages?.map((msg, i) => {
-                      const isYou = msg.sender === profile.name || msg.sender === 'You';
+                      const isYou = msg.sender === profile.name || msg.sender.toLowerCase() === 'you';
                       return (
                         <div key={i} className={`flex ${isYou ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-xs p-3 rounded-lg ${
+                          <div className={`max-w-md p-3 rounded-lg ${
                             isYou ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-900'
                           }`}>
                             <p className="text-sm font-medium mb-1">{msg.sender}</p>
-                            <p className="text-sm">{msg.text}</p>
+                            <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                             {msg.timestamp && (
                               <p className={`text-xs mt-1 ${isYou ? 'text-blue-100' : 'text-gray-500'}`}>
                                 {msg.timestamp}
@@ -275,7 +276,9 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
                     })}
                   </div>
                 ) : (
-                  <p className="text-center text-gray-500 py-8">Select a conversation to view messages</p>
+                  <div className="flex items-center justify-center h-full">
+                      <p className="text-center text-gray-500 py-8">Select a conversation to view messages</p>
+                  </div>
                 )}
               </CardContent>
             </Card>
