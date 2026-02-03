@@ -43,19 +43,16 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
   
   const actualVideos = Object.entries(videoFilesObj);
 
-  console.log("FacebookViewer data counts:", {
+  console.log("FacebookViewer received data:", {
+    hasPhotoFiles: !!data?.photoFiles,
+    hasVideoFiles: !!data?.videoFiles,
+    photoFilesCount: Object.keys(photoFilesObj).length,
+    videoFilesCount: Object.keys(videoFilesObj).length,
+    actualPhotosCount: actualPhotos.length,
+    actualVideosCount: actualVideos.length,
     posts: posts.length,
     friends: friends.length,
-    messages: messages.length,
-    photos: photos.length,
-    videos: videos.length,
-    comments: comments.length,
-    reels: reels.length,
-    checkins: checkins.length,
-    likes: likes.length,
-    events: events.length,
-    reviews: reviews.length,
-    groups: groups.length
+    messages: messages.length
   });
 
   const filteredPosts = posts.filter(post => 
