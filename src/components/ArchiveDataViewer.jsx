@@ -585,16 +585,67 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
           // ============ GROUPS ============
           if (path.includes('group') && path.endsWith('.html')) {
-            const groupMatches = content.split(/<div[^>]*>/gi);
-            for (const chunk of groupMatches) {
-              const linkMatch = chunk.match(/>([^<]+)<\/a>/);
-              if (linkMatch && chunk.length > 15 && chunk.length < 800) {
-                const groupName = linkMatch[1].trim();
-                if (groupName.length > 2 && groupName.length < 150 && !groupName.includes("@") && !groupName.includes("http")) {
-                  data.groups.push({ name: groupName });
+            console.log("👥 GROUPS FILE:", path);
+            const structuredData = extractStructuredData(content, path);
+            let count = 0;
+
+            structuredData.forEach(item => {
+              if (item.title) {
+                const groupName = item.title.trim();
+                if (groupName.length > 2 && groupName.length < 200) {
+                  data.groups.push({ 
+                    name: groupName,
+                    details: item.text.join(' ').substring(0, 200),
+                    source: path
+                  });
+                  count++;
                 }
               }
-            }
+
+              if (item.table_row) {
+                item.table_row.forEach(cellText => {
+                  const groupName = cellText.trim();
+                  if (groupName.length > 3 && groupName.length < 200 &&
+                      !groupName.match(/^(Group|Name|Date|Privacy|Type|Notification|Settings)$/i)) {
+                    data.groups.push({ 
+                      name: groupName,
+                      source: path
+                    });
+                    count++;
+                  }
+                });
+              }
+
+              if (item.links) {
+                item.links.forEach(linkText => {
+                  const groupName = linkText.trim();
+                  if (groupName.length > 3 && groupName.length < 200 &&
+                      !groupName.match(/^(Group|Name|Date|Privacy|Terms|Cookies)$/i)) {
+                    data.groups.push({ 
+                      name: groupName,
+                      source: path
+                    });
+                    count++;
+                  }
+                });
+              }
+            });
+
+            // Fallback: also try basic link extraction
+            const linkMatches = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
+            linkMatches.forEach(link => {
+              const groupName = link.replace(/<[^>]+>/g, '').trim();
+              if (groupName.length > 3 && groupName.length < 200 &&
+                  !groupName.match(/^(Group|Name|Date|Privacy|Terms|Cookies|disabled|false|true)$/i)) {
+                data.groups.push({ 
+                  name: groupName,
+                  source: path
+                });
+                count++;
+              }
+            });
+
+            console.log(`   ✅ Added ${count} groups from ${path}`);
           }
 
           // ============ MARKETPLACE ============
