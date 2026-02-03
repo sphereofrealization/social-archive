@@ -15,6 +15,7 @@ import {
   Calendar
 } from "lucide-react";
 import { format } from "date-fns";
+import AIDataSearch from "./AIDataSearch";
 
 export default function FacebookViewer({ data, photoFiles = {} }) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -86,6 +87,9 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* AI Search */}
+      <AIDataSearch data={data} />
 
       {/* Search */}
       <div className="relative">
