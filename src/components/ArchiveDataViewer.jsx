@@ -158,17 +158,48 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          if (path.includes("friends") && path.endsWith(".html")) {
-            const friendMatches = content.match(/>([^<]+)<\/a>/g) || [];
-            for (let i = 0; i < Math.min(friendMatches.length, 500); i++) {
-              const nameMatch = friendMatches[i].match(/>([^<]+)</);
-              if (nameMatch) {
-                const name = nameMatch[1].trim();
-                if (name.length > 2 && name.length < 100) {
-                  const timestamp = extractTimestamp(content.substring(Math.max(0, content.indexOf(name) - 200), content.indexOf(name) + 200));
-                  data.friends.push({ name, date_added: timestamp });
+          // Friends - try both JSON and HTML formats
+          if (path.includes("friends") && (path.endsWith(".html") || path.endsWith(".json"))) {
+            console.log("🔍 Checking friends file:", path);
+            
+            if (path.endsWith(".json")) {
+              try {
+                const jsonData = JSON.parse(content);
+                console.log("Friends JSON keys:", Object.keys(jsonData));
+                
+                // Try different JSON structures
+                let friendsList = jsonData.friends_v2 || jsonData.friends || [];
+                if (Array.isArray(friendsList)) {
+                  friendsList.forEach(friend => {
+                    const name = friend.name || friend.title || "";
+                    if (name.length > 2) {
+                      data.friends.push({ 
+                        name, 
+                        date_added: friend.timestamp ? new Date(friend.timestamp * 1000).toLocaleDateString() : ""
+                      });
+                    }
+                  });
+                  console.log(`✅ Extracted ${friendsList.length} friends from JSON`);
+                }
+              } catch (e) {
+                console.log("⚠️ Failed to parse friends JSON:", e.message);
+              }
+            } else {
+              // HTML format
+              const friendMatches = content.match(/>([^<]+)<\/a>/g) || [];
+              let extracted = 0;
+              for (let i = 0; i < Math.min(friendMatches.length, 500); i++) {
+                const nameMatch = friendMatches[i].match(/>([^<]+)</);
+                if (nameMatch) {
+                  const name = nameMatch[1].trim();
+                  if (name.length > 2 && name.length < 100 && !name.includes("http")) {
+                    const timestamp = extractTimestamp(content.substring(Math.max(0, content.indexOf(name) - 200), content.indexOf(name) + 200));
+                    data.friends.push({ name, date_added: timestamp });
+                    extracted++;
+                  }
                 }
               }
+              console.log(`✅ Extracted ${extracted} friends from HTML`);
             }
           }
 
@@ -238,61 +269,109 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
+          // Photos - try both JSON and HTML formats
           if ((path.includes("photos") || path.includes("album")) && (path.endsWith(".html") || path.endsWith(".json"))) {
+            console.log("🔍 Checking photos file:", path);
+            
             if (path.endsWith(".json")) {
               try {
                 const jsonData = JSON.parse(content);
-                if (jsonData.photos) {
-                  jsonData.photos.forEach(photo => {
+                console.log("Photos JSON keys:", Object.keys(jsonData));
+                
+                // Try different JSON structures
+                const photosList = jsonData.photos || jsonData.photo_album || [];
+                if (Array.isArray(photosList)) {
+                  photosList.forEach(photo => {
                     data.photos.push({
-                      description: photo.title || photo.description || "",
-                      timestamp: new Date(photo.creation_timestamp * 1000).toLocaleDateString()
+                      description: photo.title || photo.description || photo.name || "",
+                      timestamp: photo.creation_timestamp ? new Date(photo.creation_timestamp * 1000).toLocaleDateString() : ""
                     });
                   });
+                  console.log(`✅ Extracted ${photosList.length} photos from JSON`);
                 }
               } catch (e) {
-                console.log("Failed to parse photo JSON:", e);
+                console.log("⚠️ Failed to parse photo JSON:", e.message);
               }
             } else {
+              // HTML format - be more aggressive
+              let extracted = 0;
+              
+              // Try finding photo divs
               const photoMatches = content.split(/<div[^>]*class="[^"]*photo[^"]*"[^>]*>/gi);
-              if (photoMatches.length < 2) {
-                // Try alternative patterns
-                const imgMatches = content.match(/<img[^>]+>/gi) || [];
-                imgMatches.forEach(img => {
-                  const altMatch = img.match(/alt="([^"]+)"/);
-                  if (altMatch) {
-                    data.photos.push({
-                      description: altMatch[1],
-                      timestamp: ""
-                    });
-                  }
-                });
-              }
               for (let i = 1; i < Math.min(photoMatches.length, 201); i++) {
                 const photoHtml = photoMatches[i];
                 const description = parseHTML(photoHtml.substring(0, 500));
                 const timestamp = extractTimestamp(photoHtml);
-                data.photos.push({ description: description.substring(0, 200), timestamp });
+                if (description.length > 5) {
+                  data.photos.push({ description: description.substring(0, 200), timestamp });
+                  extracted++;
+                }
               }
+              
+              // Also try img tags
+              const imgMatches = content.match(/<img[^>]+>/gi) || [];
+              imgMatches.forEach(img => {
+                const altMatch = img.match(/alt="([^"]+)"/);
+                if (altMatch && altMatch[1].trim().length > 0) {
+                  data.photos.push({
+                    description: altMatch[1],
+                    timestamp: ""
+                  });
+                  extracted++;
+                }
+              });
+              
+              console.log(`✅ Extracted ${extracted} photos from HTML`);
             }
-            console.log(`Found ${data.photos.length} total photos so far`);
+            console.log(`Total photos so far: ${data.photos.length}`);
           }
 
-          if (path.includes("comments") && path.endsWith(".html")) {
-            const commentMatches = content.split(/<div[^>]*class="[^"]*comment[^"]*"[^>]*>/gi);
-            for (let i = 1; i < Math.min(commentMatches.length, 201); i++) {
-              const commentHtml = commentMatches[i];
-              const text = parseHTML(commentHtml.substring(0, 1000));
-              const timestamp = extractTimestamp(commentHtml);
-              const onPostMatch = commentHtml.match(/on\s+([^']+)'s\s+post/i);
-
-              if (text.length > 5) {
-                data.comments.push({
-                  text: text.substring(0, 300),
-                  timestamp,
-                  on_post_by: onPostMatch ? onPostMatch[1].trim() : ""
-                });
+          // Comments - try both JSON and HTML formats
+          if (path.includes("comments") && (path.endsWith(".html") || path.endsWith(".json"))) {
+            console.log("🔍 Checking comments file:", path);
+            
+            if (path.endsWith(".json")) {
+              try {
+                const jsonData = JSON.parse(content);
+                console.log("Comments JSON keys:", Object.keys(jsonData));
+                
+                const commentsList = jsonData.comments || [];
+                if (Array.isArray(commentsList)) {
+                  commentsList.forEach(comment => {
+                    const text = comment.comment || comment.data?.[0]?.comment?.comment || "";
+                    if (text.length > 0) {
+                      data.comments.push({
+                        text: text.substring(0, 300),
+                        timestamp: comment.timestamp ? new Date(comment.timestamp * 1000).toLocaleDateString() : "",
+                        on_post_by: ""
+                      });
+                    }
+                  });
+                  console.log(`✅ Extracted ${commentsList.length} comments from JSON`);
+                }
+              } catch (e) {
+                console.log("⚠️ Failed to parse comments JSON:", e.message);
               }
+            } else {
+              // HTML format
+              let extracted = 0;
+              const commentMatches = content.split(/<div[^>]*class="[^"]*comment[^"]*"[^>]*>/gi);
+              for (let i = 1; i < Math.min(commentMatches.length, 201); i++) {
+                const commentHtml = commentMatches[i];
+                const text = parseHTML(commentHtml.substring(0, 1000));
+                const timestamp = extractTimestamp(commentHtml);
+                const onPostMatch = commentHtml.match(/on\s+([^']+)'s\s+post/i);
+
+                if (text.length > 5) {
+                  data.comments.push({
+                    text: text.substring(0, 300),
+                    timestamp,
+                    on_post_by: onPostMatch ? onPostMatch[1].trim() : ""
+                  });
+                  extracted++;
+                }
+              }
+              console.log(`✅ Extracted ${extracted} comments from HTML`);
             }
           }
 
