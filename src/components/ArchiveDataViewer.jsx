@@ -462,16 +462,46 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
           }
 
           // Reels - check your_facebook_activity/reels/
-          if (path.includes("reels") && path.endsWith(".html") && !path.includes("no-data")) {
-            const reelSections = content.split(/<div[^>]*>/gi);
-            for (const section of reelSections) {
-              if (section.length > 40 && section.length < 2000) {
-                const text = parseHTML(section);
-                const timestamp = extractTimestamp(section);
-                if (text.length > 20 && text.length < 600) {
-                  data.reels.push({ text: text.substring(0, 400), timestamp });
+          if (path.includes("reels") && (path.endsWith(".html") || path.endsWith(".json")) && !path.includes("no-data")) {
+            console.log("🔍 REELS FILE:", path);
+            console.log("   Content preview:", content.substring(0, 500));
+            
+            if (path.endsWith(".json")) {
+              try {
+                const jsonData = JSON.parse(content);
+                console.log("   JSON structure:", JSON.stringify(jsonData).substring(0, 300));
+                
+                const reelsList = jsonData.videos_v2 || jsonData.videos || jsonData.reels || [];
+                if (Array.isArray(reelsList)) {
+                  reelsList.forEach(reel => {
+                    const description = reel.title || reel.description || reel.uri || "Reel video";
+                    data.reels.push({
+                      text: description,
+                      timestamp: reel.creation_timestamp ? new Date(reel.creation_timestamp * 1000).toLocaleDateString() : ""
+                    });
+                  });
+                  console.log(`   ✅ Extracted ${reelsList.length} reels from JSON`);
+                } else {
+                  console.log("   ❌ No reels array found in JSON");
+                }
+              } catch (e) {
+                console.log("   ⚠️ Failed to parse reels JSON:", e.message);
+              }
+            } else {
+              // HTML format
+              const reelSections = content.split(/<div[^>]*>/gi);
+              let extracted = 0;
+              for (const section of reelSections) {
+                if (section.length > 40 && section.length < 2000) {
+                  const text = parseHTML(section);
+                  const timestamp = extractTimestamp(section);
+                  if (text.length > 20 && text.length < 600) {
+                    data.reels.push({ text: text.substring(0, 400), timestamp });
+                    extracted++;
+                  }
                 }
               }
+              console.log(`   ✅ Extracted ${extracted} reels from HTML`);
             }
           }
 
