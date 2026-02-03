@@ -225,12 +225,15 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
           }
 
           // ============ MESSAGES ============
-          // Look for: messages/inbox/*/message_*.json OR your_messages/inbox/*/message_*.json
-          if (path.match(/inbox\/[^\/]+\/message.*\.json$/i)) {
-            console.log("📨 FOUND CONVERSATION:", path);
+          // Look for ANY json file in inbox folders
+          if (path.includes('inbox') && path.endsWith('.json')) {
+            console.log("📨 FOUND POTENTIAL CONVERSATION:", path);
             try {
               const jsonData = JSON.parse(content);
               console.log("   JSON keys:", Object.keys(jsonData));
+              console.log("   Has messages array?", Array.isArray(jsonData.messages));
+              console.log("   Messages count:", jsonData.messages?.length || 0);
+              
               if (jsonData.messages && Array.isArray(jsonData.messages)) {
                 const pathMatch = path.match(/inbox\/([^\/]+)\//);
                 const conversationName = jsonData.title || (pathMatch ? decodeURIComponent(pathMatch[1]).replace(/_/g, ' ') : "Unknown");
@@ -239,13 +242,18 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                   text: msg.content || "",
                   timestamp: msg.timestamp_ms ? new Date(msg.timestamp_ms).toLocaleString() : ""
                 })).filter(msg => msg.text.length > 0);
+                
                 if (messages.length > 0) {
                   data.messages.push({ conversation_with: conversationName, messages });
                   console.log(`   ✅ Added conversation: ${conversationName} (${messages.length} messages)`);
+                } else {
+                  console.log(`   ⚠️ No valid messages in conversation`);
                 }
+              } else {
+                console.log(`   ❌ No messages array in JSON`);
               }
             } catch (e) {
-              console.log("   ❌ Failed to parse:", e.message);
+              console.log("   ❌ Failed to parse JSON:", e.message);
             }
           }
 
@@ -477,5 +485,5 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
     );
   }
 
-  return <FacebookViewer data={extractedData} />;
+  return <FacebookViewer data={extractedData} photoFiles={extractedData.photoFiles} />;
 }

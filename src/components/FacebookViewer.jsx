@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
-export default function FacebookViewer({ data }) {
+export default function FacebookViewer({ data, photoFiles = {} }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [activeTab, setActiveTab] = useState("posts");
@@ -34,6 +34,11 @@ export default function FacebookViewer({ data }) {
   const events = data?.events || [];
   const reviews = data?.reviews || [];
   const groups = data?.groups || [];
+  
+  // Get actual photo image files
+  const actualPhotos = Object.entries(photoFiles).filter(([path]) => 
+    !path.includes('posts') && !path.includes('media') && path.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+  );
 
   console.log("FacebookViewer data counts:", {
     posts: posts.length,
@@ -98,7 +103,7 @@ export default function FacebookViewer({ data }) {
           <TabsTrigger value="posts" className="bg-red-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-red-600">Posts ({posts.length})</TabsTrigger>
           <TabsTrigger value="friends" className="bg-orange-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-orange-600">Friends ({friends.length})</TabsTrigger>
           <TabsTrigger value="messages" className="bg-yellow-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-yellow-600">Conversations ({messages.length})</TabsTrigger>
-          <TabsTrigger value="photos" className="bg-green-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-green-600">Photos ({photos.length})</TabsTrigger>
+          <TabsTrigger value="photos" className="bg-green-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-green-600">Photos ({actualPhotos.length})</TabsTrigger>
           <TabsTrigger value="videos" className="bg-teal-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-teal-600">Videos ({videos.length})</TabsTrigger>
           <TabsTrigger value="comments" className="bg-blue-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-blue-600">Comments ({comments.length})</TabsTrigger>
           <TabsTrigger value="reels" className="bg-indigo-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-indigo-600">Reels ({reels.length})</TabsTrigger>
@@ -277,31 +282,33 @@ export default function FacebookViewer({ data }) {
           </div>
         </TabsContent>
 
-        <TabsContent value="photos" className="space-y-4 mt-4">
-          {photos.length === 0 ? (
+        <TabsContent value="photos" className="mt-4">
+          {actualPhotos.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
                 No photos found
               </CardContent>
             </Card>
           ) : (
-            photos.map((photo, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <ImageIcon className="w-10 h-10 text-pink-600 flex-shrink-0" />
-                    <div className="flex-1">
-                      {photo.description && (
-                        <p className="text-gray-700 mb-1">{photo.description}</p>
-                      )}
-                      {photo.timestamp && (
-                        <p className="text-xs text-gray-500">{photo.timestamp}</p>
-                      )}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {actualPhotos.map(([path, dataUrl], i) => (
+                <Dialog key={i}>
+                  <DialogTrigger asChild>
+                    <div className="aspect-square cursor-pointer hover:opacity-90 transition-opacity">
+                      <img 
+                        src={dataUrl} 
+                        alt={path.split('/').pop()} 
+                        className="w-full h-full object-cover rounded-lg shadow"
+                      />
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+                  </DialogTrigger>
+                  <DialogContent className="max-w-4xl">
+                    <img src={dataUrl} alt={path} className="w-full h-auto" />
+                    <p className="text-sm text-gray-500 mt-2">{path}</p>
+                  </DialogContent>
+                </Dialog>
+              ))}
+            </div>
           )}
         </TabsContent>
 
