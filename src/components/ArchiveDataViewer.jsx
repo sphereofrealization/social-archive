@@ -383,59 +383,47 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 console.error("   ❌ Failed to parse friends JSON:", e.message);
               }
             } else {
-              // Parse HTML for friends - Extract from table structures
+              // Parse HTML for friends - PRIMARY STRATEGY: Extract from <h2> tags (actual friend sections)
               let count = 0;
 
-              // Common UI labels to exclude
-              const excludedLabels = new Set([
-                'name', 'friend', 'friends', 'restricted', 'close friends', 'close', 
-                'acquaintances', 'acquaintance', 'date', 'privacy', 'settings', 
-                'notification', 'disabled', 'false', 'true', 'following', 'followers',
-                'list', 'remove', 'unfriend', 'block', 'add', 'hidden', 'hidden from timeline',
-                'r', 'c', 'a', 'd', 'f', 'n', 'e', // single letters
-              ]);
-
-              // Extract from <a> tags with href (profile links)
-              const linkMatches = content.match(/<a[^>]*href="[^"]*"[^>]*>([^<]+)<\/a>/gi) || [];
-              const foundNames = new Set();
-
-              linkMatches.forEach(link => {
-                const name = link.replace(/<[^>]+>/g, '').trim();
-                const nameLower = name.toLowerCase();
-
-                // Real names have multiple words (first + last name) and aren't UI labels
-                const hasMultipleWords = name.split(/\s+/).length >= 2;
-                const isNotLabel = !excludedLabels.has(nameLower) && 
-                                  !nameLower.match(/^(name|friend|restricted|close|acquaintance|date|privacy|terms|cookies|settings|help|disabled|false|true|following|followers|remove|unfriend|block|add|hidden)/i);
-
-                if (name.length >= 5 && name.length < 100 && hasMultipleWords && isNotLabel && !foundNames.has(nameLower)) {
-                  data.friends.push({ name, date_added: "", source: path });
-                  foundNames.add(nameLower);
-                  count++;
+              // Strategy 1: Look for <h2> tags with class "_a6-h" (friend name section headers in your_friends.html)
+              const h2Matches = content.match(/<h2[^>]*class="[^"]*_a6-h[^"]*"[^>]*>([^<]+)<\/h2>/gi) || [];
+              h2Matches.forEach(h2Match => {
+                const name = h2Match.replace(/<[^>]+>/g, '').trim();
+                if (name.length >= 3 && name.length < 100 && name.match(/\s/)) { // Real names have spaces
+                  if (!data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
+                    data.friends.push({ name, date_added: "", source: path });
+                    count++;
+                  }
                 }
               });
 
-              // Also extract from table cells that contain names
-              const tableRows = content.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-              tableRows.forEach(row => {
-                const cells = row.match(/<t[dh][^>]*>([^<]*)<\/t[dh]>/gi) || [];
-                cells.forEach((cell, idx) => {
-                  const cellText = cell.replace(/<[^>]+>/g, '').trim();
-                  const cellLower = cellText.toLowerCase();
+              // Strategy 2: If no h2 matches, try <a> tags with href (fallback for other friend list formats)
+              if (count === 0) {
+                const excludedLabels = new Set([
+                  'name', 'friend', 'friends', 'restricted', 'close friends', 'close', 
+                  'acquaintances', 'acquaintance', 'date', 'privacy', 'settings', 
+                  'notification', 'disabled', 'false', 'true', 'following', 'followers',
+                  'list', 'remove', 'unfriend', 'block', 'add', 'hidden'
+                ]);
 
-                  // Look for cells with multiple words that aren't labels
-                  if (cellText.length >= 5 && 
-                      cellText.length < 100 &&
-                      cellText.split(/\s+/).length >= 2 &&
-                      !excludedLabels.has(cellLower) &&
-                      !cellLower.match(/^(name|friend|restricted|close|acquaintance|date|privacy|disabled|false|true|remove|unfriend)/i) &&
-                      !foundNames.has(cellLower)) {
-                    data.friends.push({ name: cellText, date_added: "", source: path });
-                    foundNames.add(cellLower);
-                    count++;
+                const linkMatches = content.match(/<a[^>]*href="[^"]*"[^>]*>([^<]{2,100})<\/a>/gi) || [];
+                linkMatches.forEach(link => {
+                  const name = link.replace(/<[^>]+>/g, '').trim();
+                  const nameLower = name.toLowerCase();
+
+                  if (name.length >= 3 && 
+                      name.length < 100 &&
+                      name.match(/\s/) && // Real names have spaces
+                      !excludedLabels.has(nameLower) &&
+                      !nameLower.match(/\b(friend|list|group|page|profile)\b/i)) {
+                    if (!data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
+                      data.friends.push({ name, date_added: "", source: path });
+                      count++;
+                    }
                   }
                 });
-              });
+              }
 
               console.log(`   ✅ Added ${count} friends from HTML (${path})`);
             }
