@@ -59,11 +59,19 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
       // Look specifically for inbox conversations
       const inboxFiles = allFiles.filter(f => f.includes('/inbox/') && f.endsWith('.json'));
-      console.log(`Found ${inboxFiles.length} inbox conversation files:`, inboxFiles);
+      console.log(`📨 Found ${inboxFiles.length} inbox conversation files:`, inboxFiles);
 
       // Look specifically for friends files
       const friendsFiles = allFiles.filter(f => f.toLowerCase().includes('friend'));
-      console.log(`Found ${friendsFiles.length} friends files:`, friendsFiles);
+      console.log(`👥 Found ${friendsFiles.length} friends files:`, friendsFiles);
+
+      // Look for photo files
+      const photoFiles = allFiles.filter(f => f.toLowerCase().includes('photo') && !f.toLowerCase().includes('review'));
+      console.log(`📸 Found ${photoFiles.length} photo files:`, photoFiles);
+
+      // Look for review files
+      const reviewFiles = allFiles.filter(f => f.toLowerCase().includes('review'));
+      console.log(`⭐ Found ${reviewFiles.length} review files:`, reviewFiles);
       
       const data = {
         profile: { name: "", email: "" },
@@ -191,17 +199,16 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // Friends - try both JSON and HTML formats
-          if (path.includes("friends") && (path.endsWith(".html") || path.endsWith(".json"))) {
+          // Friends - connections/friends/ folder
+          if ((path.includes("connections/friends") || path.includes("/friends/")) && (path.endsWith(".html") || path.endsWith(".json"))) {
             console.log("🔍 FRIENDS FILE:", path);
-            console.log("   Content preview:", content.substring(0, 500));
-            
+            console.log("   First 1000 chars:", content.substring(0, 1000));
+
             if (path.endsWith(".json")) {
               try {
                 const jsonData = JSON.parse(content);
-                console.log("   JSON structure:", JSON.stringify(jsonData).substring(0, 300));
-                
-                // Try different JSON structures
+                console.log("   JSON keys:", Object.keys(jsonData));
+
                 let friendsList = jsonData.friends_v2 || jsonData.friends || [];
                 if (Array.isArray(friendsList)) {
                   friendsList.forEach(friend => {
@@ -214,44 +221,40 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                     }
                   });
                   console.log(`   ✅ Extracted ${friendsList.length} friends from JSON`);
-                } else {
-                  console.log("   ❌ No friends array found in JSON");
                 }
               } catch (e) {
-                console.log("   ⚠️ Failed to parse friends JSON:", e.message);
+                console.log("   ⚠️ Failed to parse JSON:", e.message);
               }
             } else {
-              // HTML format - just extract ALL link text
-              const linkMatches = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
-              console.log(`   Found ${linkMatches.length} total links`);
-              
+              // HTML - extract names from table or list structure
+              const nameMatches = content.match(/<td[^>]*>([^<]+)<\/td>/gi) || [];
               let extracted = 0;
-              linkMatches.forEach(link => {
-                const nameMatch = link.match(/>([^<]+)</);
-                if (nameMatch) {
-                  const name = nameMatch[1].trim();
-                  // Very permissive - accept almost any name
-                  if (name.length > 1 && name.length < 100 && !name.includes("http") && !name.includes("facebook.com")) {
+
+              nameMatches.forEach(match => {
+                const textMatch = match.match(/>([^<]+)</);
+                if (textMatch) {
+                  const name = textMatch[1].trim();
+                  if (name.length > 2 && name.length < 100 && !name.includes("@") && !name.includes("http") && !name.match(/^\d+$/)) {
                     data.friends.push({ name, date_added: "" });
                     extracted++;
                   }
                 }
               });
+
               console.log(`   ✅ Extracted ${extracted} friends from HTML`);
             }
           }
 
-          // Messages - ONLY look for actual conversation files in inbox folders
-          if (path.includes("/inbox/") && path.endsWith(".json")) {
+          // Messages - look in messages/inbox/ for conversation JSON files
+          if (path.match(/messages\/inbox\/[^\/]+\/message_\d+\.json$/i)) {
             console.log("🔍 CONVERSATION FILE:", path);
-            console.log("   Content preview:", content.substring(0, 500));
+            console.log("   First 800 chars:", content.substring(0, 800));
 
             try {
               const jsonData = JSON.parse(content);
               console.log("   JSON keys:", Object.keys(jsonData));
 
               if (jsonData.messages && Array.isArray(jsonData.messages)) {
-                // Get conversation name from path or title
                 const pathMatch = path.match(/inbox\/([^\/]+)\//);
                 const conversationName = jsonData.title || (pathMatch ? decodeURIComponent(pathMatch[1]).replace(/_/g, ' ') : "Unknown");
 
@@ -262,10 +265,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 })).filter(msg => msg.text.length > 0);
 
                 if (messages.length > 0) {
-                  data.messages.push({
-                    conversation_with: conversationName,
-                    messages
-                  });
+                  data.messages.push({ conversation_with: conversationName, messages });
                   console.log(`   ✅ Extracted ${messages.length} messages for: ${conversationName}`);
                 }
               }
@@ -274,55 +274,48 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // Photos - try both JSON and HTML formats (but exclude review files)
-          if ((path.includes("photos") || path.includes("album")) && !path.includes("review") && (path.endsWith(".html") || path.endsWith(".json"))) {
+          // Photos - look for your_photos.html or photo-related JSON files
+          if (path.includes("your_photos.html") || (path.includes("/photos") && path.endsWith(".json") && !path.includes("review"))) {
             console.log("🔍 PHOTOS FILE:", path);
-            console.log("   Content preview:", content.substring(0, 500));
-            
+            console.log("   First 1000 chars:", content.substring(0, 1000));
+
             if (path.endsWith(".json")) {
               try {
                 const jsonData = JSON.parse(content);
-                console.log("   JSON structure:", JSON.stringify(jsonData).substring(0, 300));
-                
-                // Try different JSON structures
+                console.log("   JSON keys:", Object.keys(jsonData));
+
                 const photosList = jsonData.photos || jsonData.photo_album || [];
                 if (Array.isArray(photosList)) {
                   photosList.forEach(photo => {
                     data.photos.push({
-                      description: photo.title || photo.description || photo.name || "Photo",
+                      description: photo.title || photo.description || photo.uri || "Photo",
                       timestamp: photo.creation_timestamp ? new Date(photo.creation_timestamp * 1000).toLocaleDateString() : ""
                     });
                   });
-                  console.log(`   ✅ Extracted ${photosList.length} photos from JSON`);
-                } else {
-                  console.log("   ❌ No photos array found in JSON");
+                  console.log(`   ✅ Extracted ${photosList.length} photos`);
                 }
               } catch (e) {
-                console.log("   ⚠️ Failed to parse photo JSON:", e.message);
+                console.log("   ⚠️ Failed to parse:", e.message);
               }
             } else {
-              // HTML format - only extract if it looks like actual photo metadata, not reviews
+              // HTML - extract photo metadata from table rows
+              const rows = content.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
               let extracted = 0;
-              const allText = parseHTML(content);
-              
-              // Skip files that contain review-like content
-              if (!allText.toLowerCase().includes("review") && !allText.toLowerCase().includes("rating") && allText.length > 50) {
-                const chunks = allText.split(/\n|\./).filter(c => c.trim().length > 10 && c.trim().length < 100);
-                chunks.slice(0, 50).forEach(chunk => {
-                  // Skip chunks that look like reviews
-                  if (!chunk.toLowerCase().includes("taco") && !chunk.toLowerCase().includes("restaurant")) {
-                    data.photos.push({ 
-                      description: chunk.trim().substring(0, 200), 
-                      timestamp: "" 
-                    });
+
+              rows.forEach(row => {
+                const cells = row.match(/<td[^>]*>([^<]+)<\/td>/gi);
+                if (cells && cells.length >= 2) {
+                  const description = parseHTML(cells[0]);
+                  const timestamp = parseHTML(cells[1] || "");
+                  if (description.length > 2) {
+                    data.photos.push({ description: description.substring(0, 200), timestamp });
                     extracted++;
                   }
-                });
-              }
-              
-              console.log(`   ✅ Extracted ${extracted} photos from HTML`);
+                }
+              });
+
+              console.log(`   ✅ Extracted ${extracted} photos`);
             }
-            console.log(`   Total photos so far: ${data.photos.length}`);
           }
 
           // Comments - try both JSON and HTML formats
@@ -417,17 +410,39 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // Reviews - check your_facebook_activity/reviews/
-          if (path.includes("reviews") && path.endsWith(".html") && !path.includes("no-data")) {
-            const reviewSections = content.split(/<div[^>]*>/gi);
-            for (const section of reviewSections) {
-              if (section.length > 50 && section.length < 3000) {
-                const text = parseHTML(section);
-                const timestamp = extractTimestamp(section);
-                if (text.length > 30 && (section.includes("star") || section.includes("review") || section.includes("rating"))) {
-                  data.reviews.push({ text: text.substring(0, 400), timestamp });
-                }
+          // Reviews - extract from reviews HTML/JSON files
+          if (path.includes("review") && (path.endsWith(".html") || path.endsWith(".json"))) {
+            console.log("🔍 REVIEWS FILE:", path);
+            console.log("   First 800 chars:", content.substring(0, 800));
+
+            if (path.endsWith(".json")) {
+              try {
+                const jsonData = JSON.parse(content);
+                const reviewsList = jsonData.reviews || [];
+                reviewsList.forEach(review => {
+                  data.reviews.push({
+                    text: review.text || review.title || "Review",
+                    timestamp: review.timestamp ? new Date(review.timestamp * 1000).toLocaleDateString() : ""
+                  });
+                });
+                console.log(`   ✅ Extracted ${reviewsList.length} reviews from JSON`);
+              } catch (e) {
+                console.log("   ⚠️ Failed to parse:", e.message);
               }
+            } else {
+              // HTML - extract review content
+              const rows = content.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+              let extracted = 0;
+
+              rows.forEach(row => {
+                const text = parseHTML(row);
+                if (text.length > 20 && text.length < 500) {
+                  data.reviews.push({ text: text.substring(0, 400), timestamp: "" });
+                  extracted++;
+                }
+              });
+
+              console.log(`   ✅ Extracted ${extracted} reviews from HTML`);
             }
           }
 
