@@ -131,20 +131,33 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
           // Profile - only look at HTML/JSON files, skip binary
           if ((path.includes("profile_information") || path.includes("about_you")) && (path.endsWith(".html") || path.endsWith(".json"))) {
-            console.log("🔍 PROFILE FILE:", path);
-            console.log("   Content preview:", content.substring(0, 1000));
+            console.log("🔍🔍🔍 PROFILE FILE FOUND:", path);
+            console.log("   Full first 2000 chars:", content.substring(0, 2000));
 
             // Try multiple patterns for name
             let nameMatch = content.match(/name["\s:]+([^<\n"]+)/i);
-            if (!nameMatch) nameMatch = content.match(/<title>([^<]+)<\/title>/i);
-            if (!nameMatch) nameMatch = content.match(/Profile\s+of\s+([^<\n]+)/i);
+            console.log("   Pattern 1 (name field):", nameMatch);
+            
+            if (!nameMatch) {
+              nameMatch = content.match(/<title>([^<]+)<\/title>/i);
+              console.log("   Pattern 2 (title tag):", nameMatch);
+            }
+            
+            if (!nameMatch) {
+              nameMatch = content.match(/Profile\s+of\s+([^<\n]+)/i);
+              console.log("   Pattern 3 (profile of):", nameMatch);
+            }
+            
             if (!nameMatch && path.endsWith(".json")) {
               try {
                 const jsonData = JSON.parse(content);
+                console.log("   JSON parsed, keys:", Object.keys(jsonData));
                 if (jsonData.profile?.name?.full_name) {
                   nameMatch = [null, jsonData.profile.name.full_name];
+                  console.log("   Pattern 4 (JSON full_name):", nameMatch);
                 } else if (jsonData.name) {
                   nameMatch = [null, jsonData.name];
+                  console.log("   Pattern 5 (JSON name):", nameMatch);
                 }
               } catch (e) {
                 console.log("   Failed to parse JSON:", e.message);
@@ -155,8 +168,11 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
             if (nameMatch) {
               data.profile.name = nameMatch[1].trim();
-              console.log(`   ✅ Extracted name: ${data.profile.name}`);
+              console.log(`   ✅✅✅ FINAL EXTRACTED NAME: "${data.profile.name}" from file: ${path}`);
+            } else {
+              console.log(`   ❌❌❌ NO NAME FOUND in ${path}`);
             }
+            
             if (emailMatch) {
               data.profile.email = emailMatch[0];
               console.log(`   ✅ Extracted email: ${data.profile.email}`);
