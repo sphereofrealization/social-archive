@@ -94,7 +94,9 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
         reviews: [],
         groups: [],
         photoFiles: {}, // ALL image files as data URLs
-        videoFiles: {}  // ALL video files as blob URLs
+        videoFiles: {}, // ALL video files as blob URLs
+        // NEW: Store ALL extracted content organized by category
+        allData: {}  // Structure: { category: { subcategory: [items] } }
       };
 
       const parseHTML = (html) => {
@@ -109,6 +111,58 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
       const extractTimestamp = (html) => {
         const dateMatch = html.match(/(\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2})/);
         return dateMatch ? dateMatch[0] : "";
+      };
+
+      // Advanced HTML parser - extracts ALL structured content from Facebook archive HTML
+      const extractStructuredData = (html, path) => {
+        const results = [];
+        
+        // Extract all article elements (Facebook uses <article> for content blocks)
+        const articles = html.match(/<article[^>]*>[\s\S]*?<\/article>/gi) || [];
+        articles.forEach(article => {
+          const header = article.match(/<h3[^>]*id="[^"]*"[^>]*>([^<]+)<\/h3>/);
+          const paragraphs = article.match(/<p[^>]*>([^<]+)<\/p>/gi) || [];
+          const links = article.match(/<a[^>]*href="[^"]*"[^>]*>([^<]+)<\/a>/gi) || [];
+          const divText = article.match(/<div[^>]*>([^<]+)<\/div>/gi) || [];
+          
+          const content = {
+            title: header ? header[1] : '',
+            text: paragraphs.map(p => p.replace(/<[^>]+>/g, '').trim()).filter(t => t.length > 0),
+            links: links.map(l => l.replace(/<[^>]+>/g, '').trim()).filter(t => t.length > 0),
+            divs: divText.map(d => d.replace(/<[^>]+>/g, '').trim()).filter(t => t.length > 0),
+          };
+          
+          if (content.title || content.text.length > 0 || content.links.length > 0) {
+            results.push(content);
+          }
+        });
+        
+        // Extract from tables
+        const tables = html.match(/<table[^>]*>[\s\S]*?<\/table>/gi) || [];
+        tables.forEach(table => {
+          const rows = table.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+          rows.forEach(row => {
+            const cells = row.match(/<t[dh][^>]*>([^<]*(?:<[^>]+>[^<]*)*)<\/t[dh]>/gi) || [];
+            const rowData = cells.map(cell => {
+              return cell.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            }).filter(text => text.length > 0);
+            
+            if (rowData.length > 0) {
+              results.push({ table_row: rowData });
+            }
+          });
+        });
+        
+        // Extract from divs with content
+        const contentDivs = html.match(/<div[^>]*class="[^"]*_a6[^"]*"[^>]*>[\s\S]*?<\/div>/gi) || [];
+        contentDivs.forEach(div => {
+          const text = parseHTML(div);
+          if (text.length > 10 && text.length < 1000) {
+            results.push({ div_content: text });
+          }
+        });
+        
+        return results;
       };
 
       // First pass - extract ALL media files (images and videos)
@@ -154,6 +208,19 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
         try {
           const content = await file.async("text");
+          
+          // Determine category from path
+          const pathParts = path.split('/');
+          const category = pathParts[0];
+          const subcategory = pathParts.length > 1 ? pathParts[1] : '';
+          
+          // Initialize category storage
+          if (!data.allData[category]) {
+            data.allData[category] = {};
+          }
+          if (subcategory && !data.allData[category][subcategory]) {
+            data.allData[category][subcategory] = [];
+          }
 
           // ============ EXTRACT FROM ALL HTML FILES ============
           if (path.endsWith(".html")) {
@@ -248,7 +315,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
           // ============ FRIENDS ============
           if (path.includes('friend') && (path.endsWith('.html') || path.endsWith('.json'))) {
             console.log("👥 FRIENDS FILE:", path);
-            
+
             if (path.endsWith('.json')) {
               try {
                 const jsonData = JSON.parse(content);
@@ -263,24 +330,50 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                       });
                     }
                   });
-                  console.log(`   ✅ Added ${friendsList.length} friends`);
+                  console.log(`   ✅ Added ${friendsList.length} friends from JSON`);
                 }
-              } catch (e) {}
+              } catch (e) {
+                console.error("   ❌ Failed to parse friends JSON:", e.message);
+              }
             } else {
-              const linkMatches = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
+              // Parse HTML tables for friends
+              const structuredData = extractStructuredData(content, path);
               let count = 0;
-              linkMatches.forEach(link => {
-                const nameMatch = link.match(/>([^<]+)</);
-                if (nameMatch) {
-                  const name = nameMatch[1].trim();
-                  if (name.length >= 3 && name.length < 50 &&
-                      !name.match(/^(disabled|false|true|name|restricted|close|friend)$/i)) {
-                    data.friends.push({ name, date_added: "" });
-                    count++;
-                  }
+
+              structuredData.forEach(item => {
+                if (item.table_row) {
+                  item.table_row.forEach(cellText => {
+                    const name = cellText.trim();
+                    if (name.length >= 3 && name.length < 100 &&
+                        !name.match(/^(disabled|false|true|name|restricted|close|friend|Privacy|Terms|Cookies|Date)$/i)) {
+                      data.friends.push({ name, date_added: "", source: path });
+                      count++;
+                    }
+                  });
+                }
+                if (item.links) {
+                  item.links.forEach(name => {
+                    if (name.length >= 3 && name.length < 100 &&
+                        !name.match(/^(disabled|false|true|name|restricted|close|friend)$/i)) {
+                      data.friends.push({ name, date_added: "", source: path });
+                      count++;
+                    }
+                  });
                 }
               });
-              console.log(`   ✅ Added ${count} friends from HTML`);
+
+              // Also try basic link extraction as fallback
+              const linkMatches = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
+              linkMatches.forEach(link => {
+                const name = link.replace(/<[^>]+>/g, '').trim();
+                if (name.length >= 3 && name.length < 100 &&
+                    !name.match(/^(disabled|false|true|name|restricted|close|friend|Privacy|Terms|Cookies)$/i)) {
+                  data.friends.push({ name, date_added: "", source: path });
+                  count++;
+                }
+              });
+
+              console.log(`   ✅ Added ${count} friends from HTML (${path})`);
             }
           }
 
@@ -377,29 +470,116 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
           // ============ EVENTS ============
           if (path.includes('event') && path.endsWith('.html')) {
-            const eventSections = content.split(/<div[^>]*>/gi);
-            for (const section of eventSections) {
-              const linkMatch = section.match(/>([^<]+)<\/a>/);
-              if (linkMatch && section.length > 20 && section.length < 1500) {
-                const eventName = linkMatch[1].trim();
-                const timestamp = extractTimestamp(section);
-                if (eventName.length > 2 && eventName.length < 200 && !eventName.includes("@") && !eventName.includes("http")) {
-                  data.events.push({ name: eventName, timestamp });
+            console.log("📅 EVENTS FILE:", path);
+            const structuredData = extractStructuredData(content, path);
+            let count = 0;
+
+            structuredData.forEach(item => {
+              if (item.title) {
+                const eventData = {
+                  name: item.title,
+                  details: item.text.join(' '),
+                  links: item.links,
+                  timestamp: extractTimestamp(content),
+                  source: path
+                };
+                data.events.push(eventData);
+                count++;
+              }
+
+              // Also extract from table rows
+              if (item.table_row) {
+                const rowText = item.table_row.join(' ');
+                if (rowText.length > 10 && rowText.length < 500) {
+                  data.events.push({
+                    name: item.table_row[0] || 'Event',
+                    details: rowText,
+                    timestamp: extractTimestamp(rowText),
+                    source: path
+                  });
+                  count++;
                 }
               }
-            }
+            });
+
+            // Also look for event-specific patterns in the HTML
+            const eventPatterns = [
+              /Event by ([^<\n]+)/gi,
+              /Public.*Anyone on or off Facebook/gi,
+              /<h1[^>]*>([^<]+)<\/h1>/gi,
+              /<h2[^>]*>([^<]+)<\/h2>/gi
+            ];
+
+            eventPatterns.forEach(pattern => {
+              const matches = [...content.matchAll(pattern)];
+              matches.forEach(match => {
+                const text = match[1] || match[0];
+                if (text && text.length > 3 && text.length < 200) {
+                  data.events.push({
+                    name: text.trim(),
+                    details: '',
+                    timestamp: extractTimestamp(content),
+                    source: path
+                  });
+                  count++;
+                }
+              });
+            });
+
+            console.log(`   ✅ Added ${count} events`);
           }
 
           // ============ REVIEWS ============
           if (path.includes('review') && path.endsWith('.html')) {
+            console.log("⭐ REVIEWS FILE:", path);
+            const structuredData = extractStructuredData(content, path);
+            let count = 0;
+
+            structuredData.forEach(item => {
+              if (item.title || (item.text && item.text.length > 0)) {
+                const reviewText = item.text.join(' ');
+                if (reviewText.length > 10) {
+                  data.reviews.push({
+                    title: item.title || '',
+                    text: reviewText.substring(0, 500),
+                    links: item.links,
+                    timestamp: extractTimestamp(content),
+                    source: path
+                  });
+                  count++;
+                }
+              }
+
+              if (item.table_row) {
+                const rowText = item.table_row.join(' ');
+                if (rowText.length > 10) {
+                  data.reviews.push({
+                    text: rowText.substring(0, 500),
+                    timestamp: extractTimestamp(rowText),
+                    source: path
+                  });
+                  count++;
+                }
+              }
+            });
+
+            // Also parse sections as fallback
             const sections = content.split(/<div/gi);
             sections.slice(0, 100).forEach(section => {
               const text = parseHTML(section);
-              if (text.length > 30 && text.length < 800) {
+              if (text.length > 30 && text.length < 800 && 
+                  !text.match(/^(Privacy|Terms|Cookies|You have no data)/i)) {
                 const timestamp = extractTimestamp(section);
-                data.reviews.push({ text: text.substring(0, 400), timestamp });
+                data.reviews.push({ 
+                  text: text.substring(0, 400), 
+                  timestamp,
+                  source: path
+                });
+                count++;
               }
             });
+
+            console.log(`   ✅ Added ${count} reviews`);
           }
 
           // ============ GROUPS ============
@@ -433,6 +613,11 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
         }
       }
 
+      // Deduplicate data
+      data.friends = [...new Map(data.friends.map(f => [f.name.toLowerCase(), f])).values()];
+      data.events = [...new Map(data.events.map(e => [e.name.toLowerCase(), e])).values()];
+      data.reviews = [...new Map(data.reviews.map((r, i) => [r.text.substring(0, 50), r])).values()];
+      
       console.log("\n========================================");
       console.log("✅ EXTRACTION COMPLETE!");
       console.log("========================================");
@@ -449,6 +634,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
       console.log("Events:", data.events.length);
       console.log("Reviews:", data.reviews.length);
       console.log("Groups:", data.groups.length);
+      console.log("All Categories:", Object.keys(data.allData));
       console.log("========================================\n");
       
       // Sort conversations by the most recent message
