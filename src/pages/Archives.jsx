@@ -309,6 +309,14 @@ export default function Archives() {
                           <Button 
                             variant="outline" 
                             className="flex-1"
+                            onClick={() => window.location.href = createPageUrl("ArchiveFileTree") + `?archiveId=${archive.id}&archiveUrl=${encodeURIComponent(archive.file_url)}&archiveName=${encodeURIComponent(archive.file_name)}`}
+                          >
+                            <FileJson className="w-4 h-4 mr-2" />
+                            View File Tree
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            className="flex-1"
                             onClick={() => toggleArchiveExpansion(archive.id)}
                           >
                             {isExpanded ? (
@@ -323,16 +331,16 @@ export default function Archives() {
                               </>
                             )}
                           </Button>
-                        </>
-                      )}
-                      <Button 
-                        variant="outline" 
-                        size="icon"
-                        onClick={() => deleteArchiveMutation.mutate(archive.id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                          </>
+                          )}
+                          <Button 
+                          variant="outline" 
+                          size="icon"
+                          onClick={() => deleteArchiveMutation.mutate(archive.id)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                          <Trash2 className="w-4 h-4" />
+                          </Button>
                     </div>
 
                     {isExpanded && archive.file_url && (
