@@ -283,8 +283,8 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // Photos - try both JSON and HTML formats
-          if ((path.includes("photos") || path.includes("album")) && (path.endsWith(".html") || path.endsWith(".json"))) {
+          // Photos - try both JSON and HTML formats (but exclude review files)
+          if ((path.includes("photos") || path.includes("album")) && !path.includes("review") && (path.endsWith(".html") || path.endsWith(".json"))) {
             console.log("🔍 PHOTOS FILE:", path);
             console.log("   Content preview:", content.substring(0, 500));
             
@@ -310,19 +310,22 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 console.log("   ⚠️ Failed to parse photo JSON:", e.message);
               }
             } else {
-              // HTML format - extract ANY content
+              // HTML format - only extract if it looks like actual photo metadata, not reviews
               let extracted = 0;
               const allText = parseHTML(content);
               
-              // If file has substantial content, just create photo entries
-              if (allText.length > 50) {
-                const chunks = allText.split(/\n|\./).filter(c => c.trim().length > 10);
+              // Skip files that contain review-like content
+              if (!allText.toLowerCase().includes("review") && !allText.toLowerCase().includes("rating") && allText.length > 50) {
+                const chunks = allText.split(/\n|\./).filter(c => c.trim().length > 10 && c.trim().length < 100);
                 chunks.slice(0, 50).forEach(chunk => {
-                  data.photos.push({ 
-                    description: chunk.trim().substring(0, 200), 
-                    timestamp: "" 
-                  });
-                  extracted++;
+                  // Skip chunks that look like reviews
+                  if (!chunk.toLowerCase().includes("taco") && !chunk.toLowerCase().includes("restaurant")) {
+                    data.photos.push({ 
+                      description: chunk.trim().substring(0, 200), 
+                      timestamp: "" 
+                    });
+                    extracted++;
+                  }
                 });
               }
               
