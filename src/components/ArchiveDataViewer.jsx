@@ -383,35 +383,58 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 console.error("   ❌ Failed to parse friends JSON:", e.message);
               }
             } else {
-              // Parse HTML for friends - STRICT FILTERING to avoid UI labels
+              // Parse HTML for friends - Extract from table structures
               let count = 0;
 
-              // Common UI labels to explicitly exclude
+              // Common UI labels to exclude
               const excludedLabels = new Set([
                 'name', 'friend', 'friends', 'restricted', 'close friends', 'close', 
                 'acquaintances', 'acquaintance', 'date', 'privacy', 'settings', 
                 'notification', 'disabled', 'false', 'true', 'following', 'followers',
                 'list', 'remove', 'unfriend', 'block', 'add', 'hidden', 'hidden from timeline',
-                'r', 'c', 'a', 'd', 'f', // single letters
-                'name r restricted c close friends a acquaintances d disabled false' // compound header
+                'r', 'c', 'a', 'd', 'f', 'n', 'e', // single letters
               ]);
 
-              // Strategy: Look ONLY for <a> tags with href (actual links to profiles)
-              const linkMatches = content.match(/<a[^>]*href="[^"]*"[^>]*>([^<]{2,100})<\/a>/gi) || [];
+              // Extract from <a> tags with href (profile links)
+              const linkMatches = content.match(/<a[^>]*href="[^"]*"[^>]*>([^<]+)<\/a>/gi) || [];
+              const foundNames = new Set();
+
               linkMatches.forEach(link => {
                 const name = link.replace(/<[^>]+>/g, '').trim();
                 const nameLower = name.toLowerCase();
 
-                // Must be a real name: has first and last name, not a UI label
-                if (name.length >= 3 && 
-                    name.length < 100 &&
-                    !excludedLabels.has(nameLower) &&
-                    !nameLower.match(/^(name|friend|restricted|close|acquaintance|date|privacy|terms|cookies|settings|download|help|disabled|false|true|following|followers|list|remove|unfriend|block|add|hidden)/i) &&
-                    !nameLower.match(/^\w\s/) && // Not "R Restricted" pattern
-                    !nameLower.match(/\b(friend|list|group|page|profile)\b/i)) { // Not metadata
+                // Real names have multiple words (first + last name) and aren't UI labels
+                const hasMultipleWords = name.split(/\s+/).length >= 2;
+                const isNotLabel = !excludedLabels.has(nameLower) && 
+                                  !nameLower.match(/^(name|friend|restricted|close|acquaintance|date|privacy|terms|cookies|settings|help|disabled|false|true|following|followers|remove|unfriend|block|add|hidden)/i);
+
+                if (name.length >= 5 && name.length < 100 && hasMultipleWords && isNotLabel && !foundNames.has(nameLower)) {
                   data.friends.push({ name, date_added: "", source: path });
+                  foundNames.add(nameLower);
                   count++;
                 }
+              });
+
+              // Also extract from table cells that contain names
+              const tableRows = content.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+              tableRows.forEach(row => {
+                const cells = row.match(/<t[dh][^>]*>([^<]*)<\/t[dh]>/gi) || [];
+                cells.forEach((cell, idx) => {
+                  const cellText = cell.replace(/<[^>]+>/g, '').trim();
+                  const cellLower = cellText.toLowerCase();
+
+                  // Look for cells with multiple words that aren't labels
+                  if (cellText.length >= 5 && 
+                      cellText.length < 100 &&
+                      cellText.split(/\s+/).length >= 2 &&
+                      !excludedLabels.has(cellLower) &&
+                      !cellLower.match(/^(name|friend|restricted|close|acquaintance|date|privacy|disabled|false|true|remove|unfriend)/i) &&
+                      !foundNames.has(cellLower)) {
+                    data.friends.push({ name: cellText, date_added: "", source: path });
+                    foundNames.add(cellLower);
+                    count++;
+                  }
+                });
               });
 
               console.log(`   ✅ Added ${count} friends from HTML (${path})`);
