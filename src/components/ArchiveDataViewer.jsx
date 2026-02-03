@@ -93,6 +93,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
         events: [],
         reviews: [],
         groups: [],
+        marketplace: [],
         photoFiles: {}, // ALL image files as data URLs
         videoFiles: {}, // ALL video files as blob URLs
         // NEW: Store ALL extracted content organized by category
@@ -596,6 +597,43 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
+          // ============ MARKETPLACE ============
+          if (path.includes('marketplace') && path.endsWith('.html')) {
+            console.log("🛒 MARKETPLACE FILE:", path);
+            const structuredData = extractStructuredData(content, path);
+            let count = 0;
+
+            structuredData.forEach(item => {
+              if (item.title || (item.text && item.text.length > 0)) {
+                const itemText = item.text.join(' ');
+                if (itemText.length > 5) {
+                  data.marketplace.push({
+                    title: item.title || '',
+                    text: itemText.substring(0, 500),
+                    links: item.links,
+                    timestamp: extractTimestamp(content),
+                    source: path
+                  });
+                  count++;
+                }
+              }
+
+              if (item.table_row) {
+                const rowText = item.table_row.join(' ');
+                if (rowText.length > 5) {
+                  data.marketplace.push({
+                    text: rowText.substring(0, 500),
+                    timestamp: extractTimestamp(rowText),
+                    source: path
+                  });
+                  count++;
+                }
+              }
+            });
+
+            console.log(`   ✅ Added ${count} marketplace items`);
+          }
+
           // ============ REELS ============
           if (path.includes('reel') && path.endsWith('.html')) {
             const sections = content.split(/<div/gi);
@@ -634,6 +672,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
       console.log("Events:", data.events.length);
       console.log("Reviews:", data.reviews.length);
       console.log("Groups:", data.groups.length);
+      console.log("Marketplace:", data.marketplace.length);
       console.log("All Categories:", Object.keys(data.allData));
       console.log("========================================\n");
       

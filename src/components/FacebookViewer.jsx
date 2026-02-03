@@ -33,6 +33,7 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
   const events = data?.events || [];
   const reviews = data?.reviews || [];
   const groups = data?.groups || [];
+  const marketplace = data?.marketplace || [];
   
   // Get actual media files from photoFiles and videoFiles objects
   const photoFilesObj = data?.photoFiles || photoFiles || {};
@@ -117,6 +118,7 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
           <TabsTrigger value="events" className="bg-rose-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-rose-600">Events ({events.length})</TabsTrigger>
           <TabsTrigger value="reviews" className="bg-fuchsia-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-fuchsia-600">Reviews ({reviews.length})</TabsTrigger>
           <TabsTrigger value="groups" className="bg-violet-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-violet-600">Groups ({groups.length})</TabsTrigger>
+          <TabsTrigger value="marketplace" className="bg-cyan-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-cyan-600">Marketplace ({marketplace.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="posts" className="space-y-4 mt-4">
@@ -510,6 +512,33 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
                 </Card>
               ))}
             </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="marketplace" className="space-y-4 mt-4">
+          {marketplace.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                No marketplace items found
+              </CardContent>
+            </Card>
+          ) : (
+            marketplace.map((item, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  {item.title && <p className="font-medium text-gray-900 mb-2">{item.title}</p>}
+                  <p className="text-gray-700">{item.text}</p>
+                  {item.timestamp && <p className="text-xs text-gray-500 mt-2">{item.timestamp}</p>}
+                  {item.links && item.links.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {item.links.map((link, j) => (
+                        <Badge key={j} variant="outline" className="text-xs">{link}</Badge>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))
           )}
         </TabsContent>
       </Tabs>
