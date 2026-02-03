@@ -79,6 +79,15 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
       console.log(`TOTAL FILES: ${allFiles.length}`);
       console.log("========================================\n");
 
+      // Log specific file types we're looking for
+      const messageFiles = allFiles.filter(f => f.includes('message') || f.includes('inbox'));
+      console.log(`📨 MESSAGE FILES (${messageFiles.length}):`, messageFiles.slice(0, 10));
+      
+      const photoFiles = allFiles.filter(f => f.includes('photo') && !f.match(/\.(jpg|png|gif)$/i));
+      console.log(`📸 PHOTO METADATA FILES (${photoFiles.length}):`, photoFiles.slice(0, 10));
+      
+      const friendFiles = allFiles.filter(f => f.includes('friend'));
+      console.log(`👥 FRIEND FILES (${friendFiles.length}):`, friendFiles);
 
       
       const data = {
@@ -216,9 +225,12 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
           }
 
           // ============ MESSAGES ============
-          if (path.match(/messages\/inbox\/[^\/]+\/message_\d+\.json$/i)) {
+          // Look for: messages/inbox/*/message_*.json OR your_messages/inbox/*/message_*.json
+          if (path.match(/inbox\/[^\/]+\/message.*\.json$/i)) {
+            console.log("📨 FOUND CONVERSATION:", path);
             try {
               const jsonData = JSON.parse(content);
+              console.log("   JSON keys:", Object.keys(jsonData));
               if (jsonData.messages && Array.isArray(jsonData.messages)) {
                 const pathMatch = path.match(/inbox\/([^\/]+)\//);
                 const conversationName = jsonData.title || (pathMatch ? decodeURIComponent(pathMatch[1]).replace(/_/g, ' ') : "Unknown");
@@ -229,21 +241,49 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 })).filter(msg => msg.text.length > 0);
                 if (messages.length > 0) {
                   data.messages.push({ conversation_with: conversationName, messages });
+                  console.log(`   ✅ Added conversation: ${conversationName} (${messages.length} messages)`);
                 }
               }
-            } catch (e) {}
+            } catch (e) {
+              console.log("   ❌ Failed to parse:", e.message);
+            }
           }
 
           // ============ PHOTOS ============
-          if (path.match(/photos_and_videos\/.*\.html$/i) || path.match(/your_facebook_activity\/photos/i)) {
-            const sections = content.split(/<div/gi);
-            sections.forEach(section => {
-              const text = parseHTML(section);
-              if (text.length > 10 && text.length < 300 && !text.match(/^(disabled|false|photo|album)$/i)) {
-                const timestamp = extractTimestamp(section);
-                data.photos.push({ description: text.substring(0, 200), timestamp });
+          if ((path.includes('photos') || path.includes('album')) && (path.endsWith('.html') || path.endsWith('.json'))) {
+            console.log("📸 FOUND PHOTO FILE:", path);
+            
+            if (path.endsWith('.json')) {
+              try {
+                const jsonData = JSON.parse(content);
+                console.log("   JSON keys:", Object.keys(jsonData));
+                const photosList = jsonData.photos || jsonData.photo_albums?.photos || [];
+                if (Array.isArray(photosList)) {
+                  photosList.forEach(photo => {
+                    data.photos.push({
+                      description: photo.title || photo.description || photo.uri || "Photo",
+                      timestamp: photo.creation_timestamp ? new Date(photo.creation_timestamp * 1000).toLocaleDateString() : ""
+                    });
+                  });
+                  console.log(`   ✅ Added ${photosList.length} photos from JSON`);
+                }
+              } catch (e) {
+                console.log("   ❌ Failed to parse JSON:", e.message);
               }
-            });
+            } else {
+              // HTML - extract captions and metadata
+              const sections = content.split(/<div/gi);
+              let extracted = 0;
+              sections.forEach(section => {
+                const text = parseHTML(section);
+                if (text.length > 10 && text.length < 300 && !text.match(/^(disabled|false|photo|album)$/i)) {
+                  const timestamp = extractTimestamp(section);
+                  data.photos.push({ description: text.substring(0, 200), timestamp });
+                  extracted++;
+                }
+              });
+              console.log(`   ✅ Added ${extracted} photos from HTML`);
+            }
           }
 
           // ============ VIDEOS ============
