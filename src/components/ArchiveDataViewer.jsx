@@ -129,7 +129,8 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             console.log("   Preview:", content.substring(0, 200).replace(/\s+/g, ' '));
           }
 
-          if (path.includes("profile_information") || path.includes("about_you") || path.includes("profile")) {
+          // Profile - only look at HTML/JSON files, skip binary
+          if ((path.includes("profile_information") || path.includes("about_you")) && (path.endsWith(".html") || path.endsWith(".json"))) {
             console.log("🔍 PROFILE FILE:", path);
             console.log("   Content preview:", content.substring(0, 1000));
 
@@ -137,11 +138,17 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             let nameMatch = content.match(/name["\s:]+([^<\n"]+)/i);
             if (!nameMatch) nameMatch = content.match(/<title>([^<]+)<\/title>/i);
             if (!nameMatch) nameMatch = content.match(/Profile\s+of\s+([^<\n]+)/i);
-            if (!nameMatch) {
-              // Just grab first substantial text after "name" or in title
-              const allText = parseHTML(content.substring(0, 2000));
-              const words = allText.split(/\s+/).filter(w => w.length > 2 && w.length < 50);
-              if (words.length > 0) nameMatch = [null, words[0]];
+            if (!nameMatch && path.endsWith(".json")) {
+              try {
+                const jsonData = JSON.parse(content);
+                if (jsonData.profile?.name?.full_name) {
+                  nameMatch = [null, jsonData.profile.name.full_name];
+                } else if (jsonData.name) {
+                  nameMatch = [null, jsonData.name];
+                }
+              } catch (e) {
+                console.log("   Failed to parse JSON:", e.message);
+              }
             }
 
             const emailMatch = content.match(/[\w\.-]+@[\w\.-]+\.\w+/);
