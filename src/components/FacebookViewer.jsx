@@ -225,7 +225,17 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
                   filteredFriends.map((friend, i) => {
                     const conversation = friendConversations[friend.name.toLowerCase()];
                     return (
-                      <div key={i} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg">
+                      <button
+                        key={i}
+                        onClick={() => {
+                          if (conversation) {
+                            setSelectedConversation(conversation);
+                            setActiveTab("messages");
+                          }
+                        }}
+                        className="w-full text-left flex items-center justify-between gap-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={!conversation}
+                      >
                         <div className="flex items-center gap-3">
                           <Avatar>
                             <AvatarFallback className="bg-green-500 text-white">
@@ -242,22 +252,15 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
                                 {conversation.totalMessages} messages
                               </p>
                             )}
+                            {!conversation && (
+                              <p className="text-xs text-gray-400 mt-1">No messages</p>
+                            )}
                           </div>
                         </div>
                         {conversation && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedConversation(conversation);
-                              setActiveTab("messages");
-                            }}
-                          >
-                            <MessageSquare className="w-4 h-4 mr-1" />
-                            View
-                          </Button>
+                          <MessageSquare className="w-4 h-4 text-blue-500 flex-shrink-0" />
                         )}
-                      </div>
+                      </button>
                     );
                   })
                 )}
