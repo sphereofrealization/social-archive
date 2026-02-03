@@ -104,7 +104,7 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
           <TabsTrigger value="friends" className="bg-orange-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-orange-600">Friends ({friends.length})</TabsTrigger>
           <TabsTrigger value="messages" className="bg-yellow-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-yellow-600">Conversations ({messages.length})</TabsTrigger>
           <TabsTrigger value="photos" className="bg-green-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-green-600">Photos ({actualPhotos.length})</TabsTrigger>
-          <TabsTrigger value="videos" className="bg-teal-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-teal-600">Videos ({videos.length})</TabsTrigger>
+          <TabsTrigger value="videos" className="bg-teal-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-teal-600">Videos ({actualVideos.length})</TabsTrigger>
           <TabsTrigger value="comments" className="bg-blue-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-blue-600">Comments ({comments.length})</TabsTrigger>
           <TabsTrigger value="reels" className="bg-indigo-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-indigo-600">Reels ({reels.length})</TabsTrigger>
           <TabsTrigger value="checkins" className="bg-purple-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-purple-600">Check-ins ({checkins.length})</TabsTrigger>
@@ -312,24 +312,29 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
           )}
         </TabsContent>
 
-        <TabsContent value="videos" className="space-y-4 mt-4">
-          {videos.length === 0 ? (
+        <TabsContent value="videos" className="mt-4">
+          {actualVideos.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
                 No videos found
               </CardContent>
             </Card>
           ) : (
-            videos.map((video, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <p className="font-medium mb-2">{video.description}</p>
-                  {video.timestamp && (
-                    <p className="text-sm text-gray-500">{video.timestamp}</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {actualVideos.map(([path, blobUrl], i) => (
+                <Card key={i}>
+                  <CardContent className="p-4">
+                    <video 
+                      src={blobUrl} 
+                      controls 
+                      className="w-full rounded-lg"
+                      style={{ maxHeight: '400px' }}
+                    />
+                    <p className="text-sm text-gray-500 mt-2">{path.split('/').pop()}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </TabsContent>
 
