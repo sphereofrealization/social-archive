@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,8 @@ import {
   Image as ImageIcon,
   ThumbsUp,
   Search,
-  Calendar
+  Calendar,
+  MapPin
 } from "lucide-react";
 import { format } from "date-fns";
 import AIDataSearch from "./AIDataSearch";
@@ -178,6 +180,26 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
                           </span>
                         )}
                       </div>
+                      {post.comments && post.comments.length > 0 && (
+                        <div className="mt-4 pt-4 border-t space-y-3">
+                          {post.comments.map((comment, ci) => (
+                            <div key={ci} className="flex gap-2">
+                              <Avatar className="w-8 h-8">
+                                <AvatarFallback className="bg-gray-400 text-white text-xs">
+                                  {comment.author?.[0] || 'C'}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 bg-gray-100 rounded-lg p-3">
+                                <p className="font-semibold text-sm">{comment.author}</p>
+                                <p className="text-sm text-gray-700 mt-1">{comment.text}</p>
+                                {comment.timestamp && (
+                                  <p className="text-xs text-gray-500 mt-1">{comment.timestamp}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -437,6 +459,11 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
         </TabsContent>
 
         <TabsContent value="likes" className="space-y-4 mt-4">
+          <Alert className="bg-blue-50 border-blue-200">
+            <AlertDescription className="text-sm text-blue-800">
+              This shows pages, posts, photos, and other content you've liked on Facebook.
+            </AlertDescription>
+          </Alert>
           {likes.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
@@ -448,8 +475,16 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
               {likes.map((like, i) => (
                 <Card key={i}>
                   <CardContent className="p-3">
-                    <p className="text-sm text-gray-700">{like.item}</p>
-                    {like.timestamp && <p className="text-xs text-gray-500 mt-1">{like.timestamp}</p>}
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{like.item}</p>
+                        {like.details && <p className="text-xs text-gray-600 mt-1">{like.details}</p>}
+                      </div>
+                      {like.type && (
+                        <Badge variant="outline" className="text-xs">{like.type}</Badge>
+                      )}
+                    </div>
+                    {like.timestamp && <p className="text-xs text-gray-500 mt-2">{like.timestamp}</p>}
                   </CardContent>
                 </Card>
               ))}
@@ -468,8 +503,29 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
             events.map((event, i) => (
               <Card key={i}>
                 <CardContent className="p-4">
-                  <p className="font-medium text-gray-900">{event.name}</p>
-                  {event.timestamp && <p className="text-xs text-gray-500 mt-1">{event.timestamp}</p>}
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="font-medium text-gray-900 flex-1">{event.name}</p>
+                    {event.rsvp && (
+                      <Badge className={
+                        event.rsvp.toLowerCase() === 'going' ? 'bg-green-500' :
+                        event.rsvp.toLowerCase() === 'interested' ? 'bg-blue-500' :
+                        event.rsvp.toLowerCase().includes('host') ? 'bg-purple-500' :
+                        'bg-gray-500'
+                      }>
+                        {event.rsvp}
+                      </Badge>
+                    )}
+                  </div>
+                  {event.location && (
+                    <p className="text-sm text-gray-600 flex items-center gap-1 mt-1">
+                      <MapPin className="w-3 h-3" />
+                      {event.location}
+                    </p>
+                  )}
+                  {event.details && event.details.length > 0 && (
+                    <p className="text-sm text-gray-700 mt-2">{event.details.substring(0, 200)}</p>
+                  )}
+                  {event.timestamp && <p className="text-xs text-gray-500 mt-2">{event.timestamp}</p>}
                 </CardContent>
               </Card>
             ))
@@ -487,7 +543,18 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
             reviews.map((review, i) => (
               <Card key={i}>
                 <CardContent className="p-4">
-                  <p className="text-gray-700">{review.text}</p>
+                  {review.place && (
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-medium text-gray-900">{review.place}</p>
+                      {review.rating && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-yellow-500">★</span>
+                          <span className="font-semibold">{review.rating}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-gray-700 text-sm">{review.text}</p>
                   {review.timestamp && <p className="text-xs text-gray-500 mt-2">{review.timestamp}</p>}
                 </CardContent>
               </Card>
@@ -526,16 +593,19 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
             marketplace.map((item, i) => (
               <Card key={i}>
                 <CardContent className="p-4">
-                  {item.title && <p className="font-medium text-gray-900 mb-2">{item.title}</p>}
-                  <p className="text-gray-700">{item.text}</p>
-                  {item.timestamp && <p className="text-xs text-gray-500 mt-2">{item.timestamp}</p>}
-                  {item.links && item.links.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {item.links.map((link, j) => (
-                        <Badge key={j} variant="outline" className="text-xs">{link}</Badge>
-                      ))}
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      {item.title && <p className="font-medium text-gray-900">{item.title}</p>}
+                      {item.price && <p className="text-lg font-bold text-green-600 mt-1">{item.price}</p>}
                     </div>
-                  )}
+                    {item.status && (
+                      <Badge className={item.status === 'sold' ? 'bg-gray-500' : 'bg-green-500'}>
+                        {item.status}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-gray-700 text-sm">{item.text}</p>
+                  {item.timestamp && <p className="text-xs text-gray-500 mt-2">{item.timestamp}</p>}
                 </CardContent>
               </Card>
             ))

@@ -114,6 +114,16 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
         return dateMatch ? dateMatch[0] : "";
       };
 
+      const extractPrice = (html) => {
+        const priceMatch = html.match(/\$[\d,]+(?:\.\d{2})?|€[\d,]+(?:\.\d{2})?|£[\d,]+(?:\.\d{2})?/);
+        return priceMatch ? priceMatch[0] : null;
+      };
+
+      const extractRating = (html) => {
+        const ratingMatch = html.match(/(\d+(?:\.\d+)?)\s*(?:stars?|★|⭐)/i);
+        return ratingMatch ? parseFloat(ratingMatch[1]) : null;
+      };
+
       // Advanced HTML parser - extracts ALL structured content from Facebook archive HTML
       const extractStructuredData = (html, path) => {
         const results = [];
@@ -290,27 +300,63 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
           // ============ POSTS ============
           if (path.includes('post') && path.endsWith(".html")) {
-            let postMatches = content.split(/<div[^>]*>/gi).filter(chunk => chunk.length > 100);
+            console.log("📝 POSTS FILE:", path);
             const postsPhotos = Object.keys(data.photoFiles)
               .filter(p => p.includes('posts') || p.includes('media'))
               .map(path => data.photoFiles[path]);
 
-            for (let i = 0; i < Math.min(postMatches.length, 100); i++) {
-              const postHtml = postMatches[i];
-              const text = parseHTML(postHtml.substring(0, 2000));
-              const timestamp = extractTimestamp(postHtml);
+            // Try to parse structured post data
+            const postSections = content.split(/<div[^>]*class="[^"]*pam[^"]*"[^>]*>/gi);
 
-              if (text.length > 10) {
-                const photoUrl = postsPhotos[data.posts.length] || null;
-                data.posts.push({
-                  text: text.substring(0, 500),
-                  timestamp,
-                  likes_count: 0,
-                  comments_count: 0,
-                  photo_url: photoUrl
+            postSections.forEach((section, idx) => {
+              if (section.length < 100) return;
+
+              const text = parseHTML(section.substring(0, 2000));
+              if (text.length < 10) return;
+
+              const timestamp = extractTimestamp(section);
+
+              // Extract reactions (likes, loves, etc)
+              const reactions = [];
+              const reactionMatch = section.match(/(\d+)\s*(like|love|haha|wow|sad|angry)/gi);
+              let totalReactions = 0;
+              if (reactionMatch) {
+                reactionMatch.forEach(r => {
+                  const count = parseInt(r.match(/\d+/)?.[0] || 0);
+                  totalReactions += count;
+                  reactions.push(r);
                 });
               }
-            }
+
+              // Extract comments from the same section
+              const comments = [];
+              const commentMatches = section.match(/<div[^>]*comment[^>]*>[\s\S]{20,800}?<\/div>/gi) || [];
+              commentMatches.forEach(commentHtml => {
+                const commentText = parseHTML(commentHtml);
+                if (commentText.length > 10 && commentText.length < 500) {
+                  const commenter = commentHtml.match(/<a[^>]*>([^<]{3,50})<\/a>/)?.[1] || "Someone";
+                  comments.push({
+                    author: commenter,
+                    text: commentText,
+                    timestamp: extractTimestamp(commentHtml)
+                  });
+                }
+              });
+
+              const photoUrl = postsPhotos[data.posts.length] || null;
+
+              data.posts.push({
+                text: text.substring(0, 500),
+                timestamp,
+                reactions,
+                likes_count: totalReactions,
+                comments_count: comments.length,
+                comments,
+                photo_url: photoUrl
+              });
+            });
+
+            console.log(`   ✅ Added ${data.posts.length} posts with comments and reactions`);
           }
 
           // ============ FRIENDS ============
@@ -440,19 +486,39 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             });
           }
 
-          // ============ LIKES ============
+          // ============ LIKES (Things you liked - pages, posts, videos, etc.) ============
           if (path.includes('like') && path.endsWith('.html')) {
-            const linkMatches = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
-            linkMatches.slice(0, 200).forEach(link => {
-              const nameMatch = link.match(/>([^<]+)</);
-              if (nameMatch) {
-                const item = nameMatch[1].trim();
-                if (item.length > 2 && item.length < 200) {
-                  const timestamp = extractTimestamp(link);
-                  data.likes.push({ item, timestamp });
-                }
+            console.log("👍 LIKES FILE:", path);
+            const structuredData = extractStructuredData(content, path);
+            let count = 0;
+
+            structuredData.forEach(item => {
+              if (item.title) {
+                const type = item.title.match(/\b(page|post|video|photo|comment)\b/i)?.[1] || 'item';
+                data.likes.push({
+                  item: item.title,
+                  type,
+                  details: item.text.join(' ').substring(0, 200),
+                  timestamp: extractTimestamp(content)
+                });
+                count++;
+              }
+
+              if (item.links) {
+                item.links.forEach(linkText => {
+                  if (linkText.length > 2 && linkText.length < 200) {
+                    data.likes.push({
+                      item: linkText,
+                      type: 'page',
+                      timestamp: extractTimestamp(content)
+                    });
+                    count++;
+                  }
+                });
               }
             });
+
+            console.log(`   ✅ Added ${count} liked items (pages, posts, etc.)`);
           }
 
           // ============ CHECK-INS ============
@@ -477,10 +543,15 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
             structuredData.forEach(item => {
               if (item.title) {
+                const details = item.text.join(' ');
+                const rsvp = details.match(/\b(going|interested|maybe|not going|hosted?|invited)\b/i)?.[1] || null;
+                const location = details.match(/(?:at|@)\s+([^,\n]{5,100})/i)?.[1] || null;
+
                 const eventData = {
                   name: item.title,
-                  details: item.text.join(' '),
-                  links: item.links,
+                  details,
+                  rsvp,
+                  location,
                   timestamp: extractTimestamp(content),
                   source: path
                 };
@@ -488,13 +559,15 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 count++;
               }
 
-              // Also extract from table rows
               if (item.table_row) {
                 const rowText = item.table_row.join(' ');
                 if (rowText.length > 10 && rowText.length < 500) {
+                  const rsvp = rowText.match(/\b(going|interested|maybe|not going|hosted?|invited)\b/i)?.[1] || null;
+
                   data.events.push({
                     name: item.table_row[0] || 'Event',
                     details: rowText,
+                    rsvp,
                     timestamp: extractTimestamp(rowText),
                     source: path
                   });
@@ -503,31 +576,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
               }
             });
 
-            // Also look for event-specific patterns in the HTML
-            const eventPatterns = [
-              /Event by ([^<\n]+)/gi,
-              /Public.*Anyone on or off Facebook/gi,
-              /<h1[^>]*>([^<]+)<\/h1>/gi,
-              /<h2[^>]*>([^<]+)<\/h2>/gi
-            ];
-
-            eventPatterns.forEach(pattern => {
-              const matches = [...content.matchAll(pattern)];
-              matches.forEach(match => {
-                const text = match[1] || match[0];
-                if (text && text.length > 3 && text.length < 200) {
-                  data.events.push({
-                    name: text.trim(),
-                    details: '',
-                    timestamp: extractTimestamp(content),
-                    source: path
-                  });
-                  count++;
-                }
-              });
-            });
-
-            console.log(`   ✅ Added ${count} events`);
+            console.log(`   ✅ Added ${count} events with RSVP status`);
           }
 
           // ============ REVIEWS ============
@@ -540,10 +589,13 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
               if (item.title || (item.text && item.text.length > 0)) {
                 const reviewText = item.text.join(' ');
                 if (reviewText.length > 10) {
+                  const rating = extractRating(reviewText) || extractRating(content);
+                  const place = item.title || item.links?.[0] || '';
+
                   data.reviews.push({
-                    title: item.title || '',
+                    place,
                     text: reviewText.substring(0, 500),
-                    links: item.links,
+                    rating,
                     timestamp: extractTimestamp(content),
                     source: path
                   });
@@ -554,8 +606,11 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
               if (item.table_row) {
                 const rowText = item.table_row.join(' ');
                 if (rowText.length > 10) {
+                  const rating = extractRating(rowText);
+
                   data.reviews.push({
                     text: rowText.substring(0, 500),
+                    rating,
                     timestamp: extractTimestamp(rowText),
                     source: path
                   });
@@ -564,23 +619,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
               }
             });
 
-            // Also parse sections as fallback
-            const sections = content.split(/<div/gi);
-            sections.slice(0, 100).forEach(section => {
-              const text = parseHTML(section);
-              if (text.length > 30 && text.length < 800 && 
-                  !text.match(/^(Privacy|Terms|Cookies|You have no data)/i)) {
-                const timestamp = extractTimestamp(section);
-                data.reviews.push({ 
-                  text: text.substring(0, 400), 
-                  timestamp,
-                  source: path
-                });
-                count++;
-              }
-            });
-
-            console.log(`   ✅ Added ${count} reviews`);
+            console.log(`   ✅ Added ${count} reviews with ratings`);
           }
 
           // ============ GROUPS ============
@@ -658,9 +697,14 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
               if (item.title || (item.text && item.text.length > 0)) {
                 const itemText = item.text.join(' ');
                 if (itemText.length > 5) {
+                  const price = extractPrice(itemText) || extractPrice(content);
+                  const status = itemText.match(/\b(sold|available|pending|deleted)\b/i)?.[1] || "unknown";
+
                   data.marketplace.push({
                     title: item.title || '',
                     text: itemText.substring(0, 500),
+                    price,
+                    status,
                     links: item.links,
                     timestamp: extractTimestamp(content),
                     source: path
@@ -672,8 +716,13 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
               if (item.table_row) {
                 const rowText = item.table_row.join(' ');
                 if (rowText.length > 5) {
+                  const price = extractPrice(rowText);
+                  const status = rowText.match(/\b(sold|available|pending|deleted)\b/i)?.[1] || "unknown";
+
                   data.marketplace.push({
                     text: rowText.substring(0, 500),
+                    price,
+                    status,
                     timestamp: extractTimestamp(rowText),
                     source: path
                   });
@@ -682,7 +731,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
               }
             });
 
-            console.log(`   ✅ Added ${count} marketplace items`);
+            console.log(`   ✅ Added ${count} marketplace items with prices`);
           }
 
           // ============ REELS ============
