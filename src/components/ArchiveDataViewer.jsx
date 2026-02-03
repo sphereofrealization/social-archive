@@ -68,11 +68,18 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
       // Look for photo files
       const photoFiles = allFiles.filter(f => f.toLowerCase().includes('photo') && !f.toLowerCase().includes('review'));
-      console.log(`📸 Found ${photoFiles.length} photo files:`, photoFiles);
+      console.log(`📸 Found ${photoFiles.length} photo files:`);
+      photoFiles.forEach(f => console.log("     ", f));
+
+      // Look for video/movie files
+      const videoFiles = allFiles.filter(f => f.match(/\.(mp4|mov|avi|mkv)$/i) || f.toLowerCase().includes('video') || f.toLowerCase().includes('reel'));
+      console.log(`🎬 Found ${videoFiles.length} video files:`);
+      videoFiles.forEach(f => console.log("     ", f));
 
       // Look for review files
       const reviewFiles = allFiles.filter(f => f.toLowerCase().includes('review'));
-      console.log(`⭐ Found ${reviewFiles.length} review files:`, reviewFiles);
+      console.log(`⭐ Found ${reviewFiles.length} review files:`);
+      reviewFiles.forEach(f => console.log("     ", f));
       
       const data = {
         profile: { name: "", email: "" },
@@ -82,6 +89,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
         photos: [],
         comments: [],
         reels: [],
+        videos: [],
         checkins: [],
         likes: [],
         events: [],
@@ -284,45 +292,66 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // Photos - look for your_photos.html or posts with photos
-          if ((path.includes("your_photos.html") || path.includes("your_uncategorized_photos")) && path.endsWith(".html")) {
+          // Photos - look for your_photos.html or any photo-related files
+          if (path.toLowerCase().includes("photo") && !path.toLowerCase().includes("review") && (path.endsWith(".html") || path.endsWith(".json"))) {
             console.log("🔍 PHOTOS FILE:", path);
+            console.log("   FULL CONTENT:", content);
+
+            if (path.endsWith(".json")) {
+              try {
+                const jsonData = JSON.parse(content);
+                console.log("   JSON structure:", JSON.stringify(jsonData, null, 2).substring(0, 1000));
+
+                const photosList = jsonData.photos || jsonData.photo_album || [];
+                if (Array.isArray(photosList)) {
+                  photosList.forEach(photo => {
+                    data.photos.push({
+                      description: photo.title || photo.description || photo.uri || "Photo",
+                      timestamp: photo.creation_timestamp ? new Date(photo.creation_timestamp * 1000).toLocaleDateString() : ""
+                    });
+                  });
+                  console.log(`   ✅ Extracted ${photosList.length} photos from JSON`);
+                }
+              } catch (e) {
+                console.log("   ⚠️ Failed to parse:", e.message);
+              }
+            } else {
+              // HTML - extract ALL links and text
+              const allLinks = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
+              console.log(`   Found ${allLinks.length} links in HTML`);
+
+              allLinks.forEach((link, idx) => {
+                const text = parseHTML(link);
+                console.log(`   Photo ${idx}: "${text}"`);
+                if (text.length > 3 && text.length < 200) {
+                  data.photos.push({ description: text, timestamp: "" });
+                }
+              });
+
+              console.log(`   ✅ Extracted ${data.photos.length} total photos`);
+            }
+          }
+
+          // Videos/Movies - look for video files or video metadata
+          if ((path.match(/\.(mp4|mov|avi)$/i) || path.toLowerCase().includes("video")) && (path.endsWith(".html") || path.endsWith(".json"))) {
+            console.log("🎬 VIDEO FILE:", path);
             console.log("   First 1000 chars:", content.substring(0, 1000));
 
-            // Extract image references and captions
-            const imgMatches = content.match(/<img[^>]+>/gi) || [];
-            console.log(`   Found ${imgMatches.length} img tags`);
-
-            // Look for photo descriptions in links or text near images
-            const photoSections = content.split(/<img/i);
-            photoSections.forEach(section => {
-              if (section.length > 20) {
-                const text = parseHTML(section.substring(0, 300));
-                if (text.length > 5 && text.length < 200) {
-                  data.photos.push({ 
-                    description: text.substring(0, 150), 
-                    timestamp: extractTimestamp(section) 
+            if (path.endsWith(".json")) {
+              try {
+                const jsonData = JSON.parse(content);
+                const videosList = jsonData.videos || jsonData.videos_v2 || [];
+                if (Array.isArray(videosList)) {
+                  videosList.forEach(video => {
+                    data.videos.push({
+                      description: video.title || video.description || "Video",
+                      timestamp: video.creation_timestamp ? new Date(video.creation_timestamp * 1000).toLocaleDateString() : ""
+                    });
                   });
                 }
+              } catch (e) {
+                console.log("   Failed to parse video JSON");
               }
-            });
-
-            console.log(`   ✅ Extracted ${data.photos.length} photos from HTML`);
-          } else if (path.includes("/photos") && path.endsWith(".json") && !path.includes("review")) {
-            try {
-              const jsonData = JSON.parse(content);
-              const photosList = jsonData.photos || jsonData.photo_album || [];
-              if (Array.isArray(photosList)) {
-                photosList.forEach(photo => {
-                  data.photos.push({
-                    description: photo.title || photo.description || photo.uri || "Photo",
-                    timestamp: photo.creation_timestamp ? new Date(photo.creation_timestamp * 1000).toLocaleDateString() : ""
-                  });
-                });
-                console.log(`   ✅ Extracted ${photosList.length} photos from JSON`);
-              }
-            } catch (e) {
-              console.log("   ⚠️ Failed to parse photo JSON:", e.message);
             }
           }
 
@@ -530,6 +559,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
       console.log("Friends:", data.friends.length);
       console.log("CONVERSATIONS:", data.messages.length);
       console.log("Photos:", data.photos.length);
+      console.log("Videos:", data.videos.length);
       console.log("Comments:", data.comments.length);
       console.log("Reels:", data.reels.length);
       console.log("Check-ins:", data.checkins.length);
