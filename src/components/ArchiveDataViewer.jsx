@@ -129,11 +129,31 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             console.log("   Preview:", content.substring(0, 200).replace(/\s+/g, ' '));
           }
 
-          if (path.includes("profile_information") || path.includes("about_you")) {
-            const nameMatch = content.match(/name["\s:]+([^<\n"]+)/i);
+          if (path.includes("profile_information") || path.includes("about_you") || path.includes("profile")) {
+            console.log("🔍 PROFILE FILE:", path);
+            console.log("   Content preview:", content.substring(0, 1000));
+
+            // Try multiple patterns for name
+            let nameMatch = content.match(/name["\s:]+([^<\n"]+)/i);
+            if (!nameMatch) nameMatch = content.match(/<title>([^<]+)<\/title>/i);
+            if (!nameMatch) nameMatch = content.match(/Profile\s+of\s+([^<\n]+)/i);
+            if (!nameMatch) {
+              // Just grab first substantial text after "name" or in title
+              const allText = parseHTML(content.substring(0, 2000));
+              const words = allText.split(/\s+/).filter(w => w.length > 2 && w.length < 50);
+              if (words.length > 0) nameMatch = [null, words[0]];
+            }
+
             const emailMatch = content.match(/[\w\.-]+@[\w\.-]+\.\w+/);
-            if (nameMatch) data.profile.name = nameMatch[1].trim();
-            if (emailMatch) data.profile.email = emailMatch[0];
+
+            if (nameMatch) {
+              data.profile.name = nameMatch[1].trim();
+              console.log(`   ✅ Extracted name: ${data.profile.name}`);
+            }
+            if (emailMatch) {
+              data.profile.email = emailMatch[0];
+              console.log(`   ✅ Extracted email: ${data.profile.email}`);
+            }
           }
 
           if ((path.includes("posts") || path.includes("your_posts")) && path.endsWith(".html")) {
