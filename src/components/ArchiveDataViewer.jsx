@@ -222,14 +222,14 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // Messages - look for any JSON file with "message" in path
-          if (path.toLowerCase().includes("message") && path.endsWith(".json")) {
-            console.log("🔍 MESSAGE JSON FILE:", path);
+          // Messages - ONLY look for actual conversation files in inbox folders
+          if (path.includes("/inbox/") && path.endsWith(".json")) {
+            console.log("🔍 CONVERSATION FILE:", path);
             console.log("   Content preview:", content.substring(0, 500));
 
             try {
               const jsonData = JSON.parse(content);
-              console.log("   JSON structure:", JSON.stringify(jsonData).substring(0, 500));
+              console.log("   JSON keys:", Object.keys(jsonData));
 
               if (jsonData.messages && Array.isArray(jsonData.messages)) {
                 // Get conversation name from path or title
@@ -248,41 +248,10 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                     messages
                   });
                   console.log(`   ✅ Extracted ${messages.length} messages for: ${conversationName}`);
-                } else {
-                  console.log("   ❌ No valid messages found");
                 }
-              } else {
-                console.log("   ❌ No messages array in JSON");
               }
             } catch (e) {
-              console.log("   ⚠️ Failed to parse message JSON:", e.message);
-            }
-          }
-
-          // Also try HTML messages
-          if (path.toLowerCase().includes("message") && path.endsWith(".html")) {
-            console.log("🔍 MESSAGE HTML FILE:", path);
-            console.log("   Content preview:", content.substring(0, 500));
-
-            const conversationMatch = path.match(/inbox\/([^\/]+)\//);
-            const conversationWith = conversationMatch ? decodeURIComponent(conversationMatch[1]).replace(/_/g, ' ') : path.split('/').pop().replace('.html', '');
-
-            // Just extract all text as messages
-            const allText = parseHTML(content);
-            const chunks = allText.split(/\n/).filter(c => c.trim().length > 5);
-            
-            const messages = chunks.slice(0, 100).map(chunk => ({
-              sender: conversationWith,
-              text: chunk.trim().substring(0, 300),
-              timestamp: ""
-            }));
-
-            if (messages.length > 0) {
-              data.messages.push({
-                conversation_with: conversationWith,
-                messages
-              });
-              console.log(`   ✅ Extracted ${messages.length} messages for: ${conversationWith}`);
+              console.log("   ⚠️ Failed to parse:", e.message);
             }
           }
 

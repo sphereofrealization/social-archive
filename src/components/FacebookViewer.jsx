@@ -321,27 +321,31 @@ export default function FacebookViewer({ data }) {
         </TabsContent>
 
         <TabsContent value="photos" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {photos.length === 0 ? (
-                  <p className="col-span-full text-center text-gray-500 py-4">No photos found</p>
-                ) : (
-                  photos.map((photo, i) => (
-                    <div key={i} className="bg-gray-100 rounded-lg p-4 text-center">
-                      <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+          {photos.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                No photos found
+              </CardContent>
+            </Card>
+          ) : (
+            photos.map((photo, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <ImageIcon className="w-10 h-10 text-pink-600 flex-shrink-0" />
+                    <div className="flex-1">
                       {photo.description && (
-                        <p className="text-xs text-gray-600 mb-1">{photo.description}</p>
+                        <p className="text-gray-700 mb-1">{photo.description}</p>
                       )}
                       {photo.timestamp && (
                         <p className="text-xs text-gray-500">{photo.timestamp}</p>
                       )}
                     </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </TabsContent>
 
         <TabsContent value="comments" className="space-y-4 mt-4">
