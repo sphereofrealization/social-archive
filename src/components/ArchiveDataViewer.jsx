@@ -63,7 +63,8 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
       // Look specifically for friends files
       const friendsFiles = allFiles.filter(f => f.toLowerCase().includes('friend'));
-      console.log(`👥 Found ${friendsFiles.length} friends files:`, friendsFiles);
+      console.log(`👥 Found ${friendsFiles.length} friends files:`);
+      friendsFiles.forEach(f => console.log("     ", f));
 
       // Look for photo files
       const photoFiles = allFiles.filter(f => f.toLowerCase().includes('photo') && !f.toLowerCase().includes('review'));
@@ -199,19 +200,22 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // Friends - connections/friends/ folder - ONLY get your_friends.html or friends.json
-          if ((path.includes("your_friends.html") || path.includes("friends.json")) && !path.includes("sent_friend_requests") && !path.includes("people_you_may_know")) {
+          // Friends - ANY file with "friend" in path
+          if (path.toLowerCase().includes("friend") && (path.endsWith(".html") || path.endsWith(".json"))) {
             console.log("🔍 FRIENDS FILE:", path);
-            console.log("   FULL CONTENT:", content);
+            console.log("   FULL CONTENT LENGTH:", content.length);
+            console.log("   FIRST 2000 CHARS:", content.substring(0, 2000));
 
             if (path.endsWith(".json")) {
               try {
                 const jsonData = JSON.parse(content);
-                console.log("   JSON structure:", JSON.stringify(jsonData, null, 2));
+                console.log("   FULL JSON:", JSON.stringify(jsonData, null, 2));
 
                 let friendsList = jsonData.friends_v2 || jsonData.friends || [];
                 if (Array.isArray(friendsList)) {
-                  friendsList.forEach(friend => {
+                  console.log(`   Processing ${friendsList.length} friends from array`);
+                  friendsList.forEach((friend, idx) => {
+                    console.log(`   Friend ${idx}:`, friend);
                     const name = friend.name || friend.title || "";
                     if (name.length > 2) {
                       data.friends.push({ 
@@ -226,27 +230,28 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 console.log("   ⚠️ Failed to parse JSON:", e.message);
               }
             } else {
-              // HTML - extract ALL text from <a> links that look like names
+              // HTML - try MULTIPLE extraction methods
+              console.log("   Trying extraction method 1: <a> tags");
               const linkMatches = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
-              console.log(`   Found ${linkMatches.length} total links`);
+              console.log(`   Found ${linkMatches.length} links`);
 
-              const badWords = /^(disabled|false|true|name|restricted|close\s*friends|acquaintances|following|follow|blocked|unfriend|hide)$/i;
-
-              linkMatches.forEach(link => {
+              linkMatches.forEach((link, idx) => {
                 const nameMatch = link.match(/>([^<]+)</);
                 if (nameMatch) {
                   const name = nameMatch[1].trim();
+                  console.log(`   Link ${idx}: "${name}"`);
 
-                  // Accept if it has spaces (like "Lucy Davis") or mixed case
-                  const looksLikeName = name.includes(" ") || (name.match(/[A-Z]/) && name.match(/[a-z]/));
-
-                  if (looksLikeName && !badWords.test(name) && name.length >= 3 && name.length < 50) {
+                  // Accept anything that looks like a real name (has space or mixed case)
+                  if ((name.includes(" ") || (name.match(/[A-Z]/) && name.match(/[a-z]/))) && 
+                      name.length >= 3 && name.length < 50 &&
+                      !name.match(/^(disabled|false|true|name|restricted|close|acquaintances|following)$/i)) {
                     data.friends.push({ name, date_added: "" });
+                    console.log(`   ✅ Added friend: ${name}`);
                   }
                 }
               });
 
-              console.log(`   ✅ Extracted ${data.friends.length} friends from HTML`);
+              console.log(`   Total friends after <a> extraction: ${data.friends.length}`);
             }
           }
 
