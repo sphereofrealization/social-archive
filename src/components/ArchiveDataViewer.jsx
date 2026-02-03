@@ -172,15 +172,17 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
             }
           }
 
-          // Messages - look in messages/inbox/*/message_*.json files
-          if (path.match(/messages\/inbox\/[^\/]+\/message.*\.json$/i)) {
-            console.log("Found message JSON file:", path);
+          // Messages - look for any JSON file with "message" in path
+          if (path.toLowerCase().includes("message") && path.endsWith(".json")) {
+            console.log("🔍 Checking message JSON file:", path);
 
             try {
               const jsonData = JSON.parse(content);
+              console.log("JSON keys:", Object.keys(jsonData));
+
               if (jsonData.messages && Array.isArray(jsonData.messages)) {
                 // Get conversation name from path or title
-                const pathMatch = path.match(/messages\/inbox\/([^\/]+)\//);
+                const pathMatch = path.match(/inbox\/([^\/]+)\//);
                 const conversationName = jsonData.title || (pathMatch ? decodeURIComponent(pathMatch[1]).replace(/_/g, ' ') : "Unknown");
 
                 const messages = jsonData.messages.slice(0, 100).map(msg => ({
@@ -194,18 +196,20 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                     conversation_with: conversationName,
                     messages
                   });
-                  console.log(`✓ Extracted ${messages.length} messages for conversation: ${conversationName}`);
+                  console.log(`✅ Extracted ${messages.length} messages for: ${conversationName}`);
                 }
               }
             } catch (e) {
-              console.error("Failed to parse message JSON:", path, e);
+              console.log("⚠️ Failed to parse message JSON:", e.message);
             }
           }
 
           // Also try HTML messages
-          if (path.includes("messages") && path.endsWith(".html")) {
-            const conversationMatch = path.match(/messages\/inbox\/([^\/]+)\//);
-            const conversationWith = conversationMatch ? decodeURIComponent(conversationMatch[1]).replace(/_/g, ' ') : "Unknown";
+          if (path.toLowerCase().includes("message") && path.endsWith(".html")) {
+            console.log("🔍 Checking message HTML file:", path);
+
+            const conversationMatch = path.match(/inbox\/([^\/]+)\//);
+            const conversationWith = conversationMatch ? decodeURIComponent(conversationMatch[1]).replace(/_/g, ' ') : path.split('/').pop().replace('.html', '');
 
             const messageBlocks = content.split(/<div[^>]*class="[^"]*message[^"]*"[^>]*>/gi);
             const messages = [];
@@ -230,7 +234,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
                 conversation_with: conversationWith,
                 messages: messages.slice(0, 100)
               });
-              console.log(`✓ Extracted ${messages.length} messages from HTML for ${conversationWith}`);
+              console.log(`✅ Extracted ${messages.length} messages for: ${conversationWith}`);
             }
           }
 
