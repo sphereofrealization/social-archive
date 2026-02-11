@@ -52,13 +52,22 @@ export default function Archives() {
   });
   const [uploading, setUploading] = useState(false);
   const [expandedArchive, setExpandedArchive] = useState(null);
+  const [user, setUser] = useState(null);
 
   const queryClient = useQueryClient();
 
+  React.useEffect(() => {
+    base44.auth.me().then(setUser).catch(() => setUser(null));
+  }, []);
+
   const { data: archives = [], isLoading } = useQuery({
-    queryKey: ['archives'],
-    queryFn: () => base44.entities.Archive.list('-updated_date'),
+    queryKey: ['archives', user?.email],
+    queryFn: async () => {
+      if (!user) return [];
+      return base44.entities.Archive.filter({ created_by: user.email }, '-updated_date');
+    },
     initialData: [],
+    enabled: !!user,
   });
 
   const updateArchiveMutation = useMutation({

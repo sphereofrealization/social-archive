@@ -47,6 +47,7 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
+import ArchiveFileTree from './pages/ArchiveFileTree';
 import Archives from './pages/Archives';
 import Checklist from './pages/Checklist';
 import Dashboard from './pages/Dashboard';
@@ -57,11 +58,11 @@ import guideTiktok from './pages/Guide_TikTok';
 import guideTwitter from './pages/Guide_Twitter';
 import Guides from './pages/Guides';
 import Home from './pages/Home';
-import ArchiveFileTree from './pages/ArchiveFileTree';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
+    "ArchiveFileTree": ArchiveFileTree,
     "Archives": Archives,
     "Checklist": Checklist,
     "Dashboard": Dashboard,
@@ -72,7 +73,6 @@ export const PAGES = {
     "Guide_Twitter": guideTwitter,
     "Guides": Guides,
     "Home": Home,
-    "ArchiveFileTree": ArchiveFileTree,
 }
 
 export const pagesConfig = {
