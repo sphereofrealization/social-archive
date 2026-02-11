@@ -361,72 +361,107 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
           // ============ FRIENDS ============
           if (path.includes('friend') && (path.endsWith('.html') || path.endsWith('.json'))) {
-            console.log("👥 FRIENDS FILE:", path);
+           console.log("👥 FRIENDS FILE:", path);
 
-            if (path.endsWith('.json')) {
-              try {
-                const jsonData = JSON.parse(content);
-                const friendsList = jsonData.friends_v2 || jsonData.friends || [];
-                if (Array.isArray(friendsList)) {
-                  friendsList.forEach(friend => {
-                    const name = friend.name || friend.title || "";
-                    if (name.length > 2) {
-                      data.friends.push({ 
-                        name, 
-                        date_added: friend.timestamp ? new Date(friend.timestamp * 1000).toLocaleDateString() : ""
-                      });
-                    }
-                  });
-                  console.log(`   ✅ Added ${friendsList.length} friends from JSON`);
-                }
-              } catch (e) {
-                console.error("   ❌ Failed to parse friends JSON:", e.message);
-              }
-            } else {
-              // Parse HTML for friends - PRIMARY STRATEGY: Extract from <h2> tags (actual friend sections)
-              let count = 0;
+           if (path.endsWith('.json')) {
+             try {
+               const jsonData = JSON.parse(content);
+               console.log("   JSON structure:", Object.keys(jsonData));
 
-              // Strategy 1: Look for <h2> tags with class "_a6-h" (friend name section headers in your_friends.html)
-              const h2Matches = content.match(/<h2[^>]*class="[^"]*_a6-h[^"]*"[^>]*>([^<]+)<\/h2>/gi) || [];
-              h2Matches.forEach(h2Match => {
-                const name = h2Match.replace(/<[^>]+>/g, '').trim();
-                if (name.length >= 3 && name.length < 100 && name.match(/\s/)) { // Real names have spaces
-                  if (!data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
-                    data.friends.push({ name, date_added: "", source: path });
-                    count++;
-                  }
-                }
-              });
+               // Try multiple possible JSON structures
+               let friendsList = [];
 
-              // Strategy 2: If no h2 matches, try <a> tags with href (fallback for other friend list formats)
-              if (count === 0) {
-                const excludedLabels = new Set([
-                  'name', 'friend', 'friends', 'restricted', 'close friends', 'close', 
-                  'acquaintances', 'acquaintance', 'date', 'privacy', 'settings', 
-                  'notification', 'disabled', 'false', 'true', 'following', 'followers',
-                  'list', 'remove', 'unfriend', 'block', 'add', 'hidden'
-                ]);
+               if (jsonData.friends_v2) {
+                 friendsList = jsonData.friends_v2;
+                 console.log("   Found friends_v2 array");
+               } else if (jsonData.friends) {
+                 friendsList = jsonData.friends;
+                 console.log("   Found friends array");
+               } else if (Array.isArray(jsonData)) {
+                 friendsList = jsonData;
+                 console.log("   JSON is direct array");
+               }
 
-                const linkMatches = content.match(/<a[^>]*href="[^"]*"[^>]*>([^<]{2,100})<\/a>/gi) || [];
-                linkMatches.forEach(link => {
-                  const name = link.replace(/<[^>]+>/g, '').trim();
-                  const nameLower = name.toLowerCase();
+               if (Array.isArray(friendsList) && friendsList.length > 0) {
+                 console.log("   Sample friend object:", JSON.stringify(friendsList[0]));
 
-                  if (name.length >= 3 && 
-                      name.length < 100 &&
-                      name.match(/\s/) && // Real names have spaces
-                      !excludedLabels.has(nameLower) &&
-                      !nameLower.match(/\b(friend|list|group|page|profile)\b/i)) {
-                    if (!data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
-                      data.friends.push({ name, date_added: "", source: path });
-                      count++;
-                    }
-                  }
-                });
-              }
+                 friendsList.forEach(friend => {
+                   const name = friend.name || friend.title || "";
+                   if (name.length > 2) {
+                     data.friends.push({ 
+                       name, 
+                       date_added: friend.timestamp ? new Date(friend.timestamp * 1000).toLocaleDateString() : ""
+                     });
+                   }
+                 });
+                 console.log(`   ✅ Added ${friendsList.length} friends from JSON`);
+               } else {
+                 console.log("   ⚠️ No valid friends array found in JSON");
+               }
+             } catch (e) {
+               console.error("   ❌ Failed to parse friends JSON:", e.message);
+             }
+           } else {
+             // Parse HTML for friends - MULTIPLE STRATEGIES
+             let count = 0;
 
-              console.log(`   ✅ Added ${count} friends from HTML (${path})`);
-            }
+             // Strategy 1: <h2> tags with class "_a6-h"
+             const h2Matches = content.match(/<h2[^>]*>([^<]+)<\/h2>/gi) || [];
+             h2Matches.forEach(h2Match => {
+               const name = h2Match.replace(/<[^>]+>/g, '').trim();
+               if (name.length >= 3 && name.length < 100 && name.match(/[a-z]/i)) {
+                 if (!data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
+                   data.friends.push({ name, date_added: "", source: path });
+                   count++;
+                 }
+               }
+             });
+
+             // Strategy 2: <div> tags with specific classes (Facebook often uses divs for content)
+             const divMatches = content.match(/<div[^>]*>([^<]{3,100})<\/div>/gi) || [];
+             divMatches.forEach(divMatch => {
+               const name = divMatch.replace(/<[^>]+>/g, '').trim();
+               const nameLower = name.toLowerCase();
+
+               const excludedTerms = ['name', 'friend', 'date', 'privacy', 'settings', 'disabled', 
+                                     'false', 'true', 'following', 'followers', 'list', 'add', 'remove'];
+               const hasExcludedTerm = excludedTerms.some(term => nameLower === term || nameLower.includes(term));
+
+               if (name.length >= 3 && 
+                   name.length < 100 &&
+                   name.match(/[a-z]/i) && 
+                   !hasExcludedTerm &&
+                   !name.match(/^\d+$/) &&
+                   !data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
+                 data.friends.push({ name, date_added: "", source: path });
+                 count++;
+               }
+             });
+
+             // Strategy 3: <a> tags
+             const linkMatches = content.match(/<a[^>]*>([^<]{2,100})<\/a>/gi) || [];
+             linkMatches.forEach(link => {
+               const name = link.replace(/<[^>]+>/g, '').trim();
+               const nameLower = name.toLowerCase();
+
+               const excludedTerms = ['name', 'friend', 'date', 'privacy', 'settings', 'disabled',
+                                     'false', 'true', 'following', 'followers', 'list', 'add', 'remove'];
+               const hasExcludedTerm = excludedTerms.some(term => nameLower === term || nameLower.includes(term));
+
+               if (name.length >= 3 && 
+                   name.length < 100 &&
+                   name.match(/[a-z]/i) &&
+                   !hasExcludedTerm &&
+                   !name.match(/^\d+$/) &&
+                   !data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
+                 data.friends.push({ name, date_added: "", source: path });
+                 count++;
+               }
+             });
+
+             console.log(`   ✅ Added ${count} friends from HTML (${path})`);
+             console.log(`   Total friends so far: ${data.friends.length}`);
+           }
           }
 
           // ============ MESSAGES - READ ALL JSON FILES IN MESSAGES/INBOX FOLDERS ============
