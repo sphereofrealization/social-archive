@@ -65,22 +65,6 @@ export default function Dashboard() {
 
   const completedCount = archives.filter(a => a.status === 'organized' || a.status === 'deleted').length;
 
-  const setupCors = async () => {
-    setSettingUpCors(true);
-    setCorsMessage(null);
-    try {
-      const response = await base44.functions.invoke('setupDreamhostCors', {});
-      if (response.data.success) {
-        setCorsMessage({ type: 'success', text: 'CORS configured successfully! You can now upload and view files.' });
-      } else {
-        setCorsMessage({ type: 'error', text: response.data.error });
-      }
-    } catch (error) {
-      setCorsMessage({ type: 'error', text: error.message });
-    }
-    setSettingUpCors(false);
-  };
-
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-8">
