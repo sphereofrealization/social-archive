@@ -28,7 +28,7 @@ export default function PasswordLogin() {
 
     setLoading(true);
     try {
-      const response = await base44.functions.invoke('simpleAuth', { password });
+      const response = await base44.functions.invoke('passwordlessAuth', { password });
       
       if (response.data?.success && response.data?.sessionToken) {
         localStorage.setItem('session_token', response.data.sessionToken);

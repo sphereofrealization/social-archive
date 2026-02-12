@@ -63,7 +63,7 @@ export default function Layout({ children, currentPageName }) {
       }
 
       try {
-        const response = await base44.functions.invoke('simpleAuth', { 
+        const response = await base44.functions.invoke('passwordlessAuth', { 
           action: 'validate',
           sessionToken 
         });
