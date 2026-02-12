@@ -55,27 +55,30 @@ export default function Layout({ children, currentPageName }) {
     let isCancelled = false;
 
     const checkAuth = async () => {
-      const authToken = localStorage.getItem('auth_token');
+      const sessionToken = localStorage.getItem('session_token');
       
-      if (!authToken) {
+      if (!sessionToken) {
         window.location.href = createPageUrl("PasswordLogin");
         return;
       }
 
       try {
-        const response = await base44.functions.invoke('validateAuth', { authToken });
+        const response = await base44.functions.invoke('simpleAuth', { 
+          action: 'validate',
+          sessionToken 
+        });
         
         if (isCancelled) return;
         
-        if (response.data?.valid && response.data?.user) {
-          setUser(response.data.user);
+        if (response.data?.valid) {
+          setUser({ full_name: 'User', email: 'user@archive.local' });
         } else {
-          localStorage.removeItem('auth_token');
+          localStorage.removeItem('session_token');
           window.location.href = createPageUrl("PasswordLogin");
         }
       } catch (err) {
         if (isCancelled) return;
-        localStorage.removeItem('auth_token');
+        localStorage.removeItem('session_token');
         window.location.href = createPageUrl("PasswordLogin");
       }
     };
@@ -86,7 +89,7 @@ export default function Layout({ children, currentPageName }) {
   }, [currentPageName]);
 
   const handleLogout = () => {
-    localStorage.removeItem('auth_token');
+    localStorage.removeItem('session_token');
     window.location.href = createPageUrl("PasswordLogin");
   };
 
