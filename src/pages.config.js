@@ -58,6 +58,7 @@ import guideTiktok from './pages/Guide_TikTok';
 import guideTwitter from './pages/Guide_Twitter';
 import Guides from './pages/Guides';
 import Home from './pages/Home';
+import PasswordLogin from './pages/PasswordLogin';
 import __Layout from './Layout.jsx';
 
 
@@ -73,6 +74,7 @@ export const PAGES = {
     "Guide_Twitter": guideTwitter,
     "Guides": Guides,
     "Home": Home,
+    "PasswordLogin": PasswordLogin,
 }
 
 export const pagesConfig = {
