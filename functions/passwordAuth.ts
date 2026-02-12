@@ -32,9 +32,12 @@ Deno.serve(async (req) => {
             });
         }
         
+        // Generate magic link for authentication
+        const magicLink = await base44.asServiceRole.auth.createMagicLink(userEmail);
+        
         return Response.json({ 
             success: true,
-            userEmail: userEmail
+            magicLink: magicLink
         });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });

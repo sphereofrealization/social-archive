@@ -37,11 +37,11 @@ export default function PasswordLogin() {
     try {
       const { data } = await base44.functions.invoke('passwordAuth', { password });
       
-      if (data.success) {
-        // Store password hash for re-login
+      if (data.success && data.magicLink) {
+        // Store password for re-login
         localStorage.setItem('archive_password', password);
-        // Redirect to dashboard
-        window.location.href = createPageUrl("Dashboard");
+        // Use magic link to authenticate
+        window.location.href = data.magicLink;
       }
     } catch (err) {
       setError(err.message || "Login failed");
