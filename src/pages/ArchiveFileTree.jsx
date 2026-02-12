@@ -26,6 +26,9 @@ export default function ArchiveFileTree() {
       setLoading(true);
       const response = await fetch(archiveUrl);
       const blob = await response.blob();
+      
+      // Import JSZip dynamically to avoid bundling issues
+      const JSZip = (await import('jszip')).default;
       const zip = await JSZip.loadAsync(blob);
 
       const tree = buildFileTree(zip.files);
