@@ -60,10 +60,6 @@ Deno.serve(async (req) => {
         }
 
         if (action === 'complete') {
-            const uploadId = formData.get('uploadId');
-            const fileKey = formData.get('fileKey');
-            const parts = JSON.parse(formData.get('parts'));
-
             const command = new CompleteMultipartUploadCommand({
                 Bucket: bucket,
                 Key: fileKey,
