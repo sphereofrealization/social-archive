@@ -53,9 +53,6 @@ const platforms = [
 ];
 
 export default function Dashboard() {
-  const [settingUpCors, setSettingUpCors] = useState(false);
-  const [corsMessage, setCorsMessage] = useState(null);
-
   const { data: archives = [] } = useQuery({
     queryKey: ['archives'],
     queryFn: () => base44.entities.Archive.list('-updated_date'),
