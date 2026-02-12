@@ -45,12 +45,10 @@ const navigationItems = [
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
   const [user, setUser] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     // Skip auth check on login page
     if (currentPageName === "PasswordLogin") {
-      setLoading(false);
       return;
     }
 
@@ -60,7 +58,7 @@ export default function Layout({ children, currentPageName }) {
       const authToken = localStorage.getItem('auth_token');
       
       if (!authToken) {
-        window.location.replace(createPageUrl("PasswordLogin"));
+        if (mounted) window.location.replace(createPageUrl("PasswordLogin"));
         return;
       }
 
@@ -70,12 +68,12 @@ export default function Layout({ children, currentPageName }) {
         
         if (data.valid && data.user) {
           setUser(data.user);
-          setLoading(false);
         } else {
           localStorage.removeItem('auth_token');
           window.location.replace(createPageUrl("PasswordLogin"));
         }
       } catch (err) {
+        console.error('Auth error:', err);
         if (!mounted) return;
         localStorage.removeItem('auth_token');
         window.location.replace(createPageUrl("PasswordLogin"));
@@ -97,9 +95,13 @@ export default function Layout({ children, currentPageName }) {
     return children;
   }
 
-  // Don't render anything until auth is verified
+  // Show loading while checking auth
   if (!user) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black">
+        <div className="text-white text-lg">Loading...</div>
+      </div>
+    );
   }
 
   return (
