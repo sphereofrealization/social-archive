@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Loader2, ChevronDown, ChevronRight, FileText, Folder } from "lucide-react";
-import JSZip from "jszip";
 
 export default function ArchiveFileTree() {
   const [searchParams] = useSearchParams();
