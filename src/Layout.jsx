@@ -88,6 +88,21 @@ export default function Layout({ children, currentPageName }) {
     return () => { isCancelled = true; };
   }, [currentPageName]);
 
+  React.useEffect(() => {
+    // Auto-configure CORS on first load
+    const corsConfigured = localStorage.getItem('cors_configured');
+    if (!corsConfigured && currentPageName !== "PasswordLogin") {
+      base44.functions.invoke('setupDreamhostCors', {})
+        .then(() => {
+          localStorage.setItem('cors_configured', 'true');
+          console.log('✅ CORS configured automatically');
+        })
+        .catch(err => {
+          console.error('CORS setup failed:', err);
+        });
+    }
+  }, [currentPageName]);
+
   const handleLogout = () => {
     localStorage.removeItem('session_token');
     window.location.href = createPageUrl("PasswordLogin");
