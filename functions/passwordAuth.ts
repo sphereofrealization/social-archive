@@ -13,31 +13,28 @@ Deno.serve(async (req) => {
         const data = encoder.encode(password);
         const hashBuffer = await crypto.subtle.digest('SHA-256', data);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        
-        // Use hash as email identifier
-        const userEmail = `user_${hashHex}@archive.local`;
+        const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         
         const base44 = createClientFromRequest(req);
         
-        // Check if user exists
-        const existingUsers = await base44.asServiceRole.entities.User.filter({ email: userEmail });
+        // Check if user account exists for this password
+        const existingUsers = await base44.asServiceRole.entities.User.filter({ 
+            email: `user_${passwordHash}@archive.local` 
+        });
         
         if (existingUsers.length === 0) {
-            // Create new user with this password-hash
+            // Create new account
             await base44.asServiceRole.entities.User.create({
-                email: userEmail,
-                full_name: `User ${hashHex.substring(0, 8)}`,
+                email: `user_${passwordHash}@archive.local`,
+                full_name: `User ${passwordHash.substring(0, 8)}`,
                 role: 'user'
             });
         }
         
-        // Generate magic link using inviteUser which creates auth link
-        await base44.asServiceRole.users.inviteUser(userEmail, 'user');
-        
+        // Return the password hash as auth token
         return Response.json({ 
             success: true,
-            userEmail: userEmail
+            authToken: passwordHash
         });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });

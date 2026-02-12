@@ -48,13 +48,28 @@ export default function Layout({ children, currentPageName }) {
 
   React.useEffect(() => {
     const checkAuth = async () => {
-      const isAuth = await base44.auth.isAuthenticated();
-      if (isAuth) {
-        const userData = await base44.auth.me();
-        setUser(userData);
-      } else {
+      const authToken = localStorage.getItem('auth_token');
+      
+      if (!authToken) {
         setUser(null);
-        // Redirect to password login if not authenticated
+        if (currentPageName !== "PasswordLogin") {
+          window.location.href = createPageUrl("PasswordLogin");
+        }
+        return;
+      }
+
+      try {
+        const { data } = await base44.functions.invoke('validateAuth', { authToken });
+        if (data.valid && data.user) {
+          setUser(data.user);
+        } else {
+          localStorage.removeItem('auth_token');
+          if (currentPageName !== "PasswordLogin") {
+            window.location.href = createPageUrl("PasswordLogin");
+          }
+        }
+      } catch (err) {
+        localStorage.removeItem('auth_token');
         if (currentPageName !== "PasswordLogin") {
           window.location.href = createPageUrl("PasswordLogin");
         }
@@ -64,7 +79,7 @@ export default function Layout({ children, currentPageName }) {
   }, [currentPageName]);
 
   const handleLogout = () => {
-    localStorage.removeItem('archive_password');
+    localStorage.removeItem('auth_token');
     window.location.href = createPageUrl("PasswordLogin");
   };
 
