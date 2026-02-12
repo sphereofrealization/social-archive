@@ -47,13 +47,20 @@ export default function Layout({ children, currentPageName }) {
   const [user, setUser] = React.useState(null);
 
   React.useEffect(() => {
-    base44.auth.me().then(setUser).catch(() => {
-      setUser(null);
-      // Redirect to password login if not authenticated
-      if (currentPageName !== "PasswordLogin") {
-        window.location.href = createPageUrl("PasswordLogin");
+    const checkAuth = async () => {
+      const isAuth = await base44.auth.isAuthenticated();
+      if (isAuth) {
+        const userData = await base44.auth.me();
+        setUser(userData);
+      } else {
+        setUser(null);
+        // Redirect to password login if not authenticated
+        if (currentPageName !== "PasswordLogin") {
+          window.location.href = createPageUrl("PasswordLogin");
+        }
       }
-    });
+    };
+    checkAuth();
   }, [currentPageName]);
 
   const handleLogout = () => {
