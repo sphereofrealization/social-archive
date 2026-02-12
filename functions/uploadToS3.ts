@@ -12,6 +12,8 @@ Deno.serve(async (req) => {
 
         const body = await req.json();
         const { action, fileName, uploadId, fileKey, partNumber, chunkBase64, parts } = body;
+        
+        console.log('Upload action:', action);
 
         const s3Client = new S3Client({
             region: 'us-east-1',
