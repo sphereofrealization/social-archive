@@ -19,16 +19,14 @@ Deno.serve(async (req) => {
 
     console.log("Downloading archive from:", fileUrl);
     
-    // Fetch the file - add DreamHost auth headers if needed
-    const response = await fetch(fileUrl, {
-      headers: {
-        'Authorization': `AWS ${Deno.env.get('DREAMHOST_ACCESS_KEY')}:${Deno.env.get('DREAMHOST_SECRET_KEY')}`,
-      }
-    });
+    // Fetch the file (S3 URL should be pre-signed/public)
+    const response = await fetch(fileUrl);
     
     if (!response.ok) {
-      console.error(`Fetch failed with status ${response.status}`);
-      return Response.json({ error: `Failed to fetch file: ${response.status}` }, { status: 400 });
+      console.error(`Fetch failed with status ${response.status}`, response.statusText);
+      const errorText = await response.text();
+      console.error("Error response:", errorText);
+      return Response.json({ error: `Failed to fetch file: ${response.status} ${response.statusText}` }, { status: 400 });
     }
     
     const blob = await response.blob();
