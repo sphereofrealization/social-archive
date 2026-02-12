@@ -39,8 +39,14 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
     setError(null);
 
     try {
-      console.log("Downloading archive...");
+      console.log("Downloading archive from:", fileUrl);
       const response = await fetch(fileUrl);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      console.log("Archive download successful, size:", response.headers.get('content-length'));
       const blob = await response.blob();
 
       console.log("Unzipping archive...");
