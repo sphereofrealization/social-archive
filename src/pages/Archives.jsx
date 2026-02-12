@@ -94,7 +94,7 @@ export default function Archives() {
     
     try {
         const file = uploadData.file;
-        const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+        const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks for better progress feedback
 
         // Start multipart upload
         const { data: startData } = await base44.functions.invoke('uploadToS3', {
