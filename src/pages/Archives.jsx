@@ -94,21 +94,60 @@ export default function Archives() {
     
     try {
         const file = uploadData.file;
+        const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
 
-        // Upload directly using Core.UploadFile
-        const uploadFormData = new FormData();
-        uploadFormData.append('file', file);
+        // Start multipart upload
+        const { data: startData } = await base44.functions.invoke('uploadToS3', {
+          action: 'start',
+          fileName: file.name
+        });
+        const { uploadId, fileKey } = startData;
 
-        setUploadProgress(50);
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        setUploadProgress(100);
+        // Upload chunks
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        const uploadedParts = [];
+
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, file.size);
+          const chunk = file.slice(start, end);
+
+          // Convert chunk to base64
+          const reader = new FileReader();
+          const chunkBase64 = await new Promise((resolve) => {
+            reader.onload = () => {
+              const base64 = reader.result.split(',')[1];
+              resolve(base64);
+            };
+            reader.readAsDataURL(chunk);
+          });
+
+          const { data: partData } = await base44.functions.invoke('uploadToS3', {
+            action: 'upload',
+            uploadId,
+            fileKey,
+            partNumber: i + 1,
+            chunkBase64
+          });
+          uploadedParts.push(partData);
+
+          setUploadProgress(Math.round(((i + 1) / totalChunks) * 100));
+        }
+
+        // Complete multipart upload
+        const { data: completeData } = await base44.functions.invoke('uploadToS3', {
+          action: 'complete',
+          uploadId,
+          fileKey,
+          parts: uploadedParts
+        });
 
         const sessionToken = localStorage.getItem('session_token');
         await base44.entities.Archive.create({
           account_id: sessionToken,
           platform: uploadData.platform,
           status: "downloaded",
-          file_url: file_url,
+          file_url: completeData.fileUrl,
           file_name: file.name,
           file_size: file.size,
           download_date: uploadData.download_date || new Date().toISOString().split('T')[0],
