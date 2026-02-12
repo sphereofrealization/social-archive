@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import JSZip from 'npm:jszip@3.10.1';
+import { S3Client, GetObjectCommand } from 'npm:@aws-sdk/client-s3@3.500.0';
 
 Deno.serve(async (req) => {
   try {
@@ -18,13 +19,41 @@ Deno.serve(async (req) => {
     }
 
     console.log("Downloading archive from:", fileUrl);
-    const response = await fetch(fileUrl);
     
-    if (!response.ok) {
-      return Response.json({ error: `Failed to fetch file: ${response.status}` }, { status: 400 });
+    // Extract bucket and key from S3 URL
+    const urlMatch = fileUrl.match(/https:\/\/s3\..+?\.dream\.io\/([^\/]+)\/(.+)/);
+    if (!urlMatch) {
+      return Response.json({ error: 'Invalid S3 URL format' }, { status: 400 });
     }
     
-    const blob = await response.blob();
+    const bucket = urlMatch[1];
+    const key = urlMatch[2];
+    
+    // Create S3 client with DreamHost credentials
+    const s3Client = new S3Client({
+      region: 'us-east-005',
+      endpoint: Deno.env.get('DREAMHOST_ENDPOINT'),
+      credentials: {
+        accessKeyId: Deno.env.get('DREAMHOST_ACCESS_KEY'),
+        secretAccessKey: Deno.env.get('DREAMHOST_SECRET_KEY'),
+      },
+      forcePathStyle: true,
+    });
+    
+    // Download file from S3
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
+    
+    const response = await s3Client.send(command);
+    
+    // Convert response body to blob
+    const chunks = [];
+    for await (const chunk of response.Body) {
+      chunks.push(chunk);
+    }
+    const blob = new Blob(chunks, { type: 'application/zip' });
     console.log("Archive downloaded, size:", blob.size);
 
     // Load and parse the ZIP
