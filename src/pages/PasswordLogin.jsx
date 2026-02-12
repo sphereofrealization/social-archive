@@ -16,7 +16,7 @@ export default function PasswordLogin() {
   useEffect(() => {
     const authToken = localStorage.getItem('auth_token');
     if (authToken) {
-      window.location.replace(createPageUrl("Dashboard"));
+      window.location.href = createPageUrl("Dashboard");
     } else {
       setCheckingAuth(false);
     }
@@ -34,20 +34,20 @@ export default function PasswordLogin() {
     setLoading(true);
     try {
       const response = await base44.functions.invoke('passwordAuth', { password });
-      console.log('Login response:', response);
       
       if (response.data?.success && response.data?.authToken) {
         localStorage.setItem('auth_token', response.data.authToken);
-        console.log('Token stored, redirecting...');
-        window.location.replace(createPageUrl("Dashboard"));
+        setTimeout(() => {
+          window.location.href = createPageUrl("Dashboard");
+        }, 100);
       } else {
-        setError("Login failed - invalid response");
+        setError("Login failed - please try again");
+        setLoading(false);
       }
     } catch (err) {
-      console.error('Login error:', err);
-      setError(err.response?.data?.error || err.message || "Login failed");
+      setError(err.response?.data?.error || "Login failed - please try again");
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   if (checkingAuth) {

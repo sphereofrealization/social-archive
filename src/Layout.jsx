@@ -52,46 +52,42 @@ export default function Layout({ children, currentPageName }) {
       return;
     }
 
-    let mounted = true;
+    let isCancelled = false;
 
     const checkAuth = async () => {
       const authToken = localStorage.getItem('auth_token');
-      console.log('Checking auth, token exists:', !!authToken);
       
       if (!authToken) {
-        if (mounted) window.location.replace(createPageUrl("PasswordLogin"));
+        window.location.href = createPageUrl("PasswordLogin");
         return;
       }
 
       try {
         const response = await base44.functions.invoke('validateAuth', { authToken });
-        console.log('Validation response:', response);
-        if (!mounted) return;
+        
+        if (isCancelled) return;
         
         if (response.data?.valid && response.data?.user) {
-          console.log('User validated:', response.data.user);
           setUser(response.data.user);
         } else {
-          console.log('Invalid user, clearing token');
           localStorage.removeItem('auth_token');
-          window.location.replace(createPageUrl("PasswordLogin"));
+          window.location.href = createPageUrl("PasswordLogin");
         }
       } catch (err) {
-        console.error('Auth validation error:', err);
-        if (!mounted) return;
+        if (isCancelled) return;
         localStorage.removeItem('auth_token');
-        window.location.replace(createPageUrl("PasswordLogin"));
+        window.location.href = createPageUrl("PasswordLogin");
       }
     };
     
     checkAuth();
     
-    return () => { mounted = false; };
+    return () => { isCancelled = true; };
   }, [currentPageName]);
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
-    window.location.replace(createPageUrl("PasswordLogin"));
+    window.location.href = createPageUrl("PasswordLogin");
   };
 
   // Show login page without layout
