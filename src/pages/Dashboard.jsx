@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -53,6 +53,9 @@ const platforms = [
 ];
 
 export default function Dashboard() {
+  const [settingUpCors, setSettingUpCors] = useState(false);
+  const [corsMessage, setCorsMessage] = useState(null);
+
   const { data: archives = [] } = useQuery({
     queryKey: ['archives'],
     queryFn: () => base44.entities.Archive.list('-updated_date'),
@@ -64,6 +67,22 @@ export default function Dashboard() {
   };
 
   const completedCount = archives.filter(a => a.status === 'organized' || a.status === 'deleted').length;
+
+  const setupCors = async () => {
+    setSettingUpCors(true);
+    setCorsMessage(null);
+    try {
+      const response = await base44.functions.invoke('setupDreamhostCors', {});
+      if (response.data.success) {
+        setCorsMessage({ type: 'success', text: 'CORS configured successfully! You can now upload and view files.' });
+      } else {
+        setCorsMessage({ type: 'error', text: response.data.error });
+      }
+    } catch (error) {
+      setCorsMessage({ type: 'error', text: error.message });
+    }
+    setSettingUpCors(false);
+  };
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -226,6 +245,35 @@ export default function Dashboard() {
               );
             })}
           </div>
+        </div>
+      </div>
+
+      {/* CORS Setup */}
+      <div className="mac-window mb-8">
+        <div className="mac-titlebar mac-titlebar-active">
+          <div className="mac-dots">
+            <div className="mac-dot mac-dot-close"></div>
+            <div className="mac-dot mac-dot-minimize"></div>
+            <div className="mac-dot mac-dot-maximize"></div>
+          </div>
+          <Shield className="w-4 h-4 ml-2" />
+          <span>DreamHost Setup</span>
+        </div>
+        <div className="p-6 bg-gradient-to-br from-amber-50 to-orange-50">
+          <h3 className="text-xl font-bold mb-2 text-orange-700">Configure DreamHost CORS</h3>
+          <p className="mb-4 text-gray-700">Click below to automatically configure your DreamHost bucket for file uploads and viewing.</p>
+          {corsMessage && (
+            <div className={`mb-4 p-3 rounded-lg ${corsMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+              {corsMessage.text}
+            </div>
+          )}
+          <button 
+            className="mac-button w-full" 
+            onClick={setupCors}
+            disabled={settingUpCors}
+          >
+            {settingUpCors ? 'Configuring...' : 'Setup CORS Now'}
+          </button>
         </div>
       </div>
 
