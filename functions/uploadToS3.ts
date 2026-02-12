@@ -41,25 +41,21 @@ Deno.serve(async (req) => {
         }
 
         if (action === 'upload') {
-            const uploadId = formData.get('uploadId');
-            const fileKey = formData.get('fileKey');
-            const partNumber = parseInt(formData.get('partNumber'));
-            const chunk = formData.get('chunk');
-
-            const chunkBuffer = await chunk.arrayBuffer();
+            // Decode base64 chunk
+            const chunkBuffer = Uint8Array.from(atob(chunkBase64), c => c.charCodeAt(0));
 
             const command = new UploadPartCommand({
                 Bucket: bucket,
                 Key: fileKey,
                 UploadId: uploadId,
-                PartNumber: partNumber,
-                Body: new Uint8Array(chunkBuffer),
+                PartNumber: parseInt(partNumber),
+                Body: chunkBuffer,
             });
 
             const response = await s3Client.send(command);
             return Response.json({ 
                 ETag: response.ETag,
-                PartNumber: partNumber
+                PartNumber: parseInt(partNumber)
             });
         }
 
