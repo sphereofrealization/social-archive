@@ -24,15 +24,9 @@ export default function ArchiveFileTree() {
   const loadFileTree = async () => {
     try {
       setLoading(true);
-      const response = await fetch(archiveUrl);
-      const blob = await response.blob();
-      
-      // Import JSZip dynamically to avoid bundling issues
-      const JSZip = (await import('jszip')).default;
-      const zip = await JSZip.loadAsync(blob);
-
-      const tree = buildFileTree(zip.files);
-      setFileTree(tree);
+      // Request file tree from backend instead of processing on frontend
+      const response = await base44.functions.invoke('getFileTree', { fileUrl: archiveUrl });
+      setFileTree(response.data.tree);
     } catch (err) {
       setError(err.message);
     } finally {
