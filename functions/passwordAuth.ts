@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
         }
         
         // Generate magic link for authentication
-        const magicLink = await base44.asServiceRole.auth.createMagicLink(userEmail);
+        const magicLink = await base44.asServiceRole.users.createMagicLink(userEmail);
         
         return Response.json({ 
             success: true,
