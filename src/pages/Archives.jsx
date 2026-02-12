@@ -62,13 +62,13 @@ export default function Archives() {
   }, []);
 
   const { data: archives = [], isLoading } = useQuery({
-    queryKey: ['archives', user?.email],
+    queryKey: ['archives'],
     queryFn: async () => {
-      if (!user) return [];
-      return base44.entities.Archive.filter({ created_by: user.email }, '-updated_date');
+      const sessionToken = localStorage.getItem('session_token');
+      if (!sessionToken) return [];
+      return base44.entities.Archive.filter({ account_id: sessionToken }, '-updated_date');
     },
     initialData: [],
-    enabled: !!user,
   });
 
   const updateArchiveMutation = useMutation({
@@ -135,7 +135,9 @@ export default function Archives() {
       
       const { data: completeData } = await base44.functions.invoke('uploadToS3', completeFormData);
       
+      const sessionToken = localStorage.getItem('session_token');
       await base44.entities.Archive.create({
+        account_id: sessionToken,
         platform: uploadData.platform,
         status: "downloaded",
         file_url: completeData.fileUrl,
