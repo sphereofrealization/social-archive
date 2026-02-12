@@ -60,8 +60,8 @@ export default function PasswordLogin() {
           <CardTitle className="text-3xl font-bold text-gray-900 mb-2">
             Social Archive
           </CardTitle>
-          <CardDescription className="text-base">
-            Enter the site password to access your archives
+          <CardDescription className="text-sm text-gray-600 leading-relaxed">
+            When you enter a password here, it becomes your account credentials. Any archives uploaded will be accessible under the password you entered to anyone. Use only a strong password. Users of this functionality assume all responsibility.
           </CardDescription>
         </CardHeader>
         

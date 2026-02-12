@@ -6,11 +6,10 @@ const SESSION_SECRET = "archive_session_active";
 
 Deno.serve(async (req) => {
     try {
-        const { password, action } = await req.json();
+        const { password, action, sessionToken } = await req.json();
         
         // Validate session
         if (action === "validate") {
-            const { sessionToken } = await req.json();
             return Response.json({ 
                 valid: sessionToken === SESSION_SECRET 
             });
