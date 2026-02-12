@@ -39,15 +39,15 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
     setError(null);
 
     try {
-      console.log("Downloading archive from:", fileUrl);
-      const response = await fetch(fileUrl);
+      console.log("Downloading archive via backend proxy from:", fileUrl);
+      const response = await base44.functions.invoke('getArchiveFile', { fileUrl });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (!response.data) {
+        throw new Error('No data returned from server');
       }
 
-      console.log("Archive download successful, size:", response.headers.get('content-length'));
-      const blob = await response.blob();
+      // Convert response data to blob
+      const blob = new Blob([response.data], { type: 'application/zip' });
 
       console.log("Unzipping archive...");
       const zip = await JSZip.loadAsync(blob);
