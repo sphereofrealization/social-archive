@@ -30,8 +30,6 @@ Deno.serve(async (req) => {
     }
     
     const blob = await response.blob();
-    
-    const blob = await response.blob();
     console.log("Archive downloaded, size:", blob.size);
 
     // Load and parse the ZIP
