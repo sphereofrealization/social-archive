@@ -9,8 +9,8 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const url = new URL(req.url);
-    const fileUrl = url.searchParams.get('fileUrl');
+    const body = await req.json();
+    const fileUrl = body.fileUrl;
     
     if (!fileUrl) {
       return Response.json({ error: 'Missing fileUrl parameter' }, { status: 400 });
