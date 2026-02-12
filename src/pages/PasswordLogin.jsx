@@ -88,7 +88,7 @@ export default function PasswordLogin() {
                 />
               </div>
               <p className="text-xs text-gray-500">
-                First time? Just enter any password (6+ characters) to create your account
+                Enter the site password to access your archives
               </p>
             </div>
 
