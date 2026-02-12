@@ -33,14 +33,19 @@ export default function PasswordLogin() {
 
     setLoading(true);
     try {
-      const { data } = await base44.functions.invoke('passwordAuth', { password });
+      const response = await base44.functions.invoke('passwordAuth', { password });
+      console.log('Login response:', response);
       
-      if (data.success && data.authToken) {
-        localStorage.setItem('auth_token', data.authToken);
+      if (response.data?.success && response.data?.authToken) {
+        localStorage.setItem('auth_token', response.data.authToken);
+        console.log('Token stored, redirecting...');
         window.location.replace(createPageUrl("Dashboard"));
+      } else {
+        setError("Login failed - invalid response");
       }
     } catch (err) {
-      setError(err.message || "Login failed");
+      console.error('Login error:', err);
+      setError(err.response?.data?.error || err.message || "Login failed");
     }
     setLoading(false);
   };
