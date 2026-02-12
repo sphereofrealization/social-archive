@@ -248,35 +248,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* CORS Setup */}
-      <div className="mac-window mb-8">
-        <div className="mac-titlebar mac-titlebar-active">
-          <div className="mac-dots">
-            <div className="mac-dot mac-dot-close"></div>
-            <div className="mac-dot mac-dot-minimize"></div>
-            <div className="mac-dot mac-dot-maximize"></div>
-          </div>
-          <Shield className="w-4 h-4 ml-2" />
-          <span>DreamHost Setup</span>
-        </div>
-        <div className="p-6 bg-gradient-to-br from-amber-50 to-orange-50">
-          <h3 className="text-xl font-bold mb-2 text-orange-700">Configure DreamHost CORS</h3>
-          <p className="mb-4 text-gray-700">Click below to automatically configure your DreamHost bucket for file uploads and viewing.</p>
-          {corsMessage && (
-            <div className={`mb-4 p-3 rounded-lg ${corsMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-              {corsMessage.text}
-            </div>
-          )}
-          <button 
-            className="mac-button w-full" 
-            onClick={setupCors}
-            disabled={settingUpCors}
-          >
-            {settingUpCors ? 'Configuring...' : 'Setup CORS Now'}
-          </button>
-        </div>
-      </div>
-
       {/* Quick Actions */}
       <div className="grid md:grid-cols-2 gap-6">
         <div className="mac-window">
