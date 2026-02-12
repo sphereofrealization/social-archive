@@ -1,6 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import JSZip from 'npm:jszip@3.10.1';
-import { S3Client, GetObjectCommand } from 'npm:@aws-sdk/client-s3@3.500.0';
 
 Deno.serve(async (req) => {
   try {
@@ -20,42 +19,17 @@ Deno.serve(async (req) => {
 
     console.log("Downloading archive from:", fileUrl);
     
-    // Parse S3 URL to extract bucket and key
-    const urlMatch = fileUrl.match(/https:\/\/s3\.[^.]+\.dream\.io\/([^\/]+)\/(.+)/);
-    if (!urlMatch) {
-      return Response.json({ error: 'Invalid S3 URL format' }, { status: 400 });
+    // Fetch the file from public S3 bucket
+    const response = await fetch(fileUrl);
+    
+    if (!response.ok) {
+      console.error(`Fetch failed with status ${response.status}`, response.statusText);
+      const errorText = await response.text();
+      console.error("Error response:", errorText);
+      return Response.json({ error: `Failed to fetch file: ${response.status} ${response.statusText}` }, { status: 400 });
     }
     
-    const bucket = urlMatch[1];
-    const key = decodeURIComponent(urlMatch[2]);
-    
-    console.log(`Fetching from bucket: ${bucket}, key: ${key}`);
-    
-    // Create S3 client with DreamHost credentials
-    const s3Client = new S3Client({
-      region: 'us-east-005',
-      endpoint: Deno.env.get('DREAMHOST_ENDPOINT'),
-      credentials: {
-        accessKeyId: Deno.env.get('DREAMHOST_ACCESS_KEY'),
-        secretAccessKey: Deno.env.get('DREAMHOST_SECRET_KEY'),
-      },
-      forcePathStyle: true,
-    });
-    
-    // Download from S3 using authenticated request
-    const command = new GetObjectCommand({
-      Bucket: bucket,
-      Key: key,
-    });
-    
-    const response = await s3Client.send(command);
-    
-    // Convert response body stream to buffer
-    const chunks = [];
-    for await (const chunk of response.Body) {
-      chunks.push(chunk);
-    }
-    const blob = new Blob(chunks, { type: 'application/zip' });
+    const blob = await response.blob();
     
     const blob = await response.blob();
     console.log("Archive downloaded, size:", blob.size);
