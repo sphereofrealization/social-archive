@@ -14,14 +14,12 @@ export default function PasswordLogin() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    // Check if already logged in
-    base44.auth.isAuthenticated().then(isAuth => {
-      if (isAuth) {
-        window.location.href = createPageUrl("Dashboard");
-      } else {
-        setCheckingAuth(false);
-      }
-    });
+    const authToken = localStorage.getItem('auth_token');
+    if (authToken) {
+      window.location.replace(createPageUrl("Dashboard"));
+    } else {
+      setCheckingAuth(false);
+    }
   }, []);
 
   const handleLogin = async (e) => {
@@ -39,7 +37,7 @@ export default function PasswordLogin() {
       
       if (data.success && data.authToken) {
         localStorage.setItem('auth_token', data.authToken);
-        window.location.href = createPageUrl("Dashboard");
+        window.location.replace(createPageUrl("Dashboard"));
       }
     } catch (err) {
       setError(err.message || "Login failed");

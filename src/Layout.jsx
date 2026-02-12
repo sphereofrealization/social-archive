@@ -54,34 +54,42 @@ export default function Layout({ children, currentPageName }) {
       return;
     }
 
+    let mounted = true;
+
     const checkAuth = async () => {
       const authToken = localStorage.getItem('auth_token');
       
       if (!authToken) {
-        window.location.href = createPageUrl("PasswordLogin");
+        window.location.replace(createPageUrl("PasswordLogin"));
         return;
       }
 
       try {
         const { data } = await base44.functions.invoke('validateAuth', { authToken });
+        if (!mounted) return;
+        
         if (data.valid && data.user) {
           setUser(data.user);
           setLoading(false);
         } else {
           localStorage.removeItem('auth_token');
-          window.location.href = createPageUrl("PasswordLogin");
+          window.location.replace(createPageUrl("PasswordLogin"));
         }
       } catch (err) {
+        if (!mounted) return;
         localStorage.removeItem('auth_token');
-        window.location.href = createPageUrl("PasswordLogin");
+        window.location.replace(createPageUrl("PasswordLogin"));
       }
     };
+    
     checkAuth();
+    
+    return () => { mounted = false; };
   }, [currentPageName]);
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
-    window.location.href = createPageUrl("PasswordLogin");
+    window.location.replace(createPageUrl("PasswordLogin"));
   };
 
   // Show login page without layout
@@ -90,12 +98,8 @@ export default function Layout({ children, currentPageName }) {
   }
 
   // Show loading state while checking auth
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black">
-        <div className="text-white">Loading...</div>
-      </div>
-    );
+  if (loading || !user) {
+    return null;
   }
 
   return (
