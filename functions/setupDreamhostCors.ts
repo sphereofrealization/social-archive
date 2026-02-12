@@ -2,9 +2,12 @@ import { S3Client, PutBucketCorsCommand } from 'npm:@aws-sdk/client-s3@3.525.0';
 
 Deno.serve(async (req) => {
   try {
+    const endpoint = Deno.env.get('DREAMHOST_ENDPOINT');
+    const endpointUrl = endpoint.startsWith('http') ? endpoint : `https://${endpoint}`;
+    
     const s3Client = new S3Client({
       region: 'us-east-1',
-      endpoint: Deno.env.get('DREAMHOST_ENDPOINT'),
+      endpoint: endpointUrl,
       credentials: {
         accessKeyId: Deno.env.get('DREAMHOST_ACCESS_KEY'),
         secretAccessKey: Deno.env.get('DREAMHOST_SECRET_KEY'),
