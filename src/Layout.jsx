@@ -45,16 +45,20 @@ const navigationItems = [
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
   const [user, setUser] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
+    // Skip auth check on login page
+    if (currentPageName === "PasswordLogin") {
+      setLoading(false);
+      return;
+    }
+
     const checkAuth = async () => {
       const authToken = localStorage.getItem('auth_token');
       
       if (!authToken) {
-        setUser(null);
-        if (currentPageName !== "PasswordLogin") {
-          window.location.href = createPageUrl("PasswordLogin");
-        }
+        window.location.href = createPageUrl("PasswordLogin");
         return;
       }
 
@@ -62,17 +66,14 @@ export default function Layout({ children, currentPageName }) {
         const { data } = await base44.functions.invoke('validateAuth', { authToken });
         if (data.valid && data.user) {
           setUser(data.user);
+          setLoading(false);
         } else {
           localStorage.removeItem('auth_token');
-          if (currentPageName !== "PasswordLogin") {
-            window.location.href = createPageUrl("PasswordLogin");
-          }
+          window.location.href = createPageUrl("PasswordLogin");
         }
       } catch (err) {
         localStorage.removeItem('auth_token');
-        if (currentPageName !== "PasswordLogin") {
-          window.location.href = createPageUrl("PasswordLogin");
-        }
+        window.location.href = createPageUrl("PasswordLogin");
       }
     };
     checkAuth();
@@ -82,6 +83,20 @@ export default function Layout({ children, currentPageName }) {
     localStorage.removeItem('auth_token');
     window.location.href = createPageUrl("PasswordLogin");
   };
+
+  // Show login page without layout
+  if (currentPageName === "PasswordLogin") {
+    return children;
+  }
+
+  // Show loading state while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
