@@ -14,9 +14,9 @@ export default function PasswordLogin() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    const authToken = localStorage.getItem('auth_token');
-    if (authToken) {
-      window.location.href = createPageUrl("Dashboard");
+    const sessionToken = localStorage.getItem('session_token');
+    if (sessionToken) {
+      window.location.replace(createPageUrl("Dashboard"));
     } else {
       setCheckingAuth(false);
     }
@@ -25,29 +25,21 @@ export default function PasswordLogin() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
-    
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters");
-      return;
-    }
 
     setLoading(true);
     try {
-      const response = await base44.functions.invoke('passwordAuth', { password });
+      const response = await base44.functions.invoke('simpleAuth', { password });
       
-      if (response.data?.success && response.data?.authToken) {
-        localStorage.setItem('auth_token', response.data.authToken);
-        setTimeout(() => {
-          window.location.href = createPageUrl("Dashboard");
-        }, 100);
+      if (response.data?.success && response.data?.sessionToken) {
+        localStorage.setItem('session_token', response.data.sessionToken);
+        window.location.replace(createPageUrl("Dashboard"));
       } else {
-        setError("Login failed - please try again");
-        setLoading(false);
+        setError(response.data?.error || "Incorrect password");
       }
     } catch (err) {
-      setError(err.response?.data?.error || "Login failed - please try again");
-      setLoading(false);
+      setError("Login failed");
     }
+    setLoading(false);
   };
 
   if (checkingAuth) {
@@ -69,7 +61,7 @@ export default function PasswordLogin() {
             Social Archive
           </CardTitle>
           <CardDescription className="text-base">
-            Enter your password to access your archives
+            Enter the site password to access your archives
           </CardDescription>
         </CardHeader>
         
@@ -80,16 +72,13 @@ export default function PasswordLogin() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
                   type="password"
-                  placeholder="Enter your password"
+                  placeholder="Enter the site password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-11 h-12 text-base"
                   autoFocus
                 />
               </div>
-              <p className="text-xs text-gray-500">
-                Enter the site password to access your archives
-              </p>
             </div>
 
             {error && (
@@ -107,12 +96,6 @@ export default function PasswordLogin() {
               {loading ? "Accessing..." : "Access Archives"}
             </Button>
           </form>
-
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <p className="text-xs text-center text-gray-500">
-              Your password is your unique identifier. Keep it safe!
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>
