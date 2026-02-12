@@ -51,6 +51,7 @@ export default function Archives() {
     notes: ""
   });
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [expandedArchive, setExpandedArchive] = useState(null);
   const [user, setUser] = useState(null);
 
@@ -89,15 +90,57 @@ export default function Archives() {
     if (!uploadData.platform || !uploadData.file) return;
 
     setUploading(true);
+    setUploadProgress(0);
+    
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: uploadData.file });
+      const file = uploadData.file;
+      const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+      
+      // Start multipart upload
+      const startFormData = new FormData();
+      startFormData.append('action', 'start');
+      startFormData.append('fileName', file.name);
+      
+      const { data: startData } = await base44.functions.invoke('uploadToS3', startFormData);
+      const { uploadId, fileKey } = startData;
+      
+      // Upload chunks
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      const uploadedParts = [];
+      
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
+        
+        const uploadFormData = new FormData();
+        uploadFormData.append('action', 'upload');
+        uploadFormData.append('uploadId', uploadId);
+        uploadFormData.append('fileKey', fileKey);
+        uploadFormData.append('partNumber', i + 1);
+        uploadFormData.append('chunk', chunk);
+        
+        const { data: partData } = await base44.functions.invoke('uploadToS3', uploadFormData);
+        uploadedParts.push(partData);
+        
+        setUploadProgress(Math.round(((i + 1) / totalChunks) * 100));
+      }
+      
+      // Complete multipart upload
+      const completeFormData = new FormData();
+      completeFormData.append('action', 'complete');
+      completeFormData.append('uploadId', uploadId);
+      completeFormData.append('fileKey', fileKey);
+      completeFormData.append('parts', JSON.stringify(uploadedParts));
+      
+      const { data: completeData } = await base44.functions.invoke('uploadToS3', completeFormData);
       
       await base44.entities.Archive.create({
         platform: uploadData.platform,
         status: "downloaded",
-        file_url,
-        file_name: uploadData.file.name,
-        file_size: uploadData.file.size,
+        file_url: completeData.fileUrl,
+        file_name: file.name,
+        file_size: file.size,
         download_date: uploadData.download_date || new Date().toISOString().split('T')[0],
         notes: uploadData.notes
       });
@@ -105,8 +148,10 @@ export default function Archives() {
       queryClient.invalidateQueries({ queryKey: ['archives'] });
       setShowUploadForm(false);
       setUploadData({ platform: "", file: null, download_date: "", notes: "" });
+      setUploadProgress(0);
     } catch (error) {
       console.error("Upload error:", error);
+      alert("Upload failed: " + error.message);
     }
     setUploading(false);
   };
@@ -201,11 +246,27 @@ export default function Archives() {
                   />
                 </div>
 
+                {uploading && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>Uploading...</span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-3 justify-end">
                   <Button 
                     type="button" 
                     variant="outline" 
                     onClick={() => setShowUploadForm(false)}
+                    disabled={uploading}
                   >
                     Cancel
                   </Button>
@@ -213,7 +274,7 @@ export default function Archives() {
                     type="submit" 
                     disabled={!uploadData.platform || !uploadData.file || uploading}
                   >
-                    {uploading ? "Uploading..." : "Upload Archive"}
+                    {uploading ? `Uploading... ${uploadProgress}%` : "Upload Archive"}
                   </Button>
                 </div>
               </form>
