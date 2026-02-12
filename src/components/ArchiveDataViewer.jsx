@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Sparkles, FileText, Image as ImageIcon, MessageSquare, Users } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import FacebookViewer from "./FacebookViewer";
-import JSZip from "jszip";
 
 export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
   const [extracting, setExtracting] = useState(false);
