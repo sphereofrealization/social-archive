@@ -26,7 +26,6 @@ Deno.serve(async (req) => {
         const bucket = Deno.env.get('DREAMHOST_BUCKET');
 
         if (action === 'start') {
-            const fileName = formData.get('fileName');
             const fileKey = `${user.id}/${Date.now()}_${fileName}`;
 
             const command = new CreateMultipartUploadCommand({
