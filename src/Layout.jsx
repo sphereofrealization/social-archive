@@ -97,8 +97,8 @@ export default function Layout({ children, currentPageName }) {
     return children;
   }
 
-  // Show loading state while checking auth
-  if (loading || !user) {
+  // Don't render anything until auth is verified
+  if (!user) {
     return null;
   }
 
