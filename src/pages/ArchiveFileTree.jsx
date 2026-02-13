@@ -95,13 +95,14 @@ export default function ArchiveFileTree() {
   };
 
   const renderTree = (obj, path = "") => {
-    const items = Object.keys(obj).sort();
+    const items = Object.keys(obj).filter(k => k !== 'type' && k !== 'size' && k !== 'path').sort();
 
     return (
       <ul className="list-none pl-4">
         {items.map((key) => {
-          const isFile = obj[key]._isFile;
-          const fullPath = path ? `${path}/${key}` : key;
+          const item = obj[key];
+          const isFile = item.type === 'file';
+          const fullPath = item.path || (path ? `${path}/${key}` : key);
           const isExpanded = expandedFolders.has(fullPath);
 
           return (
@@ -137,7 +138,7 @@ export default function ArchiveFileTree() {
                   </>
                 )}
               </div>
-              {!isFile && isExpanded && renderTree(obj[key], fullPath)}
+              {!isFile && isExpanded && item.children && renderTree(item.children, fullPath)}
             </li>
           );
         })}
