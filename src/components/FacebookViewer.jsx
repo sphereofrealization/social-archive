@@ -86,10 +86,14 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
     photoFilesCount: Object.keys(photoFilesObj).length,
     videoFilesCount: Object.keys(videoFilesObj).length,
     actualPhotosCount: actualPhotos.length,
-    actualVideosCount: actualVideos.length,
+    videosList: videosList.length,
     posts: posts.length,
     friends: friends.length,
-    messages: messages.length
+    messages: messages.length,
+    comments: comments.length,
+    groups: groups.length,
+    reviews: reviews.length,
+    likes: likes.length
   });
 
   const filteredPosts = posts.filter(post => 
