@@ -1,7 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import JSZip from 'npm:jszip@3.10.1';
+import * as cheerio from 'npm:cheerio@1.0.0-rc.12';
+
+const TIME_LIMIT_MS = 25000; // 25 second time budget
+const MAX_HTML_FILES_PER_CATEGORY = 5;
+const MAX_TOTAL_BYTES = 5_000_000; // 5MB max parse size
+const THUMBNAIL_SIZE = 30; // First 30 photos as base64
 
 Deno.serve(async (req) => {
+  const startTime = Date.now();
+  
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -11,142 +19,448 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const fileUrl = body.fileUrl;
+    const { fileUrl } = body;
     
     if (!fileUrl) {
-      return Response.json({ error: 'Missing fileUrl parameter' }, { status: 400 });
+      return Response.json({ error: 'Missing fileUrl' }, { status: 400 });
     }
 
-    const response = await fetch(fileUrl);
-    if (!response.ok) {
-      return Response.json({ error: `Failed to fetch: ${response.status}` }, { status: 400 });
+    // Fetch ZIP
+    const zipResponse = await fetch(fileUrl);
+    if (!zipResponse.ok) {
+      return Response.json({ error: `Failed to fetch: ${zipResponse.status}` }, { status: 400 });
     }
     
-    const blob = await response.blob();
+    const blob = await zipResponse.blob();
     const zip = await JSZip.loadAsync(blob);
     
-    // Extract ALL text content from archive
-    let fullArchiveText = "";
-    const photos = [];
-    const videos = [];
-    
+    // === PASS 1: Index all files ===
+    const index = {
+      friends: [],
+      messages: [],
+      comments: [],
+      posts: [],
+      likes: [],
+      groups: [],
+      reviews: [],
+      marketplace: [],
+      photos: [],
+      videos: [],
+      other: []
+    };
+
+    const debug = { candidatesFound: {}, timeoutWarnings: [] };
+    let totalBytesRead = 0;
+
     for (const [path, file] of Object.entries(zip.files)) {
       if (file.dir) continue;
       
       const pathLower = path.toLowerCase();
-      
-      // Extract photos
-      if (pathLower.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !pathLower.includes('icon')) {
-        photos.push(path);
-      }
-      
-      // Extract videos
-      if (pathLower.match(/\.(mp4|mov|avi|mkv|webm)$/i)) {
-        videos.push(path);
-      }
-      
-      // Extract text content
-      if (pathLower.endsWith('.html') || pathLower.endsWith('.json') || pathLower.endsWith('.txt')) {
-        try {
-          const content = await file.async("text");
-          fullArchiveText += `\n\n=== FILE: ${path} ===\n${content}`;
-        } catch {}
+      const ext = path.split('.').pop().toLowerCase();
+      const filename = path.split('/').pop().toLowerCase();
+      const size = file._data?.uncompressedSize || 0;
+
+      // Classify by path patterns
+      if (pathLower.includes('friend')) {
+        index.friends.push({ path, filename, ext, size });
+      } else if (pathLower.includes('message') || pathLower.includes('inbox')) {
+        index.messages.push({ path, filename, ext, size });
+      } else if (pathLower.includes('comment')) {
+        index.comments.push({ path, filename, ext, size });
+      } else if (pathLower.includes('like') || pathLower.includes('reaction')) {
+        index.likes.push({ path, filename, ext, size });
+      } else if (pathLower.includes('group')) {
+        index.groups.push({ path, filename, ext, size });
+      } else if (pathLower.includes('review')) {
+        index.reviews.push({ path, filename, ext, size });
+      } else if (pathLower.includes('marketplace') || pathLower.includes('market')) {
+        index.marketplace.push({ path, filename, ext, size });
+      } else if (pathLower.includes('post') || pathLower.includes('wall') || pathLower.includes('album')) {
+        index.posts.push({ path, filename, ext, size });
+      } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) && !filename.includes('icon')) {
+        index.photos.push({ path, filename, ext, size });
+      } else if (['mp4', 'mov', 'm4v', 'webm', 'avi'].includes(ext)) {
+        index.videos.push({ path, filename, ext, size });
       }
     }
-    
-    // Use LLM to analyze the complete archive content
-    const analysisPrompt = `You are analyzing a complete Facebook archive export. Here is ALL the text content from the archive:
 
-${fullArchiveText.slice(0, 100000)}
-
-Based on this content, count and extract:
-1. Posts - actual status updates/posts the user made
-2. Friends - actual people in the user's friend list
-3. Messages/Conversations - actual message threads
-4. Comments - comments the user made on posts
-5. Likes - things the user liked
-6. Events - events the user was part of
-7. Groups - groups the user was in
-8. Reviews - reviews the user wrote
-9. Marketplace - marketplace items
-10. Videos - video files the user uploaded
-11. Check-ins - places the user checked in to
-
-Return ONLY a valid JSON object with this structure:
-{
-  "posts": 0,
-  "friends": 0,
-  "conversations": 0,
-  "comments": 0,
-  "likes": 0,
-  "events": 0,
-  "groups": 0,
-  "reviews": 0,
-  "marketplace": 0,
-  "checkins": 0,
-  "videos": 0,
-  "reels": 0,
-  "photos": 0,
-  "notes": "Brief explanation of what was found"
-}
-
-Be accurate - only count items that are clearly identifiable as the data type. Return ONLY the JSON, no other text.`;
-
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: analysisPrompt,
-      response_json_schema: {
-        type: "object",
-        properties: {
-          posts: { type: "number" },
-          friends: { type: "number" },
-          conversations: { type: "number" },
-          comments: { type: "number" },
-          likes: { type: "number" },
-          events: { type: "number" },
-          groups: { type: "number" },
-          reviews: { type: "number" },
-          marketplace: { type: "number" },
-          checkins: { type: "number" },
-          videos: { type: "number" },
-          reels: { type: "number" },
-          photos: { type: "number" },
-          notes: { type: "string" }
-        }
-      }
+    Object.keys(index).forEach(cat => {
+      debug.candidatesFound[cat] = index[cat].length;
     });
 
-    // Load first 30 photos as base64
-    const photoFiles = {};
-    for (let i = 0; i < Math.min(30, photos.length); i++) {
-      try {
-        const file = zip.file(photos[i]);
-        const imageData = await file.async("base64");
-        const ext = photos[i].split('.').pop().toLowerCase();
-        const mimeTypes = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'};
-        photoFiles[photos[i]] = `data:${mimeTypes[ext] || 'image/jpeg'};base64,${imageData}`;
-      } catch {}
-    }
-
-    return Response.json({
-      profile: { name: "", email: "" },
+    // === PASS 2: Parse candidate files ===
+    const result = {
+      profile: { name: '', email: '' },
       posts: [],
       friends: [],
       messages: [],
       comments: [],
-      events: [],
+      likes: [],
       groups: [],
       reviews: [],
       marketplace: [],
       reels: [],
       checkins: [],
-      likes: [],
-      photoFiles,
+      photos: [],
+      photoFiles: {},
+      videos: [],
       videoFiles: {},
-      notes: result.notes || ""
-    });
+      warnings: [],
+      sourceFilesUsed: {},
+      debug
+    };
+
+    // Helper to check time/budget
+    const checkBudget = () => {
+      if (Date.now() - startTime > TIME_LIMIT_MS) {
+        result.warnings.push('Extraction stopped early to prevent timeout (time budget exceeded).');
+        return false;
+      }
+      if (totalBytesRead > MAX_TOTAL_BYTES) {
+        result.warnings.push('Extraction stopped early (max bytes exceeded).');
+        return false;
+      }
+      return true;
+    };
+
+    // === Parse Friends ===
+    if (checkBudget()) {
+      const friendFiles = index.friends.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+      result.sourceFilesUsed.friends = [];
+      
+      for (const f of friendFiles) {
+        if (!checkBudget()) break;
+        try {
+          const content = await zip.file(f.path).async('text');
+          totalBytesRead += content.length;
+          result.sourceFilesUsed.friends.push(f.path);
+          
+          if (f.ext === 'html') {
+            const $ = cheerio.load(content);
+            // Remove style/script
+            $('style, script, noscript').remove();
+            
+            // Extract friend names from various possible structures
+            const names = new Set();
+            
+            // Pattern 1: List items with names
+            $('li').each((_, el) => {
+              const text = $(el).text().trim();
+              if (text.length > 1 && text.length < 100 && !text.includes('\n')) {
+                names.add(text);
+              }
+            });
+            
+            // Pattern 2: Anchor links (common FB pattern)
+            $('a').each((_, el) => {
+              const text = $(el).text().trim();
+              const href = $(el).attr('href');
+              if (text && text.length > 1 && text.length < 100 && !text.includes('\n') && !text.match(/^\d+$/)) {
+                names.add(text);
+              }
+            });
+            
+            // Pattern 3: Divs with data attributes
+            $('div[data-name], div[title]').each((_, el) => {
+              const text = $(el).attr('data-name') || $(el).attr('title');
+              if (text && text.length > 1 && text.length < 100) {
+                names.add(text);
+              }
+            });
+
+            names.forEach(name => {
+              if (!result.friends.find(f => f.name === name)) {
+                result.friends.push({ name, sourceFile: f.path });
+              }
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to parse ${f.path}:`, e.message);
+        }
+      }
+    }
+
+    // === Parse Messages/Conversations ===
+    if (checkBudget()) {
+      const msgFiles = index.messages.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+      result.sourceFilesUsed.messages = [];
+      
+      for (const f of msgFiles) {
+        if (!checkBudget()) break;
+        try {
+          const content = await zip.file(f.path).async('text');
+          totalBytesRead += content.length;
+          result.sourceFilesUsed.messages.push(f.path);
+          
+          if (f.ext === 'html') {
+            const $ = cheerio.load(content);
+            $('style, script, noscript').remove();
+            
+            // Extract conversation metadata and message samples
+            const threadName = $('title').text().trim() || f.filename;
+            const messageTexts = [];
+            
+            // Extract message containers
+            $('[data-message], .message, .msg, p').each((_, el) => {
+              const text = $(el).text().trim();
+              if (text.length > 0 && text.length < 500 && messageTexts.length < 50) {
+                messageTexts.push(text);
+              }
+            });
+
+            if (messageTexts.length > 0) {
+              result.messages.push({
+                conversation_with: threadName,
+                messages: messageTexts.map(text => ({ text, timestamp: '', sender: '' })),
+                sourceFile: f.path,
+                totalMessages: messageTexts.length
+              });
+            }
+          }
+        } catch (e) {
+          console.error(`Failed to parse ${f.path}:`, e.message);
+        }
+      }
+    }
+
+    // === Parse Comments ===
+    if (checkBudget()) {
+      const commentFiles = index.comments.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+      result.sourceFilesUsed.comments = [];
+      
+      for (const f of commentFiles) {
+        if (!checkBudget()) break;
+        try {
+          const content = await zip.file(f.path).async('text');
+          totalBytesRead += content.length;
+          result.sourceFilesUsed.comments.push(f.path);
+          
+          if (f.ext === 'html') {
+            const $ = cheerio.load(content);
+            $('style, script, noscript').remove();
+            
+            $('div, p, span').each((_, el) => {
+              const text = $(el).text().trim();
+              if (text.length > 5 && text.length < 500 && result.comments.length < 100) {
+                if (!result.comments.find(c => c.text === text)) {
+                  result.comments.push({ text, timestamp: '', sourceFile: f.path });
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to parse ${f.path}:`, e.message);
+        }
+      }
+    }
+
+    // === Parse Likes/Reactions ===
+    if (checkBudget()) {
+      const likeFiles = index.likes.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+      result.sourceFilesUsed.likes = [];
+      
+      for (const f of likeFiles) {
+        if (!checkBudget()) break;
+        try {
+          const content = await zip.file(f.path).async('text');
+          totalBytesRead += content.length;
+          result.sourceFilesUsed.likes.push(f.path);
+          
+          if (f.ext === 'html') {
+            const $ = cheerio.load(content);
+            $('style, script, noscript').remove();
+            
+            $('a, div, span').each((_, el) => {
+              const text = $(el).text().trim();
+              if (text.length > 2 && text.length < 100 && result.likes.length < 200) {
+                if (!result.likes.find(l => l.item === text)) {
+                  result.likes.push({ item: text, type: 'like', sourceFile: f.path });
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to parse ${f.path}:`, e.message);
+        }
+      }
+    }
+
+    // === Parse Groups ===
+    if (checkBudget()) {
+      const groupFiles = index.groups.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+      result.sourceFilesUsed.groups = [];
+      
+      for (const f of groupFiles) {
+        if (!checkBudget()) break;
+        try {
+          const content = await zip.file(f.path).async('text');
+          totalBytesRead += content.length;
+          result.sourceFilesUsed.groups.push(f.path);
+          
+          if (f.ext === 'html') {
+            const $ = cheerio.load(content);
+            $('style, script, noscript').remove();
+            
+            const title = $('title').text().trim() || f.filename.replace('.html', '');
+            if (title && !result.groups.find(g => g.name === title)) {
+              result.groups.push({ name: title, sourceFile: f.path });
+            }
+            
+            $('h1, h2, h3, a').each((_, el) => {
+              const text = $(el).text().trim();
+              if (text.length > 2 && text.length < 100 && !result.groups.find(g => g.name === text)) {
+                result.groups.push({ name: text, sourceFile: f.path });
+              }
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to parse ${f.path}:`, e.message);
+        }
+      }
+    }
+
+    // === Parse Reviews ===
+    if (checkBudget()) {
+      const reviewFiles = index.reviews.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+      result.sourceFilesUsed.reviews = [];
+      
+      for (const f of reviewFiles) {
+        if (!checkBudget()) break;
+        try {
+          const content = await zip.file(f.path).async('text');
+          totalBytesRead += content.length;
+          result.sourceFilesUsed.reviews.push(f.path);
+          
+          if (f.ext === 'html') {
+            const $ = cheerio.load(content);
+            $('style, script, noscript').remove();
+            
+            $('div, p').each((_, el) => {
+              const text = $(el).text().trim();
+              if (text.length > 5 && text.length < 500 && result.reviews.length < 100) {
+                if (!result.reviews.find(r => r.text === text)) {
+                  result.reviews.push({ text, place: '', rating: 0, sourceFile: f.path });
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to parse ${f.path}:`, e.message);
+        }
+      }
+    }
+
+    // === Parse Marketplace ===
+    if (checkBudget()) {
+      const mktFiles = index.marketplace.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+      result.sourceFilesUsed.marketplace = [];
+      
+      for (const f of mktFiles) {
+        if (!checkBudget()) break;
+        try {
+          const content = await zip.file(f.path).async('text');
+          totalBytesRead += content.length;
+          result.sourceFilesUsed.marketplace.push(f.path);
+          
+          if (f.ext === 'html') {
+            const $ = cheerio.load(content);
+            $('style, script, noscript').remove();
+            
+            $('a, div, span').each((_, el) => {
+              const text = $(el).text().trim();
+              if (text.length > 2 && text.length < 200 && result.marketplace.length < 100) {
+                if (!result.marketplace.find(m => m.title === text)) {
+                  result.marketplace.push({ title: text, text: '', sourceFile: f.path });
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to parse ${f.path}:`, e.message);
+        }
+      }
+    }
+
+    // === Parse Posts ===
+    if (checkBudget()) {
+      const postFiles = index.posts.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+      result.sourceFilesUsed.posts = [];
+      
+      for (const f of postFiles) {
+        if (!checkBudget()) break;
+        try {
+          const content = await zip.file(f.path).async('text');
+          totalBytesRead += content.length;
+          result.sourceFilesUsed.posts.push(f.path);
+          
+          if (f.ext === 'html') {
+            const $ = cheerio.load(content);
+            $('style, script, noscript').remove();
+            
+            // Extract structured posts
+            $('div[data-post], article, .post').each((_, el) => {
+              const text = $(el).text().trim();
+              if (text.length > 5 && text.length < 5000 && result.posts.length < 100) {
+                if (!result.posts.find(p => p.text === text)) {
+                  result.posts.push({
+                    text: text.substring(0, 500),
+                    timestamp: '',
+                    likes_count: 0,
+                    comments_count: 0,
+                    sourceFile: f.path
+                  });
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.error(`Failed to parse ${f.path}:`, e.message);
+        }
+      }
+    }
+
+    // === Process Photos ===
+    result.sourceFilesUsed.photos = index.photos.map(p => p.path);
+    for (let i = 0; i < Math.min(THUMBNAIL_SIZE, index.photos.length); i++) {
+      if (!checkBudget()) break;
+      try {
+        const photo = index.photos[i];
+        const content = await zip.file(photo.path).async('base64');
+        const mimeTypes = {
+          'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+          'gif': 'image/gif', 'webp': 'image/webp'
+        };
+        const mime = mimeTypes[photo.ext] || 'image/jpeg';
+        result.photoFiles[photo.path] = `data:${mime};base64,${content}`;
+        totalBytesRead += content.length;
+      } catch (e) {
+        console.error(`Failed to load photo ${index.photos[i].path}:`, e.message);
+      }
+    }
+    
+    // Add remaining photos as metadata only (no base64)
+    for (let i = THUMBNAIL_SIZE; i < index.photos.length; i++) {
+      result.photos.push({
+        path: index.photos[i].path,
+        filename: index.photos[i].filename,
+        size: index.photos[i].size
+      });
+    }
+
+    // === Process Videos ===
+    result.sourceFilesUsed.videos = index.videos.map(v => v.path);
+    for (const video of index.videos) {
+      result.videos.push({
+        path: video.path,
+        filename: video.filename,
+        size: video.size
+      });
+    }
+
+    return Response.json(result);
     
   } catch (error) {
-    console.error("Error:", error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('Archive extraction error:', error);
+    return Response.json({ error: error.message || 'Failed to extract archive' }, { status: 500 });
   }
 });
