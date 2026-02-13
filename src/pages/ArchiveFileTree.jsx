@@ -66,12 +66,12 @@ export default function ArchiveFileTree() {
     setExpandedFolders(newExpanded);
   };
 
-  const openHtmlFile = async (filePath) => {
+  const openFile = async (filePath) => {
     if (openHtmlFiles.find(f => f.path === filePath)) return;
     
     setLoadingFile(filePath);
     try {
-      const response = await base44.functions.invoke('getHtmlFile', { 
+      const response = await base44.functions.invoke('getArchiveFile_simple', { 
         fileUrl: archiveUrl,
         filePath 
       });
@@ -79,6 +79,8 @@ export default function ArchiveFileTree() {
       setOpenHtmlFiles(prev => [...prev, { 
         path: filePath, 
         content: response.data.content,
+        type: response.data.type,
+        message: response.data.message,
         name: filePath.split('/').pop()
       }]);
     } catch (err) {
@@ -120,17 +122,13 @@ export default function ArchiveFileTree() {
                 {isFile ? (
                   <>
                     <FileText className="w-4 h-4 text-blue-500" />
-                    {key.endsWith('.html') ? (
-                      <button
-                        onClick={() => openHtmlFile(fullPath)}
-                        disabled={loadingFile === fullPath}
-                        className="text-sm font-mono text-blue-600 hover:underline disabled:opacity-50"
-                      >
-                        {loadingFile === fullPath ? "Loading..." : key}
-                      </button>
-                    ) : (
-                      <span className="text-sm font-mono">{key}</span>
-                    )}
+                    <button
+                      onClick={() => openFile(fullPath)}
+                      disabled={loadingFile === fullPath}
+                      className="text-sm font-mono text-blue-600 hover:underline disabled:opacity-50"
+                    >
+                      {loadingFile === fullPath ? "Loading..." : key}
+                    </button>
                   </>
                 ) : (
                   <>
@@ -203,12 +201,32 @@ export default function ArchiveFileTree() {
                 </Button>
               </div>
               <div className="overflow-auto flex-1 p-6">
-                <iframe
-                  srcDoc={file.content}
-                  className="w-full h-full min-h-[600px] border-0"
-                  sandbox="allow-same-origin"
-                  title={file.name}
-                />
+                {file.type === 'image' && (
+                  <img src={file.content} alt={file.name} className="max-w-full h-auto" />
+                )}
+                {file.type === 'html' && (
+                  <iframe
+                    srcDoc={file.content}
+                    className="w-full h-full min-h-[600px] border-0"
+                    sandbox="allow-same-origin"
+                    title={file.name}
+                  />
+                )}
+                {file.type === 'json' && (
+                  <pre className="bg-gray-50 p-4 rounded overflow-auto text-xs">
+                    {JSON.stringify(JSON.parse(file.content), null, 2)}
+                  </pre>
+                )}
+                {file.type === 'text' && (
+                  <pre className="bg-gray-50 p-4 rounded overflow-auto text-xs whitespace-pre-wrap">
+                    {file.content}
+                  </pre>
+                )}
+                {(file.type === 'video' || file.type === 'unknown') && (
+                  <div className="text-center py-12 text-gray-600">
+                    <p>{file.message}</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
