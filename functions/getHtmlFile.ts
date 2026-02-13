@@ -30,7 +30,16 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'File not found in archive' }, { status: 404 });
     }
 
-    const content = await file.async("text");
+    let content = await file.async("text");
+    
+    // Decode Facebook's encoding
+    content = content
+      .replace(/&#039;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&nbsp;/g, ' ');
     
     return Response.json({ content });
     

@@ -182,27 +182,36 @@ export default function ArchiveFileTree() {
           </CardContent>
         </Card>
 
-        {openHtmlFiles.map((file) => (
-          <Dialog key={file.path} open={true} onOpenChange={() => closeHtmlFile(file.path)}>
-            <DialogContent className="max-w-4xl max-h-[80vh] overflow-auto">
-              <DialogHeader>
-                <DialogTitle className="flex items-center justify-between">
-                  <span className="font-mono text-sm">{file.name}</span>
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => closeHtmlFile(file.path)}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </DialogTitle>
-              </DialogHeader>
-              <div 
-                className="bg-white p-4 border rounded"
-                dangerouslySetInnerHTML={{ __html: file.content }}
-              />
-            </DialogContent>
-          </Dialog>
+{openHtmlFiles.map((file) => (
+          <div 
+            key={file.path}
+            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+            onClick={() => closeHtmlFile(file.path)}
+          >
+            <div 
+              className="bg-white rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b">
+                <h3 className="font-mono text-sm font-semibold">{file.name}</h3>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => closeHtmlFile(file.path)}
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+              <div className="overflow-auto flex-1 p-6">
+                <iframe
+                  srcDoc={file.content}
+                  className="w-full h-full min-h-[600px] border-0"
+                  sandbox="allow-same-origin"
+                  title={file.name}
+                />
+              </div>
+            </div>
+          </div>
         ))}
       </div>
     </div>
