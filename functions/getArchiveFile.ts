@@ -41,6 +41,8 @@ Deno.serve(async (req) => {
       friends: [],
       messages: [],
       photos: [],
+      photoFiles: {},
+      videoFiles: {},
       comments: [],
       reels: [],
       videos: [],
@@ -124,22 +126,43 @@ Deno.serve(async (req) => {
     for (let i = 0; i < files.length; i++) {
       const [path, file] = files[i];
 
-      // Detect photos and videos by file extension
+      // Detect and extract photos and videos by file extension
       if (path.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i)) {
-        data.photos.push({ 
-          path, 
-          filename: path.split('/').pop(),
-          timestamp: ""
-        });
+        try {
+          const imageData = await file.async("base64");
+          const ext = path.split('.').pop().toLowerCase();
+          const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 
+                         ext === 'png' ? 'image/png' : 
+                         ext === 'gif' ? 'image/gif' : 
+                         ext === 'webp' ? 'image/webp' : 'image/jpeg';
+          data.photoFiles[path] = `data:${mimeType};base64,${imageData}`;
+          data.photos.push({ 
+            path, 
+            filename: path.split('/').pop(),
+            timestamp: ""
+          });
+        } catch (err) {
+          console.error(`Failed to extract photo ${path}:`, err);
+        }
         continue;
       }
 
       if (path.match(/\.(mp4|mov|avi|mkv|webm|m4v)$/i)) {
-        data.videos.push({ 
-          path, 
-          filename: path.split('/').pop(),
-          timestamp: ""
-        });
+        try {
+          const videoData = await file.async("base64");
+          const ext = path.split('.').pop().toLowerCase();
+          const mimeType = ext === 'mp4' ? 'video/mp4' : 
+                         ext === 'webm' ? 'video/webm' : 
+                         ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+          data.videoFiles[path] = `data:${mimeType};base64,${videoData}`;
+          data.videos.push({ 
+            path, 
+            filename: path.split('/').pop(),
+            timestamp: ""
+          });
+        } catch (err) {
+          console.error(`Failed to extract video ${path}:`, err);
+        }
         continue;
       }
 
