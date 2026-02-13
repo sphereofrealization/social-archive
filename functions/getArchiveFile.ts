@@ -54,8 +54,12 @@ Deno.serve(async (req) => {
     };
 
     const parseHTML = (html) => {
-      // Fast HTML stripping - avoid expensive regex
-      return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 1000);
+      return html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     };
 
     const extractTimestamp = (html) => {
@@ -177,19 +181,37 @@ Deno.serve(async (req) => {
           });
         }
 
-        // POSTS - simplified
-        if (path.includes('post') && path.endsWith(".html") && data.posts.length < 50) {
-          const text = parseHTML(content);
-          if (text.length > 20) {
+        // POSTS
+        if (path.includes('post') && path.endsWith(".html") && data.posts.length < 100) {
+          const postSections = content.split(/<div[^>]*class="[^"]*pam[^"]*"[^>]*>/gi);
+
+          postSections.slice(0, 20).forEach((section) => {
+            if (section.length < 100) return;
+
+            const text = parseHTML(section.substring(0, 2000));
+            if (text.length < 10) return;
+
+            const timestamp = extractTimestamp(section);
+            const reactions = [];
+            const reactionMatch = section.match(/(\d+)\s*(like|love|haha|wow|sad|angry)/gi);
+            let totalReactions = 0;
+            if (reactionMatch) {
+              reactionMatch.forEach(r => {
+                const count = parseInt(r.match(/\d+/)?.[0] || 0);
+                totalReactions += count;
+                reactions.push(r);
+              });
+            }
+
             data.posts.push({
-              text: text.substring(0, 300),
-              timestamp: extractTimestamp(content),
-              reactions: [],
-              likes_count: 0,
+              text: text.substring(0, 500),
+              timestamp,
+              reactions,
+              likes_count: totalReactions,
               comments_count: 0,
               comments: []
             });
-          }
+          });
         }
 
         // FRIENDS
@@ -279,12 +301,16 @@ Deno.serve(async (req) => {
           }
         }
 
-        // COMMENTS - simplified
-        if (path.includes('comment') && path.endsWith('.html') && data.comments.length < 30) {
-          const text = parseHTML(content);
-          if (text.length > 20) {
-            data.comments.push({ text: text.substring(0, 200), timestamp: extractTimestamp(content), on_post_by: "" });
-          }
+        // COMMENTS
+        if (path.includes('comment') && path.endsWith('.html') && data.comments.length < 50) {
+          const sections = content.split(/<div/gi);
+          sections.slice(0, 30).forEach(section => {
+            const text = parseHTML(section);
+            if (text.length > 20 && text.length < 500) {
+              const timestamp = extractTimestamp(section);
+              data.comments.push({ text: text.substring(0, 300), timestamp, on_post_by: "" });
+            }
+          });
         }
 
         // LIKES
@@ -316,11 +342,17 @@ Deno.serve(async (req) => {
           });
         }
 
-        // CHECK-INS - simplified
-        if ((path.includes('check') || path.includes('place') || path.includes('location')) && path.endsWith('.html') && data.checkins.length < 30) {
-          const text = parseHTML(content);
-          if (text.length > 15) {
-            data.checkins.push({ location: text.substring(0, 150), timestamp: extractTimestamp(content) });
+        // CHECK-INS
+        if ((path.includes('check') || path.includes('place') || path.includes('location')) && path.endsWith('.html') && data.checkins.length < 50) {
+          const locationMatches = content.split(/<div[^>]*>/gi);
+          for (const chunk of locationMatches.slice(0, 30)) {
+            if (chunk.length > 30 && chunk.length < 2000) {
+              const text = parseHTML(chunk);
+              const timestamp = extractTimestamp(chunk);
+              if (text.length > 15 && text.length < 500 && (chunk.includes("checked in") || chunk.includes("location") || path.includes("places"))) {
+                data.checkins.push({ location: text.substring(0, 200), timestamp });
+              }
+            }
           }
         }
 
@@ -496,12 +528,16 @@ Deno.serve(async (req) => {
           });
         }
 
-        // REELS - simplified
-        if (path.includes('reel') && path.endsWith('.html') && data.reels.length < 30) {
-          const text = parseHTML(content);
-          if (text.length > 20) {
-            data.reels.push({ text: text.substring(0, 200), timestamp: extractTimestamp(content) });
-          }
+        // REELS
+        if (path.includes('reel') && path.endsWith('.html') && data.reels.length < 50) {
+          const sections = content.split(/<div/gi);
+          sections.slice(0, 20).forEach(section => {
+            const text = parseHTML(section);
+            if (text.length > 20 && text.length < 500) {
+              const timestamp = extractTimestamp(section);
+              data.reels.push({ text: text.substring(0, 400), timestamp });
+            }
+          });
         }
 
       } catch (err) {
