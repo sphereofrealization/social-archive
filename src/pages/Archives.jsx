@@ -414,14 +414,14 @@ export default function Archives() {
                              </div>
                            </div>
                            <div className="flex gap-2 pt-2">
-                           <Button 
-                             variant="outline" 
-                             className="flex-1"
-                             onClick={() => window.open(archive.file_url, '_blank')}
-                           >
-                             <Download className="w-4 h-4 mr-2" />
-                             Download
-                           </Button>
+                             <Button 
+                               variant="outline" 
+                               className="flex-1"
+                               onClick={() => window.open(archive.file_url, '_blank')}
+                             >
+                               <Download className="w-4 h-4 mr-2" />
+                               Download
+                             </Button>
                           <Button 
                             variant="outline" 
                             className="flex-1"
