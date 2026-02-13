@@ -429,7 +429,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
         </TabsContent>
 
         <TabsContent value="videos" className="mt-4">
-          {videosList.length === 0 ? (
+          {data?.videos && data.videos.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
                 No videos found
@@ -437,7 +437,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {videosList.map((video, i) => (
+              {data?.videos?.map((video, i) => (
                 <Card key={i}>
                   <CardContent className="p-4">
                     <video 
