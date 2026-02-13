@@ -134,31 +134,48 @@ Deno.serve(async (req) => {
             }
           }
           
-          // FRIENDS (scan all possible formats and locations)
-          const isFriendFile = path.toLowerCase().includes('friend') || 
-                               path.includes('connections/followers_and_following');
+          // FRIENDS - AGGRESSIVE SCANNING
+          // Check any file that might contain friends data
+          const pathLower = path.toLowerCase();
+          const couldBeFriends = pathLower.includes('friend') || 
+                                 pathLower.includes('connection') || 
+                                 pathLower.includes('follower') || 
+                                 pathLower.includes('following') ||
+                                 pathLower.includes('contact');
           
-          if (isFriendFile) {
-            console.log(`  → Found friends file: ${path}`);
+          if (couldBeFriends) {
+            console.log(`  🔍 Checking potential friends file: ${path}`);
+            console.log(`     JSON keys: ${Object.keys(json).join(', ')}`);
+            
             let friendsList = [];
             
-            // Try all possible formats
+            // Try every possible key and format
             if (json.friends_v2) friendsList = json.friends_v2;
             else if (json.friends) friendsList = json.friends;
+            else if (json.followers_v2) friendsList = json.followers_v2;
             else if (json.followers) friendsList = json.followers;
+            else if (json.following_v2) friendsList = json.following_v2;
             else if (json.following) friendsList = json.following;
+            else if (json.connections_v2) friendsList = json.connections_v2;
+            else if (json.connections) friendsList = json.connections;
+            else if (json.contacts_v2) friendsList = json.contacts_v2;
+            else if (json.contacts) friendsList = json.contacts;
             else if (Array.isArray(json)) friendsList = json;
             
+            console.log(`     Found ${friendsList.length} items in friends list`);
+            
+            let addedCount = 0;
             friendsList.forEach(f => {
               const name = decode(f.name || f.title || "");
               const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
               if (name && name.length > 1 && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
                 data.friends.push({ name, date_added: timestamp });
+                addedCount++;
               }
             });
             
-            if (friendsList.length > 0) {
-              console.log(`  ✓ Extracted ${friendsList.length} friends from this file`);
+            if (addedCount > 0) {
+              console.log(`  ✅ Successfully added ${addedCount} friends from this file`);
             }
           }
           
