@@ -96,46 +96,31 @@ Deno.serve(async (req) => {
     }
     console.log(`✅ Extracted ${photoCount} photos, ${videoCount} videos`);
 
-    // PHASE 2: Process all data files
-    console.log("📋 Processing all files in archive...");
+    // PHASE 2: INTELLIGENT CONTENT-BASED EXTRACTION
+    console.log("📋 Scanning ALL files intelligently...");
     const allPaths = Object.keys(zip.files).filter(p => !zip.files[p].dir);
-    console.log(`Total files to scan: ${allPaths.length}`);
-    console.log("All JSON files in archive:");
-    allPaths.filter(p => p.endsWith('.json')).forEach(p => console.log(`  - ${p}`));
+    console.log(`Total files: ${allPaths.length}`);
     
     for (const [path, file] of Object.entries(zip.files)) {
       if (file.dir) continue;
       
       try {
-        // === JSON FILES (Primary data source) ===
         if (path.endsWith('.json')) {
           const content = await file.async("text");
           let json;
           try {
             json = JSON.parse(content);
           } catch (e) {
-            console.log(`   ⚠️ Failed to parse ${path}`);
             continue;
           }
           
-          // AGGRESSIVE DEBUGGING - Log structure of EVERY JSON file
           console.log(`\n📄 ${path}`);
-          console.log(`   Keys: [${Object.keys(json).join(', ')}]`);
-          if (Array.isArray(json)) {
-            console.log(`   Array length: ${json.length}`);
-            if (json.length > 0 && typeof json[0] === 'object') {
-              console.log(`   First item keys: [${Object.keys(json[0]).join(', ')}]`);
-            }
-          }
           
-          // SCAN FOR ANY POSSIBLE DATA - Check every JSON regardless of path
+          // SMART EXTRACTION - Scan for data patterns in ANY JSON file
           
-          // MESSAGES / CONVERSATIONS - More aggressive detection
-          if (json.messages && Array.isArray(json.messages)) {
-            console.log(`   💬 Found messages array with ${json.messages.length} messages`);
-          }
-          
-          if ((path.includes('messages') || json.messages) && json.messages && Array.isArray(json.messages)) {
+          // Pattern 1: MESSAGES/CONVERSATIONS - Look for message arrays
+          if (json.messages && Array.isArray(json.messages) && json.messages.length > 0) {
+            console.log(`   💬 Found ${json.messages.length} messages`);
             const msgs = json.messages.map(m => ({
               sender: decode(m.sender_name || ""),
               text: decode(m.content || ""),
@@ -155,206 +140,152 @@ Deno.serve(async (req) => {
             }
           }
           
-          // FRIENDS - Scan for any key that might contain friends
-          let friendsList = [];
-          const possibleFriendsKeys = ['friends_v2', 'friends', 'followers_v2', 'followers', 'following_v2', 'following', 'connections_v2', 'connections', 'contacts_v2', 'contacts'];
-          
-          for (const key of possibleFriendsKeys) {
-            if (json[key] && Array.isArray(json[key])) {
-              friendsList = json[key];
-              console.log(`   👥 Found friends data in key '${key}': ${friendsList.length} items`);
-              break;
-            }
-          }
-          
-          // If path suggests friends but no key found, try array
-          if (friendsList.length === 0 && path.toLowerCase().includes('friend') && Array.isArray(json)) {
-            friendsList = json;
-            console.log(`   👥 Using root array as friends: ${friendsList.length} items`);
-          }
-          
-          if (friendsList.length > 0) {
-            let addedCount = 0;
-            friendsList.forEach(f => {
-              if (!f || typeof f !== 'object') return;
-              const name = decode(f.name || f.title || "");
-              const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
-              if (name && name.length > 1 && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
-                data.friends.push({ name, date_added: timestamp });
-                addedCount++;
+          // Pattern 2: FRIENDS - Look for arrays with name fields
+          const checkForFriends = (arr, source) => {
+            if (!Array.isArray(arr) || arr.length === 0) return 0;
+            let count = 0;
+            arr.forEach(item => {
+              if (item && item.name && typeof item.name === 'string') {
+                const name = decode(item.name);
+                const timestamp = item.timestamp ? new Date(item.timestamp * 1000).toLocaleDateString() : "";
+                if (name.length > 1 && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
+                  data.friends.push({ name, date_added: timestamp });
+                  count++;
+                }
               }
             });
-            if (addedCount > 0) {
-              console.log(`   ✅ Added ${addedCount} friends`);
-            }
+            if (count > 0) console.log(`   👥 Found ${count} friends from ${source}`);
+            return count;
+          };
+          
+          // Check all possible friend keys
+          checkForFriends(json.friends_v2, 'friends_v2');
+          checkForFriends(json.friends, 'friends');
+          checkForFriends(json.followers_v2, 'followers_v2');
+          checkForFriends(json.followers, 'followers');
+          checkForFriends(json.following_v2, 'following_v2');
+          checkForFriends(json.following, 'following');
+          if (path.toLowerCase().includes('friend') && Array.isArray(json)) {
+            checkForFriends(json, 'root array');
           }
           
-          // POSTS (various locations)
-          if (path.includes('posts') && !path.includes('other_people')) {
-            const posts = Array.isArray(json) ? json : (json.posts || []);
-            posts.forEach(post => {
-              // Multiple text field possibilities
-              const text = decode(
-                post.data?.[0]?.post || 
-                post.post || 
-                post.title || 
-                post.data?.[0]?.update_timestamp ||
-                ""
-              );
+          // Pattern 3: POSTS - Look for post/text content
+          const checkForPosts = (arr, source) => {
+            if (!Array.isArray(arr) || arr.length === 0) return 0;
+            let count = 0;
+            arr.forEach(post => {
+              if (!post) return;
+              const text = decode(post.data?.[0]?.post || post.post || post.title || post.text || "");
               const timestamp = post.timestamp ? new Date(post.timestamp * 1000).toLocaleString() : "";
-              
-              // Extract attachments/media if present
-              const attachments = post.attachments || post.data?.[0]?.attachments || [];
-              const hasMedia = attachments.length > 0;
-              
-              if (text && text.length > 1) {
-                data.posts.push({ 
-                  text, 
-                  timestamp, 
-                  photo_url: null, 
-                  likes_count: 0, 
-                  comments_count: 0, 
-                  comments: [],
-                  hasMedia
-                });
+              if (text && text.length > 3) {
+                data.posts.push({ text, timestamp, photo_url: null, likes_count: 0, comments_count: 0, comments: [] });
+                count++;
               }
             });
+            if (count > 0) console.log(`   📝 Found ${count} posts from ${source}`);
+            return count;
+          };
+          
+          if (path.includes('post') || json.posts) {
+            checkForPosts(json, 'posts');
+            checkForPosts(Array.isArray(json) ? json : [], 'root array');
           }
           
-          // COMMENTS (multiple formats)
-          if (path.includes('comments')) {
-            const comments = json.comments || (Array.isArray(json) ? json : []);
-            comments.forEach(c => {
-              const text = decode(
-                c.data?.[0]?.comment?.comment || 
-                c.comment || 
-                c.title ||
-                c.data?.[0]?.comment ||
-                ""
-              );
-              const timestamp = c.timestamp ? new Date(c.timestamp * 1000).toLocaleString() : "";
-              const author = decode(c.author || c.data?.[0]?.comment?.author || "");
-              
-              if (text && text.length > 1) {
-                data.comments.push({ text, timestamp, author });
-              }
-            });
-          }
-          
-          // LIKES - Scan for any like/reaction keys
-          let likesList = [];
-          const possibleLikesKeys = ['reactions_v2', 'reactions', 'likes_v2', 'likes', 'page_likes_v2', 'page_likes', 'pages_followed_v2', 'pages_followed', 'pages_and_profiles_you_follow'];
-          
-          for (const key of possibleLikesKeys) {
-            if (json[key] && Array.isArray(json[key])) {
-              likesList = json[key];
-              console.log(`   ❤️ Found likes in key '${key}': ${likesList.length} items`);
-              break;
-            }
-          }
-          
-          if (likesList.length === 0 && path.toLowerCase().includes('like') && Array.isArray(json)) {
-            likesList = json;
-            console.log(`   ❤️ Using root array as likes: ${likesList.length} items`);
-          }
-          
-          if (likesList.length > 0) {
-            likesList.forEach(item => {
-              if (!item || typeof item !== 'object') return;
-              const title = decode(item.title || item.name || item.data?.[0]?.title || item.data?.[0]?.name || "");
+          // Pattern 4: LIKES - Look for reactions/likes
+          const checkForLikes = (arr, source) => {
+            if (!Array.isArray(arr) || arr.length === 0) return 0;
+            let count = 0;
+            arr.forEach(item => {
+              if (!item) return;
+              const title = decode(item.title || item.name || item.data?.[0]?.title || "");
               const timestamp = item.timestamp ? new Date(item.timestamp * 1000).toLocaleString() : "";
               if (title && title.length > 1) {
                 data.likes.push({ title, timestamp });
+                count++;
               }
             });
-            console.log(`   ✅ Added ${likesList.length} likes`);
+            if (count > 0) console.log(`   ❤️ Found ${count} likes from ${source}`);
+            return count;
+          };
+          
+          checkForLikes(json.reactions_v2, 'reactions_v2');
+          checkForLikes(json.reactions, 'reactions');
+          checkForLikes(json.likes_v2, 'likes_v2');
+          checkForLikes(json.likes, 'likes');
+          checkForLikes(json.page_likes, 'page_likes');
+          if (path.toLowerCase().includes('like') && Array.isArray(json)) {
+            checkForLikes(json, 'root array');
           }
           
-          // GROUPS - Scan for any group keys
-          let groupsList = [];
-          const possibleGroupsKeys = ['groups_v2', 'groups', 'your_groups_v2', 'your_groups', 'groups_joined'];
-          
-          for (const key of possibleGroupsKeys) {
-            if (json[key]) {
-              if (Array.isArray(json[key])) {
-                groupsList = json[key];
-              } else if (json[key].groups_joined) {
-                groupsList = json[key].groups_joined;
-              }
-              if (groupsList.length > 0) {
-                console.log(`   👥 Found groups in key '${key}': ${groupsList.length} items`);
-                break;
-              }
-            }
-          }
-          
-          if (groupsList.length === 0 && path.toLowerCase().includes('group') && Array.isArray(json)) {
-            groupsList = json;
-            console.log(`   👥 Using root array as groups: ${groupsList.length} items`);
-          }
-          
-          if (groupsList.length > 0) {
-            groupsList.forEach(g => {
-              if (!g || typeof g !== 'object') return;
+          // Pattern 5: GROUPS
+          const checkForGroups = (arr, source) => {
+            if (!Array.isArray(arr) || arr.length === 0) return 0;
+            let count = 0;
+            arr.forEach(g => {
+              if (!g) return;
               const name = decode(g.name || g.title || "");
               const timestamp = g.timestamp ? new Date(g.timestamp * 1000).toLocaleString() : "";
               if (name && name.length > 1 && !data.groups.find(gr => gr.name.toLowerCase() === name.toLowerCase())) {
                 data.groups.push({ name, timestamp });
+                count++;
               }
             });
-            console.log(`   ✅ Added ${groupsList.length} groups`);
+            if (count > 0) console.log(`   👥 Found ${count} groups from ${source}`);
+            return count;
+          };
+          
+          checkForGroups(json.groups_v2, 'groups_v2');
+          checkForGroups(json.groups, 'groups');
+          checkForGroups(json.groups_joined?.groups_joined, 'groups_joined');
+          if (path.toLowerCase().includes('group') && Array.isArray(json)) {
+            checkForGroups(json, 'root array');
           }
           
-          // MARKETPLACE
-          if (path.toLowerCase().includes('marketplace')) {
-            console.log(`  → Found marketplace file: ${path}`);
-            let items = [];
-            
-            if (json.marketplace_items) items = json.marketplace_items;
-            else if (Array.isArray(json)) items = json;
-            else items = [json];
-            
-            items.forEach(item => {
-              const text = decode(item.name || item.title || item.data?.[0]?.title || "");
-              const timestamp = item.timestamp ? new Date(item.timestamp * 1000).toLocaleString() : 
-                              item.creation_timestamp ? new Date(item.creation_timestamp * 1000).toLocaleString() : "";
-              if (text && text.length > 1) {
-                data.marketplace.push({ text, timestamp });
-              }
-            });
-            
-            if (items.length > 0) {
-              console.log(`  ✓ Extracted ${items.length} marketplace items from this file`);
-            }
-          }
-          
-          // REVIEWS - Scan for any review keys
-          let reviewsList = [];
-          const possibleReviewsKeys = ['reviews_written_v2', 'reviews_written', 'reviews_v2', 'reviews'];
-          
-          for (const key of possibleReviewsKeys) {
-            if (json[key] && Array.isArray(json[key])) {
-              reviewsList = json[key];
-              console.log(`   ⭐ Found reviews in key '${key}': ${reviewsList.length} items`);
-              break;
-            }
-          }
-          
-          if (reviewsList.length === 0 && path.toLowerCase().includes('review') && Array.isArray(json)) {
-            reviewsList = json;
-            console.log(`   ⭐ Using root array as reviews: ${reviewsList.length} items`);
-          }
-          
-          if (reviewsList.length > 0) {
-            reviewsList.forEach(r => {
-              if (!r || typeof r !== 'object') return;
+          // Pattern 6: REVIEWS
+          const checkForReviews = (arr, source) => {
+            if (!Array.isArray(arr) || arr.length === 0) return 0;
+            let count = 0;
+            arr.forEach(r => {
+              if (!r) return;
               const text = decode(r.review_text || r.text || r.title || r.data?.[0]?.review?.text || "");
               const timestamp = r.timestamp ? new Date(r.timestamp * 1000).toLocaleString() : "";
               if (text && text.length > 1) {
                 data.reviews.push({ text, timestamp });
+                count++;
               }
             });
-            console.log(`   ✅ Added ${reviewsList.length} reviews`);
+            if (count > 0) console.log(`   ⭐ Found ${count} reviews from ${source}`);
+            return count;
+          };
+          
+          checkForReviews(json.reviews_written_v2, 'reviews_written_v2');
+          checkForReviews(json.reviews_written, 'reviews_written');
+          checkForReviews(json.reviews, 'reviews');
+          if (path.toLowerCase().includes('review') && Array.isArray(json)) {
+            checkForReviews(json, 'root array');
+          }
+          
+          // Pattern 7: COMMENTS
+          const checkForComments = (arr, source) => {
+            if (!Array.isArray(arr) || arr.length === 0) return 0;
+            let count = 0;
+            arr.forEach(c => {
+              if (!c) return;
+              const text = decode(c.data?.[0]?.comment?.comment || c.comment || c.title || c.text || "");
+              const timestamp = c.timestamp ? new Date(c.timestamp * 1000).toLocaleString() : "";
+              const author = decode(c.author || c.data?.[0]?.comment?.author || "");
+              if (text && text.length > 1) {
+                data.comments.push({ text, timestamp, author });
+                count++;
+              }
+            });
+            if (count > 0) console.log(`   💬 Found ${count} comments from ${source}`);
+            return count;
+          };
+          
+          checkForComments(json.comments, 'comments');
+          if (path.toLowerCase().includes('comment') && Array.isArray(json)) {
+            checkForComments(json, 'root array');
           }
           
           // EVENTS (multiple formats)
