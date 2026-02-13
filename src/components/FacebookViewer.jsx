@@ -61,17 +61,17 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
     path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')
   );
   
-  // Load media on demand
+  // Load media on demand using blob URLs
   const loadMedia = async (mediaPath, type) => {
-    if (loadingMedia[mediaPath]) return;
+    if (loadingMedia[mediaPath] || photoFilesObj[mediaPath]) return;
     setLoadingMedia(prev => ({ ...prev, [mediaPath]: true }));
     try {
-      const response = await base44.functions.invoke('getArchiveMediaFile', {
+      const response = await base44.functions.invoke('getArchiveEntry', {
         fileUrl: archiveUrl,
-        mediaPath
+        entryPath: mediaPath,
+        responseType: 'base64'
       });
-      // Update photoFiles or videoFiles in state
-      if (type === 'image') {
+      if (response.data?.content) {
         photoFilesObj[mediaPath] = response.data.content;
       }
     } catch (err) {
