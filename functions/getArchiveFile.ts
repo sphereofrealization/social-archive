@@ -124,7 +124,26 @@ Deno.serve(async (req) => {
     for (let i = 0; i < files.length; i++) {
       const [path, file] = files[i];
 
-      // Skip non-text files to save time
+      // Detect photos and videos by file extension
+      if (path.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i)) {
+        data.photos.push({ 
+          path, 
+          filename: path.split('/').pop(),
+          timestamp: extractTimestamp(path)
+        });
+        continue;
+      }
+
+      if (path.match(/\.(mp4|mov|avi|mkv|webm|m4v)$/i)) {
+        data.videos.push({ 
+          path, 
+          filename: path.split('/').pop(),
+          timestamp: extractTimestamp(path)
+        });
+        continue;
+      }
+
+      // Skip other non-text files to save time
       if (!path.endsWith('.html') && !path.endsWith('.json')) continue;
 
       try {
