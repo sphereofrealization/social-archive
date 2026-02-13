@@ -23,7 +23,6 @@ import {
   Copy,
   Check
 } from "lucide-react";
-import { useState } from "react";
 import { format } from "date-fns";
 import ArchiveDataViewer from "../components/ArchiveDataViewer";
 import { createPageUrl } from "@/utils";
