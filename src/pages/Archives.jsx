@@ -190,6 +190,12 @@ export default function Archives() {
     setExpandedArchive(expandedArchive === archiveId ? null : archiveId);
   };
 
+  const copyUrlToClipboard = (url, archiveId) => {
+    navigator.clipboard.writeText(url);
+    setCopiedUrl(archiveId);
+    setTimeout(() => setCopiedUrl(null), 2000);
+  };
+
   return (
     <div className="p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
