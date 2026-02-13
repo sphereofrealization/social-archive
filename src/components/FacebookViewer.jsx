@@ -20,15 +20,24 @@ import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import AIDataSearch from "./AIDataSearch";
 
-export default function FacebookViewer({ data, photoFiles = {} }) {
+export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [activeTab, setActiveTab] = useState("posts");
+  const [loadingMedia, setLoadingMedia] = useState({});
 
   const profile = data?.profile || {};
-  const posts = data?.posts || [];
-  const friends = data?.friends || [];
-  const messages = data?.messages || [];
+  const posts = Array.isArray(data?.posts) ? data.posts : [];
+  const friends = Array.isArray(data?.friends) ? data.friends : [];
+  const messages = Array.isArray(data?.messages) ? data.messages : [];
+  const comments = Array.isArray(data?.comments) ? data.comments : [];
+  const reels = Array.isArray(data?.reels) ? data.reels : [];
+  const checkins = Array.isArray(data?.checkins) ? data.checkins : [];
+  const likes = Array.isArray(data?.likes) ? data.likes : [];
+  const events = Array.isArray(data?.events) ? data.events : [];
+  const reviews = Array.isArray(data?.reviews) ? data.reviews : [];
+  const groups = Array.isArray(data?.groups) ? data.groups : [];
+  const marketplace = Array.isArray(data?.marketplace) ? data.marketplace : [];
   
   // Map friends to their conversations with flexible matching
   const friendConversations = {};
@@ -41,24 +50,35 @@ export default function FacebookViewer({ data, photoFiles = {} }) {
       friendConversations[parts[parts.length - 1].toLowerCase()] = conv;
     }
   });
-  const comments = data?.comments || [];
-  const reels = data?.reels || [];
-  const checkins = data?.checkins || [];
-  const likes = data?.likes || [];
-  const events = data?.events || [];
-  const reviews = data?.reviews || [];
-  const groups = data?.groups || [];
-  const marketplace = data?.marketplace || [];
   
   // Get actual media files from photoFiles and videoFiles objects
   const photoFilesObj = data?.photoFiles || photoFiles || {};
   const videoFilesObj = data?.videoFiles || {};
+  const videosList = Array.isArray(data?.videos) ? data.videos : [];
   
   const actualPhotos = Object.entries(photoFilesObj).filter(([path]) => 
     path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')
   );
   
-  const actualVideos = Object.entries(videoFilesObj);
+  // Load media on demand
+  const loadMedia = async (mediaPath, type) => {
+    if (loadingMedia[mediaPath]) return;
+    setLoadingMedia(prev => ({ ...prev, [mediaPath]: true }));
+    try {
+      const response = await base44.functions.invoke('getArchiveMediaFile', {
+        fileUrl: archiveUrl,
+        mediaPath
+      });
+      // Update photoFiles or videoFiles in state
+      if (type === 'image') {
+        photoFilesObj[mediaPath] = response.data.content;
+      }
+    } catch (err) {
+      console.error(`Failed to load media ${mediaPath}:`, err);
+    } finally {
+      setLoadingMedia(prev => ({ ...prev, [mediaPath]: false }));
+    }
+  };
 
   console.log("FacebookViewer received data:", {
     hasPhotoFiles: !!data?.photoFiles,
