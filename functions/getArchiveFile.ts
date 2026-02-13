@@ -100,11 +100,13 @@ Deno.serve(async (req) => {
             });
           }
           
-          // FRIENDS
+          // FRIENDS - skip headers/labels, only get actual names
           if (pathLower.includes('/friend')) {
+            const skipLabels = ['Received', 'Your', 'People', 'Suggested', 'Contains', 'Information', 'Creation', 'Last', 'Suggestion', 'Name', 'Friend', 'Post', 'Connection', 'Time', 'Sent', 'Modified', 'May', 'Know'];
             const textContent = content.replace(/<[^>]*>/g, '\n').split('\n').map(l => l.trim()).filter(l => l.length > 0);
             textContent.forEach(line => {
-              if (line.match(/^[A-Z][a-z\s]+$/) && line.length > 3 && line.length < 100) {
+              const isLabel = skipLabels.some(label => line === label || line.startsWith(label));
+              if (!isLabel && line.match(/^[A-Z][a-z]+(\s+[A-Z][a-z]+)+$/) && line.length > 4 && line.length < 100) {
                 if (!data.friends.find(f => f.name === line)) {
                   data.friends.push({ name: line, date_added: "" });
                 }
