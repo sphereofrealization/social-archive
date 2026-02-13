@@ -156,19 +156,16 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
       {/* Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex flex-wrap gap-2 mb-6 bg-transparent h-auto p-0">
-          <TabsTrigger value="posts" className="bg-red-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-red-600">Posts ({posts.length})</TabsTrigger>
-          <TabsTrigger value="friends" className="bg-orange-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-orange-600">Friends ({friends.length})</TabsTrigger>
-          <TabsTrigger value="messages" className="bg-yellow-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-yellow-600">Conversations ({messages.length})</TabsTrigger>
-          <TabsTrigger value="photos" className="bg-green-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-green-600">Photos ({actualPhotos.length})</TabsTrigger>
-          <TabsTrigger value="videos" className="bg-teal-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-teal-600">Videos ({videosList.length})</TabsTrigger>
-          <TabsTrigger value="comments" className="bg-blue-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-blue-600">Comments ({comments.length})</TabsTrigger>
-          <TabsTrigger value="reels" className="bg-indigo-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-indigo-600">Reels ({reels.length})</TabsTrigger>
-          <TabsTrigger value="checkins" className="bg-purple-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-purple-600">Check-ins ({checkins.length})</TabsTrigger>
-          <TabsTrigger value="likes" className="bg-pink-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-pink-600">Likes ({likes.length})</TabsTrigger>
-          <TabsTrigger value="events" className="bg-rose-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-rose-600">Events ({events.length})</TabsTrigger>
-          <TabsTrigger value="reviews" className="bg-fuchsia-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-fuchsia-600">Reviews ({reviews.length})</TabsTrigger>
-          <TabsTrigger value="groups" className="bg-violet-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-violet-600">Groups ({groups.length})</TabsTrigger>
-          <TabsTrigger value="marketplace" className="bg-cyan-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-cyan-600">Marketplace ({marketplace.length})</TabsTrigger>
+          <TabsTrigger value="posts" className="bg-red-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-red-600 text-sm">Posts ({posts.length})</TabsTrigger>
+          <TabsTrigger value="friends" className="bg-orange-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-orange-600 text-sm">Friends ({friends.length})</TabsTrigger>
+          <TabsTrigger value="messages" className="bg-yellow-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-yellow-600 text-sm">Chats ({messages.length})</TabsTrigger>
+          <TabsTrigger value="photos" className="bg-green-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-green-600 text-sm">Photos ({data?.counts?.photos || 0})</TabsTrigger>
+          <TabsTrigger value="videos" className="bg-teal-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-teal-600 text-sm">Videos ({data?.counts?.videos || 0})</TabsTrigger>
+          <TabsTrigger value="comments" className="bg-blue-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-blue-600 text-sm">Comments ({comments.length})</TabsTrigger>
+          <TabsTrigger value="likes" className="bg-pink-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-pink-600 text-sm">Likes ({likes.length})</TabsTrigger>
+          <TabsTrigger value="groups" className="bg-violet-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-violet-600 text-sm">Groups ({groups.length})</TabsTrigger>
+          <TabsTrigger value="reviews" className="bg-fuchsia-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-fuchsia-600 text-sm">Reviews ({reviews.length})</TabsTrigger>
+          <TabsTrigger value="marketplace" className="bg-cyan-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-cyan-600 text-sm">Marketplace ({marketplace.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="posts" className="space-y-4 mt-4">
