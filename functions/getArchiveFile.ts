@@ -54,7 +54,34 @@ Deno.serve(async (req) => {
         .trim();
     };
 
-    // Process all files
+    // PHASE 1: Extract photos (limit to 30 to avoid timeout)
+    console.log("📸 Extracting photos...");
+    let photoCount = 0;
+    for (const [path, file] of Object.entries(zip.files)) {
+      if (photoCount >= 30) break;
+      if (file.dir) continue;
+      
+      if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')) {
+        try {
+          const imageData = await file.async("base64");
+          const ext = path.split('.').pop().toLowerCase();
+          const mimeType = {
+            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+            'png': 'image/png', 'gif': 'image/gif',
+            'webp': 'image/webp'
+          }[ext] || 'image/jpeg';
+
+          data.photoFiles[path] = `data:${mimeType};base64,${imageData}`;
+          data.photos.push({ path, filename: path.split('/').pop(), timestamp: "" });
+          photoCount++;
+        } catch (err) {
+          console.error(`Failed to extract photo ${path}`);
+        }
+      }
+    }
+    console.log(`✅ Extracted ${photoCount} photos`);
+
+    // PHASE 2: Process all text files
     for (const [path, file] of Object.entries(zip.files)) {
       if (file.dir) continue;
       
@@ -89,16 +116,16 @@ Deno.serve(async (req) => {
             const time = html.match(/<div class="_a72d">([^<]+)<\/div>/);
             const timestamp = time ? decode(time[1]) : "";
             
-            // Get media links
+            // Get media links and resolve to base64
             const img = html.match(/href="([^"]+\.(jpg|jpeg|png|gif))"/i);
-            const photoPath = img ? img[1] : null;
+            const photo_url = img ? (data.photoFiles[img[1]] || null) : null;
             
             const fullText = [title, ...texts].filter(t => t).join(' - ');
             
             // Categorize by file path
             if (path.includes('posts') || path.includes('album')) {
               if (fullText.length >= 10) {
-                data.posts.push({ text: fullText, timestamp, photo_url: photoPath, likes_count: 0, comments_count: 0, comments: [] });
+                data.posts.push({ text: fullText, timestamp, photo_url, likes_count: 0, comments_count: 0, comments: [] });
               }
             } else if (path.includes('comment')) {
               if (texts[0] && texts[0].length >= 10) {
@@ -188,17 +215,10 @@ Deno.serve(async (req) => {
       } catch (err) {}
     }
 
-    // Get photo references (not base64 data - just paths)
-    for (const [path] of Object.entries(zip.files)) {
-      if (path.match(/\.(jpg|jpeg|png|gif)$/i) && !path.includes('icon')) {
-        data.photos.push({ path, filename: path.split('/').pop() });
-      }
-    }
-
     data.friends = [...new Map(data.friends.map(f => [f.name.toLowerCase(), f])).values()];
     data.messages.sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
 
-    console.log(`✅ Profile: ${data.profile.name}, Posts: ${data.posts.length}, Comments: ${data.comments.length}, Friends: ${data.friends.length}, Messages: ${data.messages.length}`);
+    console.log(`✅ Profile: ${data.profile.name}, Posts: ${data.posts.length}, Comments: ${data.comments.length}, Friends: ${data.friends.length}, Messages: ${data.messages.length}, Photos: ${Object.keys(data.photoFiles).length}`);
 
     return Response.json(data);
     
