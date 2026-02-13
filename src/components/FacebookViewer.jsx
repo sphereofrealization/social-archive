@@ -399,7 +399,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
         </TabsContent>
 
         <TabsContent value="photos" className="mt-4">
-          {actualPhotos.length === 0 ? (
+          {data?.photos && data.photos.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
                 No photos found
@@ -407,23 +407,37 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             </Card>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {actualPhotos.map(([path, dataUrl], i) => (
-                <Dialog key={i}>
-                  <DialogTrigger asChild>
-                    <div className="aspect-square cursor-pointer hover:opacity-90 transition-opacity">
-                      <img 
-                        src={dataUrl} 
-                        alt={path.split('/').pop()} 
-                        className="w-full h-full object-cover rounded-lg shadow"
-                      />
-                    </div>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-4xl">
-                    <img src={dataUrl} alt={path} className="w-full h-auto" />
-                    <p className="text-sm text-gray-500 mt-2">{path}</p>
-                  </DialogContent>
-                </Dialog>
-              ))}
+              {data?.photos?.map((photo, i) => {
+                const [path, dataUrl] = Array.isArray(photo) ? photo : [photo.path, null];
+                return (
+                  <Dialog key={i}>
+                    <DialogTrigger asChild>
+                      <div 
+                        className="aspect-square cursor-pointer hover:opacity-90 transition-opacity bg-gray-100 flex items-center justify-center rounded-lg"
+                        onClick={() => {
+                          if (!dataUrl) loadMedia(path, 'image');
+                        }}
+                      >
+                        {dataUrl ? (
+                          <img 
+                            src={dataUrl} 
+                            alt={path.split('/').pop()} 
+                            className="w-full h-full object-cover rounded-lg"
+                          />
+                        ) : (
+                          <span className="text-gray-400 text-xs text-center p-2">{path.split('/').pop()}</span>
+                        )}
+                      </div>
+                    </DialogTrigger>
+                    {dataUrl && (
+                      <DialogContent className="max-w-4xl">
+                        <img src={dataUrl} alt={path} className="w-full h-auto" />
+                        <p className="text-sm text-gray-500 mt-2">{path}</p>
+                      </DialogContent>
+                    )}
+                  </Dialog>
+                );
+              })}
             </div>
           )}
         </TabsContent>
