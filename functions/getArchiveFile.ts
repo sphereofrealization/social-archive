@@ -71,8 +71,8 @@ Deno.serve(async (req) => {
         } catch {}
       }
       
-      // Videos - check for all video file extensions
-      if (path.match(/\.(mp4|mov|avi|webm|mkv|flv|m4v|3gp|wmv)$/i)) {
+      // Videos - check for all video file extensions and "video" in path
+      if (path.match(/\.(mp4|mov|avi|webm|mkv|flv|m4v|3gp|wmv)$/i) || path.toLowerCase().includes('video')) {
         const size = file._data?.uncompressedSize || 0;
         data.videos.push({ 
           path, 
@@ -88,67 +88,72 @@ Deno.serve(async (req) => {
       if (file.dir) continue;
       
       try {
-        // Process HTML files (Facebook's primary format)
+        // Process HTML files
         if (path.endsWith('.html')) {
           const content = decode(await file.async("text"));
           
-          // Extract posts
-          if (path.includes('post') || path.includes('timeline')) {
-            const postMatches = content.match(/<div[^>]*>(.*?)<\/div>/gs) || [];
-            postMatches.forEach(match => {
-              const text = match.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-              if (text.length > 20 && text.length < 5000) {
-                data.posts.push({ text, timestamp: "", photo_url: null, likes_count: 0, comments_count: 0, comments: [] });
-              }
-            });
-          }
+          // Extract all text content between tags
+          const textContent = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+          const lines = textContent.split(/[,;|]/).map(l => l.trim()).filter(l => l.length > 0);
           
-          // Extract friends
+          // Friends
           if (path.includes('friend')) {
-            const nameMatches = content.match(/>[A-Z][a-z]+\s+[A-Z][a-z]+</g) || [];
-            nameMatches.forEach(match => {
-              const name = match.slice(1, -1).trim();
-              if (name.length > 3 && !data.friends.find(f => f.name === name)) {
-                data.friends.push({ name, date_added: "" });
+            lines.forEach(line => {
+              // Look for capitalized names (First Last format)
+              if (line.match(/^[A-Z][a-z]+\s+[A-Z][a-z]+$/) && line.length > 3 && line.length < 100) {
+                if (!data.friends.find(f => f.name === line)) {
+                  data.friends.push({ name: line, date_added: "" });
+                }
               }
             });
           }
           
-          // Extract comments
+          // Posts
+          if (path.includes('post') || path.includes('timeline')) {
+            lines.forEach(line => {
+              if (line.length > 20 && line.length < 5000 && !line.includes('http') && !line.match(/^[0-9]/)) {
+                if (!data.posts.find(p => p.text === line)) {
+                  data.posts.push({ text: line, timestamp: "", photo_url: null, likes_count: 0, comments_count: 0, comments: [] });
+                }
+              }
+            });
+          }
+          
+          // Comments
           if (path.includes('comment')) {
-            const commentMatches = content.match(/<div[^>]*>(.*?)<\/div>/gs) || [];
-            commentMatches.forEach(match => {
-              const text = match.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-              if (text.length > 10 && text.length < 2000) {
-                data.comments.push({ text, timestamp: "", author: "" });
+            lines.forEach(line => {
+              if (line.length > 10 && line.length < 2000 && !line.includes('http')) {
+                if (!data.comments.find(c => c.text === line)) {
+                  data.comments.push({ text: line, timestamp: "", author: "" });
+                }
               }
             });
           }
           
-          // Extract likes/reactions
+          // Likes/Reactions
           if (path.includes('like') || path.includes('reaction')) {
-            const likeMatches = content.match(/>[^<]{3,100}</g) || [];
-            likeMatches.forEach(match => {
-              const title = match.slice(1, -1).trim();
-              if (title.length > 3 && title.length < 200) {
-                data.likes.push({ title, timestamp: "" });
+            lines.forEach(line => {
+              if (line.length > 3 && line.length < 300 && !line.includes('http')) {
+                if (!data.likes.find(l => l.title === line)) {
+                  data.likes.push({ title: line, timestamp: "" });
+                }
               }
             });
           }
           
-          // Extract groups
+          // Groups
           if (path.includes('group')) {
-            const groupMatches = content.match(/>[A-Z][^<]{3,100}</g) || [];
-            groupMatches.forEach(match => {
-              const name = match.slice(1, -1).trim();
-              if (name.length > 3 && name.length < 150 && !data.groups.find(g => g.name === name)) {
-                data.groups.push({ name, timestamp: "" });
+            lines.forEach(line => {
+              if (line.length > 3 && line.length < 200 && !line.includes('http')) {
+                if (!data.groups.find(g => g.name === line)) {
+                  data.groups.push({ name: line, timestamp: "" });
+                }
               }
             });
           }
         }
         
-        // Process JSON files (some data is in JSON)
+        // Process JSON files
         if (path.endsWith('.json')) {
           const content = await file.async("text");
           const json = JSON.parse(content);
@@ -176,16 +181,6 @@ Deno.serve(async (req) => {
         }
       } catch {}
     }
-    
-    // Deduplicate
-    data.friends = [...new Map(data.friends.map(f => [f.name.toLowerCase(), f])).values()];
-    data.posts = [...new Map(data.posts.map(p => [p.text, p])).values()].slice(0, 100);
-    data.comments = [...new Map(data.comments.map(c => [c.text, c])).values()].slice(0, 100);
-    data.likes = [...new Map(data.likes.map(l => [l.title.toLowerCase(), l])).values()].slice(0, 100);
-    data.groups = [...new Map(data.groups.map(g => [g.name.toLowerCase(), g])).values()];
-    data.messages.sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
-
-    console.log(`Extracted: ${data.videos.length} videos, ${data.photos.length} photos, ${data.posts.length} posts, ${data.friends.length} friends, ${data.messages.length} conversations`);
 
     return Response.json(data);
     
