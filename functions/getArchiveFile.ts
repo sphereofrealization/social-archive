@@ -25,122 +25,147 @@ Deno.serve(async (req) => {
     const blob = await response.blob();
     const zip = await JSZip.loadAsync(blob);
     
-    // Collect all HTML and JSON content
-    const contentSamples = {};
-    let totalFiles = 0;
+    // Scan archive structure and collect file samples
+    const filesByType = {
+      posts: [],
+      friends: [],
+      conversations: [],
+      likes: [],
+      videos: [],
+      comments: [],
+      events: [],
+      photos: [],
+      groups: [],
+      reviews: [],
+      marketplace: [],
+      other: []
+    };
+    
+    const fileSamples = [];
     
     for (const [path, file] of Object.entries(zip.files)) {
       if (file.dir) continue;
-      totalFiles++;
       
-      // Limit to first 50 relevant files to avoid token limits
-      if (Object.keys(contentSamples).length < 50) {
-        if (path.endsWith('.html') || path.endsWith('.json')) {
-          try {
-            const content = await file.async("text");
-            contentSamples[path] = content.slice(0, 3000); // First 3000 chars per file
-          } catch {}
-        }
+      const pathLower = path.toLowerCase();
+      
+      // Categorize by folder structure
+      if (pathLower.includes('posts')) filesByType.posts.push(path);
+      else if (pathLower.includes('friends')) filesByType.friends.push(path);
+      else if (pathLower.includes('messages') || pathLower.includes('conversations')) filesByType.conversations.push(path);
+      else if (pathLower.includes('likes')) filesByType.likes.push(path);
+      else if (pathLower.includes('videos')) filesByType.videos.push(path);
+      else if (pathLower.includes('comments')) filesByType.comments.push(path);
+      else if (pathLower.includes('events')) filesByType.events.push(path);
+      else if (pathLower.includes('photos') || pathLower.match(/\.(jpg|jpeg|png|gif)$/i)) filesByType.photos.push(path);
+      else if (pathLower.includes('groups')) filesByType.groups.push(path);
+      else if (pathLower.includes('reviews')) filesByType.reviews.push(path);
+      else if (pathLower.includes('marketplace')) filesByType.marketplace.push(path);
+      else filesByType.other.push(path);
+      
+      // Collect text file samples for LLM analysis
+      if ((pathLower.endsWith('.html') || pathLower.endsWith('.json')) && fileSamples.length < 30) {
+        try {
+          const content = await file.async("text");
+          fileSamples.push({
+            path,
+            content: content.slice(0, 2000),
+            category: Object.keys(filesByType).find(key => filesByType[key].includes(path)) || 'unknown'
+          });
+        } catch {}
       }
     }
     
-    // Use LLM to extract and categorize data
-    const extractionPrompt = `You are analyzing a Facebook archive. Here are sample files from the archive:
+    // Now use LLM to extract actual data from the samples
+    const extractionPrompt = `Analyze these Facebook archive files and extract REAL data only. Ignore metadata, labels, and headers.
 
-${Object.entries(contentSamples).map(([path, content]) => `
-FILE: ${path}
-${content}
----`).join('\n')}
+${fileSamples.map(s => `FILE: ${s.path}
+CATEGORY: ${s.category}
+CONTENT:
+${s.content}
+---`).join('\n\n')}
 
-Extract and categorize all the data you find. Return ONLY a valid JSON object with these exact fields (use empty arrays/objects if not found):
-
+Extract and return ONLY a JSON object with counts and samples:
 {
-  "posts": [{"text": "...", "timestamp": "...", "likes_count": 0, "comments_count": 0}],
-  "friends": [{"name": "..."}],
-  "comments": [{"text": "...", "author": "...", "timestamp": "..."}],
-  "messages": [{"conversation_with": "...", "participants": ["..."], "totalMessages": 0, "messages": [{"sender": "...", "text": "...", "timestamp": "..."}]}],
-  "groups": [{"name": "...", "timestamp": "..."}],
-  "likes": [{"title": "..."}],
-  "events": [{"text": "...", "timestamp": "..."}],
-  "reviews": [{"text": "...", "timestamp": "..."}],
-  "marketplace": [{"text": "...", "timestamp": "..."}],
-  "photos": [{"path": "...", "filename": "..."}],
-  "videos": [{"path": "...", "filename": "..."}]
+  "posts_count": 0,
+  "posts_samples": [],
+  "friends_count": 0,
+  "friends_names": [],
+  "messages_count": 0,
+  "message_participants": [],
+  "likes_count": 0,
+  "likes_samples": [],
+  "videos_count": 0,
+  "video_files": [],
+  "comments_count": 0,
+  "events_count": 0,
+  "event_samples": [],
+  "groups_count": 0,
+  "group_names": [],
+  "reviews_count": 0,
+  "marketplace_count": 0
 }
 
-IMPORTANT:
-- Friends should be ACTUAL people you friended, not system labels or metadata
-- Posts should be actual status updates you made, not just any text
-- Comments should be actual comments you made
-- Videos should be actual video files in the archive
-- Do NOT duplicate entries
-- Do NOT include system labels like "Your friends", "Received friend requests", etc.
-- Return ONLY the JSON, no other text`;
+RULES:
+- Count should be actual count of items, not file count
+- Friends must be actual friend names (not "Your Friends", not metadata)
+- Posts must be actual status updates you wrote
+- Videos must be actual video files you uploaded
+- Be conservative - only count what you can clearly identify
+- Return ONLY valid JSON`;
 
     const result = await base44.integrations.Core.InvokeLLM({
       prompt: extractionPrompt,
       response_json_schema: {
         type: "object",
         properties: {
-          posts: { type: "array", items: { type: "object" } },
-          friends: { type: "array", items: { type: "object" } },
-          comments: { type: "array", items: { type: "object" } },
-          messages: { type: "array", items: { type: "object" } },
-          groups: { type: "array", items: { type: "object" } },
-          likes: { type: "array", items: { type: "object" } },
-          events: { type: "array", items: { type: "object" } },
-          reviews: { type: "array", items: { type: "object" } },
-          marketplace: { type: "array", items: { type: "object" } },
-          photos: { type: "array", items: { type: "object" } },
-          videos: { type: "array", items: { type: "object" } }
+          posts_count: { type: "number" },
+          friends_count: { type: "number" },
+          messages_count: { type: "number" },
+          likes_count: { type: "number" },
+          videos_count: { type: "number" },
+          comments_count: { type: "number" },
+          events_count: { type: "number" },
+          groups_count: { type: "number" },
+          reviews_count: { type: "number" },
+          marketplace_count: { type: "number" },
+          posts_samples: { type: "array" },
+          friends_names: { type: "array" },
+          video_files: { type: "array" }
         }
       }
     });
 
-    // Extract media files
+    // Extract photos
     const photoFiles = {};
-    const decode = (text) => {
-      if (!text) return "";
-      return String(text)
-        .replace(/&#039;/g, "'")
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&nbsp;/g, ' ')
-        .trim();
-    };
-
     let photoCount = 0;
-    for (const [path, file] of Object.entries(zip.files)) {
-      if (file.dir) continue;
-      
-      if (photoCount < 30 && path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')) {
+    for (const photoPath of filesByType.photos) {
+      if (photoCount >= 30) break;
+      if (photoPath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
         try {
+          const file = zip.file(photoPath);
           const imageData = await file.async("base64");
-          const ext = path.split('.').pop().toLowerCase();
+          const ext = photoPath.split('.').pop().toLowerCase();
           const mimeTypes = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'};
-          photoFiles[path] = `data:${mimeTypes[ext] || 'image/jpeg'};base64,${imageData}`;
+          photoFiles[photoPath] = `data:${mimeTypes[ext] || 'image/jpeg'};base64,${imageData}`;
           photoCount++;
         } catch {}
       }
     }
 
     return Response.json({
-      profile: { name: "", email: "" },
-      posts: result.posts || [],
-      friends: result.friends || [],
-      messages: result.messages || [],
-      photos: result.photos || [],
-      videos: result.videos || [],
+      posts: result.posts_count || 0,
+      friends: result.friends_count || 0,
+      conversations: result.messages_count || 0,
+      photos: photoCount,
+      videos: result.videos_count || 0,
+      comments: result.comments_count || 0,
+      events: result.events_count || 0,
+      reviews: result.reviews_count || 0,
+      groups: result.groups_count || 0,
+      likes: result.likes_count || 0,
+      marketplace: result.marketplace_count || 0,
       photoFiles,
-      videoFiles: {},
-      comments: result.comments || [],
-      groups: result.groups || [],
-      marketplace: result.marketplace || [],
-      events: result.events || [],
-      reviews: result.reviews || [],
-      likes: result.likes || []
+      raw: result
     });
     
   } catch (error) {
