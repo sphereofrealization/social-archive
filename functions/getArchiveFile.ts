@@ -65,7 +65,12 @@ Deno.serve(async (req) => {
         } catch {}
       }
       
-      if (path.match(/\.(mp4|mov|avi|webm|mkv|flv)$/i)) {
+      // Check for video files with expanded detection
+      const isVideo = path.match(/\.(mp4|mov|avi|webm|mkv|flv|m4v|3gp|wmv)$/i) || 
+                     (path.toLowerCase().includes('video') && !path.endsWith('.json') && !path.endsWith('.html'));
+      
+      if (isVideo) {
+        console.log(`📹 Found video: ${path}`);
         const sizeInMB = (file._data?.uncompressedSize || 0) / (1024 * 1024);
         data.videos.push({ 
           path, 
