@@ -14,6 +14,8 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
   const [error, setError] = useState(null);
   const [individualFile, setIndividualFile] = useState(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [connectivityTest, setConnectivityTest] = useState(null);
+  const [testingConnectivity, setTestingConnectivity] = useState(false);
 
   const handleFileUploadForAnalysis = async () => {
     if (!individualFile) return;
