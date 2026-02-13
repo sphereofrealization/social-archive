@@ -221,6 +221,17 @@ Deno.serve(async (req) => {
             if (nameMatch) data.profile.name = decode(nameMatch[1]);
           }
           
+          // FRIENDS FROM HTML
+          if (path.includes('friends')) {
+            const friendMatches = content.matchAll(/<div class="_2lek">([^<]+)<\/div>/g);
+            for (const match of friendMatches) {
+              const name = decode(match[1]);
+              if (name && name.length > 1 && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
+                data.friends.push({ name, date_added: "" });
+              }
+            }
+          }
+          
           // Extract sections
           const sections = content.matchAll(/<section[^>]*>(.*?)<\/section>/gs);
           for (const section of sections) {
