@@ -25,23 +25,80 @@ Deno.serve(async (req) => {
     const blob = await response.blob();
     const zip = await JSZip.loadAsync(blob);
     
-    const data = {
-      profile: { name: "", email: "" },
-      posts: [],
-      friends: [],
-      messages: [],
-      photos: [],
-      videos: [],
-      photoFiles: {},
-      videoFiles: {},
-      comments: [],
-      groups: [],
-      marketplace: [],
-      events: [],
-      reviews: [],
-      likes: []
-    };
+    // Collect all HTML and JSON content
+    const contentSamples = {};
+    let totalFiles = 0;
+    
+    for (const [path, file] of Object.entries(zip.files)) {
+      if (file.dir) continue;
+      totalFiles++;
+      
+      // Limit to first 50 relevant files to avoid token limits
+      if (Object.keys(contentSamples).length < 50) {
+        if (path.endsWith('.html') || path.endsWith('.json')) {
+          try {
+            const content = await file.async("text");
+            contentSamples[path] = content.slice(0, 3000); // First 3000 chars per file
+          } catch {}
+        }
+      }
+    }
+    
+    // Use LLM to extract and categorize data
+    const extractionPrompt = `You are analyzing a Facebook archive. Here are sample files from the archive:
 
+${Object.entries(contentSamples).map(([path, content]) => `
+FILE: ${path}
+${content}
+---`).join('\n')}
+
+Extract and categorize all the data you find. Return ONLY a valid JSON object with these exact fields (use empty arrays/objects if not found):
+
+{
+  "posts": [{"text": "...", "timestamp": "...", "likes_count": 0, "comments_count": 0}],
+  "friends": [{"name": "..."}],
+  "comments": [{"text": "...", "author": "...", "timestamp": "..."}],
+  "messages": [{"conversation_with": "...", "participants": ["..."], "totalMessages": 0, "messages": [{"sender": "...", "text": "...", "timestamp": "..."}]}],
+  "groups": [{"name": "...", "timestamp": "..."}],
+  "likes": [{"title": "..."}],
+  "events": [{"text": "...", "timestamp": "..."}],
+  "reviews": [{"text": "...", "timestamp": "..."}],
+  "marketplace": [{"text": "...", "timestamp": "..."}],
+  "photos": [{"path": "...", "filename": "..."}],
+  "videos": [{"path": "...", "filename": "..."}]
+}
+
+IMPORTANT:
+- Friends should be ACTUAL people you friended, not system labels or metadata
+- Posts should be actual status updates you made, not just any text
+- Comments should be actual comments you made
+- Videos should be actual video files in the archive
+- Do NOT duplicate entries
+- Do NOT include system labels like "Your friends", "Received friend requests", etc.
+- Return ONLY the JSON, no other text`;
+
+    const result = await base44.integrations.Core.InvokeLLM({
+      prompt: extractionPrompt,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          posts: { type: "array", items: { type: "object" } },
+          friends: { type: "array", items: { type: "object" } },
+          comments: { type: "array", items: { type: "object" } },
+          messages: { type: "array", items: { type: "object" } },
+          groups: { type: "array", items: { type: "object" } },
+          likes: { type: "array", items: { type: "object" } },
+          events: { type: "array", items: { type: "object" } },
+          reviews: { type: "array", items: { type: "object" } },
+          marketplace: { type: "array", items: { type: "object" } },
+          photos: { type: "array", items: { type: "object" } },
+          videos: { type: "array", items: { type: "object" } }
+        }
+      }
+    });
+
+    // Extract media files
+    const photoFiles = {};
     const decode = (text) => {
       if (!text) return "";
       return String(text)
@@ -54,130 +111,37 @@ Deno.serve(async (req) => {
         .trim();
     };
 
-    // Extract by folder location
+    let photoCount = 0;
     for (const [path, file] of Object.entries(zip.files)) {
       if (file.dir) continue;
       
-      const pathLower = path.toLowerCase();
-      
-      // VIDEOS - by location
-      if (pathLower.includes('/video') || pathLower.includes('/videos/')) {
-        const size = file._data?.uncompressedSize || 0;
-        data.videos.push({ 
-          path, 
-          filename: path.split('/').pop(), 
-          size: size,
-          sizeFormatted: `${(size / (1024 * 1024)).toFixed(2)} MB`
-        });
-      }
-      
-      // PHOTOS - by location
-      if (pathLower.includes('/photo') || pathLower.includes('/photos/')) {
-        if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-          try {
-            const imageData = await file.async("base64");
-            const ext = path.split('.').pop().toLowerCase();
-            const mimeTypes = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'};
-            data.photoFiles[path] = `data:${mimeTypes[ext] || 'image/jpeg'};base64,${imageData}`;
-            data.photos.push({ path, filename: path.split('/').pop(), timestamp: "" });
-          } catch {}
-        }
-      }
-      
-      // Process HTML files in specific folders
-      if (path.endsWith('.html')) {
+      if (photoCount < 30 && path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')) {
         try {
-          const content = decode(await file.async("text"));
-          
-          // POSTS
-          if (pathLower.includes('/post')) {
-            const divMatches = content.match(/<div[^>]*>(.+?)<\/div>/gs) || [];
-            divMatches.forEach(match => {
-              const text = match.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-              if (text.length > 30 && text.length < 5000 && !data.posts.find(p => p.text === text)) {
-                data.posts.push({ text, timestamp: "", photo_url: null, likes_count: 0, comments_count: 0, comments: [] });
-              }
-            });
-          }
-          
-          // FRIENDS - skip headers/labels, only get actual names
-          if (pathLower.includes('/friend')) {
-            const skipLabels = ['Received', 'Your', 'People', 'Suggested', 'Contains', 'Information', 'Creation', 'Last', 'Suggestion', 'Name', 'Friend', 'Post', 'Connection', 'Time', 'Sent', 'Modified', 'May', 'Know'];
-            const textContent = content.replace(/<[^>]*>/g, '\n').split('\n').map(l => l.trim()).filter(l => l.length > 0);
-            textContent.forEach(line => {
-              const isLabel = skipLabels.some(label => line === label || line.startsWith(label));
-              if (!isLabel && line.match(/^[A-Z][a-z]+(\s+[A-Z][a-z]+)+$/) && line.length > 4 && line.length < 100) {
-                if (!data.friends.find(f => f.name === line)) {
-                  data.friends.push({ name: line, date_added: "" });
-                }
-              }
-            });
-          }
-          
-          // COMMENTS
-          if (pathLower.includes('/comment')) {
-            const divMatches = content.match(/<div[^>]*>(.+?)<\/div>/gs) || [];
-            divMatches.forEach(match => {
-              const text = match.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-              if (text.length > 5 && text.length < 1000 && !data.comments.find(c => c.text === text)) {
-                data.comments.push({ text, timestamp: "", author: "" });
-              }
-            });
-          }
-          
-          // GROUPS
-          if (pathLower.includes('/group')) {
-            const textContent = content.replace(/<[^>]*>/g, '\n').split('\n').map(l => l.trim()).filter(l => l.length > 0);
-            textContent.forEach(line => {
-              if (line.length > 3 && line.length < 200 && !data.groups.find(g => g.name === line)) {
-                data.groups.push({ name: line, timestamp: "" });
-              }
-            });
-          }
-          
-          // LIKES
-          if (pathLower.includes('/like')) {
-            const textContent = content.replace(/<[^>]*>/g, '\n').split('\n').map(l => l.trim()).filter(l => l.length > 0);
-            textContent.forEach(line => {
-              if (line.length > 2 && line.length < 300 && !data.likes.find(l => l.title === line)) {
-                data.likes.push({ title: line, timestamp: "" });
-              }
-            });
-          }
-        } catch {}
-      }
-      
-      // Process JSON files
-      if (path.endsWith('.json')) {
-        try {
-          const content = await file.async("text");
-          const json = JSON.parse(content);
-          
-          // MESSAGES
-          if (json.messages && Array.isArray(json.messages)) {
-            const msgs = json.messages.map(m => ({
-              sender: decode(m.sender_name || ""),
-              text: decode(m.content || ""),
-              timestamp: m.timestamp_ms ? new Date(m.timestamp_ms).toLocaleString() : "",
-              timestamp_ms: m.timestamp_ms || 0
-            })).filter(m => m.text || m.sender);
-            
-            if (msgs.length > 0) {
-              const participants = json.participants?.map(p => decode(p.name)).filter(n => n) || [];
-              data.messages.push({
-                conversation_with: decode(json.title || participants.join(", ") || "Unknown"),
-                participants: participants,
-                messages: msgs,
-                lastMessageTimestamp: msgs[0]?.timestamp_ms || 0,
-                totalMessages: msgs.length
-              });
-            }
-          }
+          const imageData = await file.async("base64");
+          const ext = path.split('.').pop().toLowerCase();
+          const mimeTypes = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'};
+          photoFiles[path] = `data:${mimeTypes[ext] || 'image/jpeg'};base64,${imageData}`;
+          photoCount++;
         } catch {}
       }
     }
 
-    return Response.json(data);
+    return Response.json({
+      profile: { name: "", email: "" },
+      posts: result.posts || [],
+      friends: result.friends || [],
+      messages: result.messages || [],
+      photos: result.photos || [],
+      videos: result.videos || [],
+      photoFiles,
+      videoFiles: {},
+      comments: result.comments || [],
+      groups: result.groups || [],
+      marketplace: result.marketplace || [],
+      events: result.events || [],
+      reviews: result.reviews || [],
+      likes: result.likes || []
+    });
     
   } catch (error) {
     console.error("Error:", error);
