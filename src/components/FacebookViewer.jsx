@@ -113,6 +113,15 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
 
   return (
     <div className="space-y-6">
+      {/* Summary */}
+      {data?.warnings && data.warnings.length > 0 && (
+        <Alert className="bg-yellow-50 border-yellow-200">
+          <AlertDescription className="text-yellow-800 text-sm">
+            {data.warnings.join('; ')}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Profile Header */}
       <Card className="border-none shadow-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white">
         <CardContent className="p-6">
