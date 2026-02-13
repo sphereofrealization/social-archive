@@ -57,6 +57,7 @@ export default function Archives() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [expandedArchive, setExpandedArchive] = useState(null);
   const [user, setUser] = useState(null);
+  const [copiedUrl, setCopiedUrl] = useState(null);
 
   const queryClient = useQueryClient();
 
