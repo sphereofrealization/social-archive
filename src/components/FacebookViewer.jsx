@@ -421,7 +421,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
         </TabsContent>
 
         <TabsContent value="videos" className="mt-4">
-          {actualVideos.length === 0 ? (
+          {videosList.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
                 No videos found
@@ -429,16 +429,26 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {actualVideos.map(([path, blobUrl], i) => (
+              {videosList.map((video, i) => (
                 <Card key={i}>
                   <CardContent className="p-4">
                     <video 
-                      src={blobUrl} 
                       controls 
                       className="w-full rounded-lg"
                       style={{ maxHeight: '400px' }}
-                    />
-                    <p className="text-sm text-gray-500 mt-2">{path.split('/').pop()}</p>
+                      onPlay={() => {
+                        if (!videoFilesObj[video.path] && archiveUrl) {
+                          loadMedia(video.path, 'video');
+                        }
+                      }}
+                    >
+                      {videoFilesObj[video.path] && (
+                        <source src={videoFilesObj[video.path]} type="video/mp4" />
+                      )}
+                      Your browser does not support the video tag.
+                    </video>
+                    <p className="text-sm text-gray-500 mt-2">{video.filename}</p>
+                    <p className="text-xs text-gray-400">{(video.size / 1024 / 1024).toFixed(2)} MB</p>
                   </CardContent>
                 </Card>
               ))}
