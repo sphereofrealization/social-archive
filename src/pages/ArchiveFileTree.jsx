@@ -4,7 +4,8 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Loader2, ChevronDown, ChevronRight, FileText, Folder } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Loader2, ChevronDown, ChevronRight, FileText, Folder, X } from "lucide-react";
 
 export default function ArchiveFileTree() {
   const [searchParams] = useSearchParams();
@@ -16,6 +17,8 @@ export default function ArchiveFileTree() {
   const [error, setError] = useState(null);
   const [fileTree, setFileTree] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState(new Set(["root"]));
+  const [openHtmlFiles, setOpenHtmlFiles] = useState([]);
+  const [loadingFile, setLoadingFile] = useState(null);
 
   useEffect(() => {
     loadFileTree();
@@ -63,6 +66,32 @@ export default function ArchiveFileTree() {
     setExpandedFolders(newExpanded);
   };
 
+  const openHtmlFile = async (filePath) => {
+    if (openHtmlFiles.find(f => f.path === filePath)) return;
+    
+    setLoadingFile(filePath);
+    try {
+      const response = await base44.functions.invoke('getHtmlFile', { 
+        fileUrl: archiveUrl,
+        filePath 
+      });
+      
+      setOpenHtmlFiles(prev => [...prev, { 
+        path: filePath, 
+        content: response.data.content,
+        name: filePath.split('/').pop()
+      }]);
+    } catch (err) {
+      alert(`Failed to load file: ${err.message}`);
+    } finally {
+      setLoadingFile(null);
+    }
+  };
+
+  const closeHtmlFile = (filePath) => {
+    setOpenHtmlFiles(prev => prev.filter(f => f.path !== filePath));
+  };
+
   const renderTree = (obj, path = "") => {
     const items = Object.keys(obj).sort();
 
@@ -91,7 +120,17 @@ export default function ArchiveFileTree() {
                 {isFile ? (
                   <>
                     <FileText className="w-4 h-4 text-blue-500" />
-                    <span className="text-sm font-mono">{key}</span>
+                    {key.endsWith('.html') ? (
+                      <button
+                        onClick={() => openHtmlFile(fullPath)}
+                        disabled={loadingFile === fullPath}
+                        className="text-sm font-mono text-blue-600 hover:underline disabled:opacity-50"
+                      >
+                        {loadingFile === fullPath ? "Loading..." : key}
+                      </button>
+                    ) : (
+                      <span className="text-sm font-mono">{key}</span>
+                    )}
                   </>
                 ) : (
                   <>
@@ -142,6 +181,29 @@ export default function ArchiveFileTree() {
             )}
           </CardContent>
         </Card>
+
+        {openHtmlFiles.map((file) => (
+          <Dialog key={file.path} open={true} onOpenChange={() => closeHtmlFile(file.path)}>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center justify-between">
+                  <span className="font-mono text-sm">{file.name}</span>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    onClick={() => closeHtmlFile(file.path)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </DialogTitle>
+              </DialogHeader>
+              <div 
+                className="bg-white p-4 border rounded"
+                dangerouslySetInnerHTML={{ __html: file.content }}
+              />
+            </DialogContent>
+          </Dialog>
+        ))}
       </div>
     </div>
   );
