@@ -106,5 +106,5 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
     );
   }
 
-  return <FacebookViewer data={extractedData} />;
+  return <FacebookViewer data={extractedData} archiveUrl={archive.file_url} />;
 }
