@@ -100,6 +100,8 @@ Deno.serve(async (req) => {
     console.log("📋 Processing all files in archive...");
     const allPaths = Object.keys(zip.files).filter(p => !zip.files[p].dir);
     console.log(`Total files to scan: ${allPaths.length}`);
+    console.log("All JSON files in archive:");
+    allPaths.filter(p => p.endsWith('.json')).forEach(p => console.log(`  - ${p}`));
     
     for (const [path, file] of Object.entries(zip.files)) {
       if (file.dir) continue;
@@ -110,8 +112,14 @@ Deno.serve(async (req) => {
           const content = await file.async("text");
           const json = JSON.parse(content);
           
-          // Log what we're processing for debugging
-          console.log(`Processing: ${path}`);
+          // AGGRESSIVE DEBUGGING - Log structure of EVERY JSON file
+          console.log(`\n📄 Processing: ${path}`);
+          console.log(`   Top-level keys: [${Object.keys(json).join(', ')}]`);
+          
+          // Log first item if it's an array
+          if (Array.isArray(json) && json.length > 0) {
+            console.log(`   Array with ${json.length} items, first item keys: [${Object.keys(json[0]).join(', ')}]`);
+          }
           
           // MESSAGES / CONVERSATIONS
           if (path.includes('messages/inbox') && json.messages && Array.isArray(json.messages)) {
