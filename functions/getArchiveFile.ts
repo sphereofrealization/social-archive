@@ -83,14 +83,24 @@ Deno.serve(async (req) => {
       }
       
       // Videos (metadata only, no base64 to avoid timeout)
-      if (path.match(/\.(mp4|mov|avi|webm)$/i)) {
-        data.videos.push({ path, filename: path.split('/').pop(), size: file._data?.uncompressedSize || 0 });
+      if (path.match(/\.(mp4|mov|avi|webm|mkv|flv)$/i)) {
+        const sizeInMB = (file._data?.uncompressedSize || 0) / (1024 * 1024);
+        data.videos.push({ 
+          path, 
+          filename: path.split('/').pop(), 
+          size: file._data?.uncompressedSize || 0,
+          sizeFormatted: `${sizeInMB.toFixed(2)} MB`
+        });
         videoCount++;
       }
     }
     console.log(`✅ Extracted ${photoCount} photos, ${videoCount} videos`);
 
     // PHASE 2: Process all data files
+    console.log("📋 Processing all files in archive...");
+    const allPaths = Object.keys(zip.files).filter(p => !zip.files[p].dir);
+    console.log(`Total files to scan: ${allPaths.length}`);
+    
     for (const [path, file] of Object.entries(zip.files)) {
       if (file.dir) continue;
       
@@ -99,6 +109,9 @@ Deno.serve(async (req) => {
         if (path.endsWith('.json')) {
           const content = await file.async("text");
           const json = JSON.parse(content);
+          
+          // Log what we're processing for debugging
+          console.log(`Processing: ${path}`);
           
           // MESSAGES / CONVERSATIONS
           if (path.includes('messages/inbox') && json.messages && Array.isArray(json.messages)) {
@@ -121,37 +134,31 @@ Deno.serve(async (req) => {
             }
           }
           
-          // FRIENDS (multiple possible locations and formats)
-          if (path.includes('friends')) {
-            // Format 1: friends_v2 array
-            if (json.friends_v2 && Array.isArray(json.friends_v2)) {
-              json.friends_v2.forEach(f => {
-                const name = decode(f.name || "");
-                const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
-                if (name && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
-                  data.friends.push({ name, date_added: timestamp });
-                }
-              });
-            }
-            // Format 2: friends array
-            else if (json.friends && Array.isArray(json.friends)) {
-              json.friends.forEach(f => {
-                const name = decode(f.name || "");
-                const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
-                if (name && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
-                  data.friends.push({ name, date_added: timestamp });
-                }
-              });
-            }
-            // Format 3: Direct array at root
-            else if (Array.isArray(json)) {
-              json.forEach(f => {
-                const name = decode(f.name || "");
-                const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
-                if (name && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
-                  data.friends.push({ name, date_added: timestamp });
-                }
-              });
+          // FRIENDS (scan all possible formats and locations)
+          const isFriendFile = path.toLowerCase().includes('friend') || 
+                               path.includes('connections/followers_and_following');
+          
+          if (isFriendFile) {
+            console.log(`  → Found friends file: ${path}`);
+            let friendsList = [];
+            
+            // Try all possible formats
+            if (json.friends_v2) friendsList = json.friends_v2;
+            else if (json.friends) friendsList = json.friends;
+            else if (json.followers) friendsList = json.followers;
+            else if (json.following) friendsList = json.following;
+            else if (Array.isArray(json)) friendsList = json;
+            
+            friendsList.forEach(f => {
+              const name = decode(f.name || f.title || "");
+              const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
+              if (name && name.length > 1 && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
+                data.friends.push({ name, date_added: timestamp });
+              }
+            });
+            
+            if (friendsList.length > 0) {
+              console.log(`  ✓ Extracted ${friendsList.length} friends from this file`);
             }
           }
           
@@ -208,13 +215,23 @@ Deno.serve(async (req) => {
           }
           
           // LIKES AND REACTIONS (comprehensive extraction)
-          if (path.includes('likes_and_reactions') || path.includes('reactions')) {
-            // Handle multiple formats
+          const isLikeFile = path.toLowerCase().includes('like') || 
+                            path.toLowerCase().includes('reaction') ||
+                            path.includes('pages_and_profiles_you_follow');
+          
+          if (isLikeFile) {
+            console.log(`  → Found likes file: ${path}`);
             let items = [];
+            
+            // Try all possible formats
             if (json.reactions_v2) items = json.reactions_v2;
             else if (json.reactions) items = json.reactions;
+            else if (json.likes_v2) items = json.likes_v2;
             else if (json.likes) items = json.likes;
+            else if (json.page_likes_v2) items = json.page_likes_v2;
             else if (json.page_likes) items = json.page_likes;
+            else if (json.pages_followed_v2) items = json.pages_followed_v2;
+            else if (json.pages_followed) items = json.pages_followed;
             else if (Array.isArray(json)) items = json;
             
             items.forEach(item => {
@@ -230,14 +247,23 @@ Deno.serve(async (req) => {
                 data.likes.push({ title, timestamp });
               }
             });
+            
+            if (items.length > 0) {
+              console.log(`  ✓ Extracted ${items.length} likes from this file`);
+            }
           }
           
           // GROUPS (comprehensive formats)
-          if (path.includes('groups')) {
+          if (path.toLowerCase().includes('group')) {
+            console.log(`  → Found groups file: ${path}`);
             let groups = [];
+            
             if (json.groups_joined?.groups_joined) groups = json.groups_joined.groups_joined;
             else if (json.groups_joined) groups = json.groups_joined;
+            else if (json.groups_v2) groups = json.groups_v2;
             else if (json.groups) groups = json.groups;
+            else if (json.your_groups_v2) groups = json.your_groups_v2;
+            else if (json.your_groups) groups = json.your_groups;
             else if (Array.isArray(json)) groups = json;
             
             groups.forEach(g => {
@@ -247,19 +273,56 @@ Deno.serve(async (req) => {
                 data.groups.push({ name, timestamp });
               }
             });
+            
+            if (groups.length > 0) {
+              console.log(`  ✓ Extracted ${groups.length} groups from this file`);
+            }
           }
           
           // MARKETPLACE
-          if (path.includes('marketplace')) {
-            const items = Array.isArray(json) ? json : [json];
+          if (path.toLowerCase().includes('marketplace')) {
+            console.log(`  → Found marketplace file: ${path}`);
+            let items = [];
+            
+            if (json.marketplace_items) items = json.marketplace_items;
+            else if (Array.isArray(json)) items = json;
+            else items = [json];
+            
             items.forEach(item => {
               const text = decode(item.name || item.title || item.data?.[0]?.title || "");
               const timestamp = item.timestamp ? new Date(item.timestamp * 1000).toLocaleString() : 
                               item.creation_timestamp ? new Date(item.creation_timestamp * 1000).toLocaleString() : "";
-              if (text) {
+              if (text && text.length > 1) {
                 data.marketplace.push({ text, timestamp });
               }
             });
+            
+            if (items.length > 0) {
+              console.log(`  ✓ Extracted ${items.length} marketplace items from this file`);
+            }
+          }
+          
+          // REVIEWS
+          if (path.toLowerCase().includes('review')) {
+            console.log(`  → Found reviews file: ${path}`);
+            let reviews = [];
+            
+            if (json.reviews_written_v2) reviews = json.reviews_written_v2;
+            else if (json.reviews_written) reviews = json.reviews_written;
+            else if (json.reviews) reviews = json.reviews;
+            else if (Array.isArray(json)) reviews = json;
+            
+            reviews.forEach(r => {
+              const text = decode(r.review_text || r.text || r.title || "");
+              const timestamp = r.timestamp ? new Date(r.timestamp * 1000).toLocaleString() : "";
+              if (text && text.length > 1) {
+                data.reviews.push({ text, timestamp });
+              }
+            });
+            
+            if (reviews.length > 0) {
+              console.log(`  ✓ Extracted ${reviews.length} reviews from this file`);
+            }
           }
           
           // EVENTS (multiple formats)
@@ -346,7 +409,18 @@ Deno.serve(async (req) => {
     data.comments = [...new Map(data.comments.map(c => [c.text, c])).values()];
     data.groups = [...new Map(data.groups.map(g => [g.name.toLowerCase(), g])).values()];
 
-    console.log(`✅ Extracted - Posts: ${data.posts.length}, Comments: ${data.comments.length}, Friends: ${data.friends.length}, Messages: ${data.messages.length}, Photos: ${photoCount}, Videos: ${videoCount}, Likes: ${data.likes.length}, Groups: ${data.groups.length}, Marketplace: ${data.marketplace.length}`);
+    console.log(`✅ FINAL EXTRACTION RESULTS:`);
+    console.log(`   Posts: ${data.posts.length}`);
+    console.log(`   Comments: ${data.comments.length}`);
+    console.log(`   Friends: ${data.friends.length}`);
+    console.log(`   Messages: ${data.messages.length}`);
+    console.log(`   Photos: ${photoCount}`);
+    console.log(`   Videos: ${videoCount}`);
+    console.log(`   Likes: ${data.likes.length}`);
+    console.log(`   Groups: ${data.groups.length}`);
+    console.log(`   Marketplace: ${data.marketplace.length}`);
+    console.log(`   Events: ${data.events.length}`);
+    console.log(`   Reviews: ${data.reviews.length}`);
 
     return Response.json(data);
     
