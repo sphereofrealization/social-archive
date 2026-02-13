@@ -54,25 +54,14 @@ Deno.serve(async (req) => {
         .trim();
     };
 
-    // First pass: Extract media files
-    let photoCount = 0;
+    // Extract by folder location
     for (const [path, file] of Object.entries(zip.files)) {
       if (file.dir) continue;
       
-      // Photos
-      if (photoCount < 30 && path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')) {
-        try {
-          const imageData = await file.async("base64");
-          const ext = path.split('.').pop().toLowerCase();
-          const mimeTypes = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'};
-          data.photoFiles[path] = `data:${mimeTypes[ext] || 'image/jpeg'};base64,${imageData}`;
-          data.photos.push({ path, filename: path.split('/').pop(), timestamp: "" });
-          photoCount++;
-        } catch {}
-      }
+      const pathLower = path.toLowerCase();
       
-      // Videos - check for all video file extensions and "video" in path
-      if (path.match(/\.(mp4|mov|avi|webm|mkv|flv|m4v|3gp|wmv)$/i) || path.toLowerCase().includes('video')) {
+      // VIDEOS - by location
+      if (pathLower.includes('/video') || pathLower.includes('/videos/')) {
         const size = file._data?.uncompressedSize || 0;
         data.videos.push({ 
           path, 
@@ -81,26 +70,41 @@ Deno.serve(async (req) => {
           sizeFormatted: `${(size / (1024 * 1024)).toFixed(2)} MB`
         });
       }
-    }
-    
-    // Second pass: Process HTML and JSON files
-    for (const [path, file] of Object.entries(zip.files)) {
-      if (file.dir) continue;
       
-      try {
-        // Process HTML files
-        if (path.endsWith('.html')) {
+      // PHOTOS - by location
+      if (pathLower.includes('/photo') || pathLower.includes('/photos/')) {
+        if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+          try {
+            const imageData = await file.async("base64");
+            const ext = path.split('.').pop().toLowerCase();
+            const mimeTypes = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'};
+            data.photoFiles[path] = `data:${mimeTypes[ext] || 'image/jpeg'};base64,${imageData}`;
+            data.photos.push({ path, filename: path.split('/').pop(), timestamp: "" });
+          } catch {}
+        }
+      }
+      
+      // Process HTML files in specific folders
+      if (path.endsWith('.html')) {
+        try {
           const content = decode(await file.async("text"));
           
-          // Extract all text content between tags
-          const textContent = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-          const lines = textContent.split(/[,;|]/).map(l => l.trim()).filter(l => l.length > 0);
+          // POSTS
+          if (pathLower.includes('/post')) {
+            const divMatches = content.match(/<div[^>]*>(.+?)<\/div>/gs) || [];
+            divMatches.forEach(match => {
+              const text = match.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+              if (text.length > 30 && text.length < 5000 && !data.posts.find(p => p.text === text)) {
+                data.posts.push({ text, timestamp: "", photo_url: null, likes_count: 0, comments_count: 0, comments: [] });
+              }
+            });
+          }
           
-          // Friends
-          if (path.includes('friend')) {
-            lines.forEach(line => {
-              // Look for capitalized names (First Last format)
-              if (line.match(/^[A-Z][a-z]+\s+[A-Z][a-z]+$/) && line.length > 3 && line.length < 100) {
+          // FRIENDS
+          if (pathLower.includes('/friend')) {
+            const textContent = content.replace(/<[^>]*>/g, '\n').split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            textContent.forEach(line => {
+              if (line.match(/^[A-Z][a-z\s]+$/) && line.length > 3 && line.length < 100) {
                 if (!data.friends.find(f => f.name === line)) {
                   data.friends.push({ name: line, date_added: "" });
                 }
@@ -108,57 +112,46 @@ Deno.serve(async (req) => {
             });
           }
           
-          // Posts
-          if (path.includes('post') || path.includes('timeline')) {
-            lines.forEach(line => {
-              if (line.length > 20 && line.length < 5000 && !line.includes('http') && !line.match(/^[0-9]/)) {
-                if (!data.posts.find(p => p.text === line)) {
-                  data.posts.push({ text: line, timestamp: "", photo_url: null, likes_count: 0, comments_count: 0, comments: [] });
-                }
+          // COMMENTS
+          if (pathLower.includes('/comment')) {
+            const divMatches = content.match(/<div[^>]*>(.+?)<\/div>/gs) || [];
+            divMatches.forEach(match => {
+              const text = match.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+              if (text.length > 5 && text.length < 1000 && !data.comments.find(c => c.text === text)) {
+                data.comments.push({ text, timestamp: "", author: "" });
               }
             });
           }
           
-          // Comments
-          if (path.includes('comment')) {
-            lines.forEach(line => {
-              if (line.length > 10 && line.length < 2000 && !line.includes('http')) {
-                if (!data.comments.find(c => c.text === line)) {
-                  data.comments.push({ text: line, timestamp: "", author: "" });
-                }
+          // GROUPS
+          if (pathLower.includes('/group')) {
+            const textContent = content.replace(/<[^>]*>/g, '\n').split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            textContent.forEach(line => {
+              if (line.length > 3 && line.length < 200 && !data.groups.find(g => g.name === line)) {
+                data.groups.push({ name: line, timestamp: "" });
               }
             });
           }
           
-          // Likes/Reactions
-          if (path.includes('like') || path.includes('reaction')) {
-            lines.forEach(line => {
-              if (line.length > 3 && line.length < 300 && !line.includes('http')) {
-                if (!data.likes.find(l => l.title === line)) {
-                  data.likes.push({ title: line, timestamp: "" });
-                }
+          // LIKES
+          if (pathLower.includes('/like')) {
+            const textContent = content.replace(/<[^>]*>/g, '\n').split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            textContent.forEach(line => {
+              if (line.length > 2 && line.length < 300 && !data.likes.find(l => l.title === line)) {
+                data.likes.push({ title: line, timestamp: "" });
               }
             });
           }
-          
-          // Groups
-          if (path.includes('group')) {
-            lines.forEach(line => {
-              if (line.length > 3 && line.length < 200 && !line.includes('http')) {
-                if (!data.groups.find(g => g.name === line)) {
-                  data.groups.push({ name: line, timestamp: "" });
-                }
-              }
-            });
-          }
-        }
-        
-        // Process JSON files
-        if (path.endsWith('.json')) {
+        } catch {}
+      }
+      
+      // Process JSON files
+      if (path.endsWith('.json')) {
+        try {
           const content = await file.async("text");
           const json = JSON.parse(content);
           
-          // Messages
+          // MESSAGES
           if (json.messages && Array.isArray(json.messages)) {
             const msgs = json.messages.map(m => ({
               sender: decode(m.sender_name || ""),
@@ -178,8 +171,8 @@ Deno.serve(async (req) => {
               });
             }
           }
-        }
-      } catch {}
+        } catch {}
+      }
     }
 
     return Response.json(data);
