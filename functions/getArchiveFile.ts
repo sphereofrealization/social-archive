@@ -25,127 +25,225 @@ Deno.serve(async (req) => {
     
     const blob = await response.blob();
     const zip = await JSZip.loadAsync(blob);
-    console.log("📦 ZIP loaded, using AI to extract and categorize data...");
+    console.log("✅ ZIP loaded, extracting data...");
     
-    // Collect ALL content from archive
-    const allContent = [];
-    const photoFiles = {};
-    const videoFiles = [];
+    const data = {
+      profile: { name: "", email: "" },
+      posts: [],
+      friends: [],
+      messages: [],
+      photos: [],
+      videos: [],
+      photoFiles: {},
+      videoFiles: {},
+      comments: [],
+      groups: [],
+      marketplace: [],
+      events: [],
+      reviews: [],
+      likes: []
+    };
+
+    const decode = (text) => {
+      if (!text) return "";
+      return String(text).replace(/&#039;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim();
+    };
+
+    // Extract photos and videos first
     let photoCount = 0, videoCount = 0;
-    
-    console.log("📂 Extracting all files...");
     for (const [path, file] of Object.entries(zip.files)) {
       if (file.dir) continue;
       
-      try {
-        // Photos (limited to 30)
-        if (photoCount < 30 && path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')) {
+      if (photoCount < 30 && path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')) {
+        try {
           const imageData = await file.async("base64");
           const ext = path.split('.').pop().toLowerCase();
           const mimeType = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'}[ext] || 'image/jpeg';
-          photoFiles[path] = `data:${mimeType};base64,${imageData}`;
+          data.photoFiles[path] = `data:${mimeType};base64,${imageData}`;
+          data.photos.push({ path, filename: path.split('/').pop(), timestamp: "" });
           photoCount++;
-        }
-        
-        // Videos (metadata only)
-        if (path.match(/\.(mp4|mov|avi|webm|mkv|flv)$/i)) {
-          const sizeInMB = (file._data?.uncompressedSize || 0) / (1024 * 1024);
-          videoFiles.push({ 
-            path, 
-            filename: path.split('/').pop(), 
-            size: file._data?.uncompressedSize || 0,
-            sizeFormatted: `${sizeInMB.toFixed(2)} MB`
-          });
-          videoCount++;
-        }
-        
-        // HTML and JSON content for AI processing
-        if (path.endsWith('.html') || path.endsWith('.json')) {
-          const content = await file.async("text");
-          allContent.push({
-            path: path,
-            type: path.endsWith('.html') ? 'html' : 'json',
-            content: content.substring(0, 50000) // Limit to prevent timeout
-          });
-        }
-      } catch (err) {
-        console.error(`Error processing ${path}:`, err.message);
+        } catch {}
+      }
+      
+      if (path.match(/\.(mp4|mov|avi|webm|mkv|flv)$/i)) {
+        const sizeInMB = (file._data?.uncompressedSize || 0) / (1024 * 1024);
+        data.videos.push({ 
+          path, 
+          filename: path.split('/').pop(), 
+          size: file._data?.uncompressedSize || 0,
+          sizeFormatted: `${sizeInMB.toFixed(2)} MB`
+        });
+        videoCount++;
       }
     }
     
-    console.log(`✅ Collected ${allContent.length} files for AI processing`);
-    console.log(`✅ Extracted ${photoCount} photos, ${videoCount} videos`);
+    console.log(`📸 Extracted ${photoCount} photos, ${videoCount} videos`);
     
-    // Use AI to intelligently categorize the data
-    console.log("🤖 Sending to AI for intelligent categorization...");
-    const aiResult = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt: `You are analyzing a Facebook data archive. Extract and categorize ALL data into these categories:
+    // Process all JSON files - check EVERY file for data
+    console.log("📋 Processing JSON files...");
+    for (const [path, file] of Object.entries(zip.files)) {
+      if (file.dir || !path.endsWith('.json')) continue;
       
-- friends: List of friend names
-- conversations: Message conversations (with participants and message count)
-- posts: User's posts/status updates
-- comments: Comments made by user
-- likes: Pages/posts liked
-- groups: Groups joined
-- events: Events user attended/was invited to
-- reviews: Reviews written
-- marketplace: Marketplace listings
-
-The archive contains HTML and JSON files. Extract EVERY piece of data you can find. Be thorough.
-
-Return a JSON object with these exact keys: friends (array of {name, date_added}), conversations (array of {conversation_with, totalMessages}), posts (array of {text, timestamp}), comments (array of {text, timestamp}), likes (array of {title, timestamp}), groups (array of {name, timestamp}), events (array of {text, timestamp}), reviews (array of {text, timestamp}), marketplace (array of {text, timestamp}).
-
-Archive files:
-${JSON.stringify(allContent, null, 2)}`,
-      response_json_schema: {
-        type: "object",
-        properties: {
-          friends: { type: "array", items: { type: "object", properties: { name: {type: "string"}, date_added: {type: "string"} } } },
-          conversations: { type: "array", items: { type: "object", properties: { conversation_with: {type: "string"}, totalMessages: {type: "number"} } } },
-          posts: { type: "array", items: { type: "object", properties: { text: {type: "string"}, timestamp: {type: "string"} } } },
-          comments: { type: "array", items: { type: "object", properties: { text: {type: "string"}, timestamp: {type: "string"} } } },
-          likes: { type: "array", items: { type: "object", properties: { title: {type: "string"}, timestamp: {type: "string"} } } },
-          groups: { type: "array", items: { type: "object", properties: { name: {type: "string"}, timestamp: {type: "string"} } } },
-          events: { type: "array", items: { type: "object", properties: { text: {type: "string"}, timestamp: {type: "string"} } } },
-          reviews: { type: "array", items: { type: "object", properties: { text: {type: "string"}, timestamp: {type: "string"} } } },
-          marketplace: { type: "array", items: { type: "object", properties: { text: {type: "string"}, timestamp: {type: "string"} } } }
+      try {
+        const content = await file.async("text");
+        const json = JSON.parse(content);
+        
+        // MESSAGES
+        if (json.messages && Array.isArray(json.messages) && json.messages.length > 0) {
+          const msgs = json.messages.map(m => ({
+            sender: decode(m.sender_name || ""),
+            text: decode(m.content || ""),
+            timestamp: m.timestamp_ms ? new Date(m.timestamp_ms).toLocaleString() : "",
+            timestamp_ms: m.timestamp_ms || 0
+          })).filter(m => m.text || m.sender);
+          
+          if (msgs.length > 0) {
+            const participants = json.participants?.map(p => decode(p.name)).filter(n => n) || [];
+            data.messages.push({
+              conversation_with: decode(json.title || participants.join(", ") || "Unknown"),
+              participants: participants,
+              messages: msgs,
+              lastMessageTimestamp: msgs[0]?.timestamp_ms || 0,
+              totalMessages: msgs.length
+            });
+          }
         }
+        
+        // FRIENDS - check ALL possible keys
+        const friendKeys = ['friends_v2', 'friends', 'followers_v2', 'followers', 'following_v2', 'following'];
+        for (const key of friendKeys) {
+          if (json[key] && Array.isArray(json[key])) {
+            json[key].forEach(item => {
+              if (item && item.name) {
+                const name = decode(item.name);
+                const timestamp = item.timestamp ? new Date(item.timestamp * 1000).toLocaleDateString() : "";
+                if (name.length > 1 && !data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
+                  data.friends.push({ name, date_added: timestamp });
+                }
+              }
+            });
+          }
+        }
+        
+        // POSTS
+        const postsArray = json.posts || (Array.isArray(json) ? json : []);
+        postsArray.forEach(post => {
+          if (post) {
+            const text = decode(post.data?.[0]?.post || post.post || post.title || post.text || "");
+            const timestamp = post.timestamp ? new Date(post.timestamp * 1000).toLocaleString() : "";
+            if (text && text.length > 3) {
+              data.posts.push({ text, timestamp, photo_url: null, likes_count: 0, comments_count: 0, comments: [] });
+            }
+          }
+        });
+        
+        // COMMENTS
+        const commentsArray = json.comments || (Array.isArray(json) && path.includes('comment') ? json : []);
+        commentsArray.forEach(c => {
+          if (c) {
+            const text = decode(c.data?.[0]?.comment?.comment || c.comment || c.title || c.text || "");
+            const timestamp = c.timestamp ? new Date(c.timestamp * 1000).toLocaleString() : "";
+            const author = decode(c.author || c.data?.[0]?.comment?.author || "");
+            if (text && text.length > 1) {
+              data.comments.push({ text, timestamp, author });
+            }
+          }
+        });
+        
+        // LIKES - check ALL possible keys
+        const likeKeys = ['reactions_v2', 'reactions', 'likes_v2', 'likes', 'page_likes_v2', 'page_likes', 'pages_followed'];
+        for (const key of likeKeys) {
+          if (json[key] && Array.isArray(json[key])) {
+            json[key].forEach(item => {
+              if (item) {
+                const title = decode(item.title || item.name || item.data?.[0]?.title || "");
+                const timestamp = item.timestamp ? new Date(item.timestamp * 1000).toLocaleString() : "";
+                if (title && title.length > 1) {
+                  data.likes.push({ title, timestamp });
+                }
+              }
+            });
+          }
+        }
+        
+        // GROUPS
+        const groupKeys = ['groups_v2', 'groups', 'your_groups_v2', 'your_groups'];
+        for (const key of groupKeys) {
+          if (json[key]) {
+            const groupsArray = Array.isArray(json[key]) ? json[key] : (json[key].groups_joined || []);
+            groupsArray.forEach(g => {
+              if (g) {
+                const name = decode(g.name || g.title || "");
+                const timestamp = g.timestamp ? new Date(g.timestamp * 1000).toLocaleString() : "";
+                if (name && name.length > 1 && !data.groups.find(gr => gr.name.toLowerCase() === name.toLowerCase())) {
+                  data.groups.push({ name, timestamp });
+                }
+              }
+            });
+          }
+        }
+        
+        // REVIEWS
+        const reviewKeys = ['reviews_written_v2', 'reviews_written', 'reviews'];
+        for (const key of reviewKeys) {
+          if (json[key] && Array.isArray(json[key])) {
+            json[key].forEach(r => {
+              if (r) {
+                const text = decode(r.review_text || r.text || r.title || "");
+                const timestamp = r.timestamp ? new Date(r.timestamp * 1000).toLocaleString() : "";
+                if (text && text.length > 1) {
+                  data.reviews.push({ text, timestamp });
+                }
+              }
+            });
+          }
+        }
+        
+        // EVENTS
+        if (path.includes('event')) {
+          const eventsArray = json.events_joined || json.event_invitations || (Array.isArray(json) ? json : []);
+          eventsArray.forEach(e => {
+            if (e) {
+              const name = decode(e.name || e.title || "");
+              const timestamp = e.start_timestamp ? new Date(e.start_timestamp * 1000).toLocaleString() : 
+                              e.timestamp ? new Date(e.timestamp * 1000).toLocaleString() : "";
+              if (name && name.length > 1) {
+                data.events.push({ text: name, timestamp });
+              }
+            }
+          });
+        }
+        
+        // MARKETPLACE
+        if (path.includes('marketplace')) {
+          const items = json.marketplace_items || (Array.isArray(json) ? json : [json]);
+          items.forEach(item => {
+            if (item) {
+              const text = decode(item.name || item.title || "");
+              const timestamp = item.timestamp ? new Date(item.timestamp * 1000).toLocaleString() : "";
+              if (text && text.length > 1) {
+                data.marketplace.push({ text, timestamp });
+              }
+            }
+          });
+        }
+        
+      } catch (err) {
+        // Skip invalid JSON
       }
-    });
+    }
     
-    const categorizedData = aiResult;
-    console.log("✅ AI categorization complete");
+    // Deduplicate
+    data.friends = [...new Map(data.friends.map(f => [f.name.toLowerCase(), f])).values()];
+    data.posts = [...new Map(data.posts.map(p => [p.text, p])).values()];
+    data.comments = [...new Map(data.comments.map(c => [c.text, c])).values()];
+    data.groups = [...new Map(data.groups.map(g => [g.name.toLowerCase(), g])).values()];
+    data.messages.sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
     
-    // Build final response
-    const data = {
-      profile: { name: "", email: "" },
-      posts: categorizedData.posts || [],
-      friends: categorizedData.friends || [],
-      messages: (categorizedData.conversations || []).map(c => ({
-        conversation_with: c.conversation_with,
-        participants: [c.conversation_with],
-        messages: [],
-        lastMessageTimestamp: 0,
-        totalMessages: c.totalMessages || 0
-      })),
-      photos: Object.keys(photoFiles).map((path, idx) => ({ path, filename: path.split('/').pop(), timestamp: "" })),
-      videos: videoFiles,
-      photoFiles: photoFiles,
-      videoFiles: {},
-      comments: categorizedData.comments || [],
-      groups: categorizedData.groups || [],
-      marketplace: categorizedData.marketplace || [],
-      events: categorizedData.events || [],
-      reviews: categorizedData.reviews || [],
-      likes: categorizedData.likes || []
-    };
-    
-    console.log(`📊 FINAL RESULTS:`);
+    console.log(`✅ EXTRACTION COMPLETE:`);
     console.log(`   Posts: ${data.posts.length}`);
     console.log(`   Friends: ${data.friends.length}`);
     console.log(`   Conversations: ${data.messages.length}`);
-    console.log(`   Photos: ${photoCount}`);
-    console.log(`   Videos: ${videoCount}`);
     console.log(`   Comments: ${data.comments.length}`);
     console.log(`   Likes: ${data.likes.length}`);
     console.log(`   Groups: ${data.groups.length}`);
