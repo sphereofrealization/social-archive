@@ -17,23 +17,40 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing fileUrl parameter' }, { status: 400 });
     }
 
-    console.log("Downloading archive from:", fileUrl);
+    console.log("📦 Downloading archive from:", fileUrl);
     
-    // Fetch the file from public S3 bucket
     const response = await fetch(fileUrl);
     
     if (!response.ok) {
       console.error(`Fetch failed with status ${response.status}`, response.statusText);
-      const errorText = await response.text();
-      console.error("Error response:", errorText);
-      return Response.json({ error: `Failed to fetch file: ${response.status} ${response.statusText}` }, { status: 400 });
+      return Response.json({ error: `Failed to fetch file: ${response.status}` }, { status: 400 });
     }
     
     const blob = await response.blob();
-    console.log("Archive downloaded, size:", blob.size);
+    console.log("📦 Archive downloaded, size:", blob.size, "bytes");
 
-    // Load and parse the ZIP
     const zip = await JSZip.loadAsync(blob);
+    console.log("📦 ZIP loaded, scanning structure...");
+    
+    // Build file tree for analysis
+    const fileTree = {};
+    Object.keys(zip.files).forEach(path => {
+      if (!zip.files[path].dir) {
+        const parts = path.split('/');
+        let current = fileTree;
+        parts.forEach((part, i) => {
+          if (i === parts.length - 1) {
+            if (!current._files) current._files = [];
+            current._files.push(path);
+          } else {
+            if (!current[part]) current[part] = {};
+            current = current[part];
+          }
+        });
+      }
+    });
+    
+    console.log("📂 File tree structure:", JSON.stringify(fileTree, null, 2).substring(0, 500));
     
     const data = {
       profile: { name: "", email: "" },
@@ -55,560 +72,232 @@ Deno.serve(async (req) => {
       allData: {}
     };
 
+    // Helper functions for parsing Facebook HTML
+    const getBodyContent = (html) => {
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      return bodyMatch ? bodyMatch[1] : html;
+    };
+
     const parseHTML = (html) => {
-      // Remove style, script, and head tags completely
       let cleaned = html
-        .replace(/<head>[\s\S]*?<\/head>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
-
-      // Strip all HTML tags but keep the text content
-      cleaned = cleaned.replace(/<[^>]+>/g, ' ');
-
-      // Clean up whitespace
-      cleaned = cleaned.replace(/\s+/g, ' ').trim();
-
+        .replace(/<head[\s\S]*?<\/head>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ')
+        .trim();
       return cleaned;
     };
 
+    const extractText = (html) => {
+      return parseHTML(html);
+    };
+
     const extractTimestamp = (html) => {
-      const dateMatch = html.match(/(\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2})/);
-      return dateMatch ? dateMatch[0] : "";
+      const patterns = [
+        /(\d{1,2}\s+\w+\s+\d{4}\s+at\s+\d{1,2}:\d{2})/i,
+        /(\d{1,2}\s+\w+\s+\d{4})/i,
+        /(\d{4}-\d{2}-\d{2})/
+      ];
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match) return match[1];
+      }
+      return "";
     };
 
-    const extractPrice = (html) => {
-      const priceMatch = html.match(/\$[\d,]+(?:\.\d{2})?|€[\d,]+(?:\.\d{2})?|£[\d,]+(?:\.\d{2})?/);
-      return priceMatch ? priceMatch[0] : null;
-    };
+    // PHASE 1: Extract all media files (photos and videos)
+    console.log("📸 Phase 1: Extracting photos and videos...");
+    let photoCount = 0, videoCount = 0;
 
-    const extractRating = (html) => {
-      const ratingMatch = html.match(/(\d+(?:\.\d+)?)\s*(?:stars?|★|⭐)/i);
-      return ratingMatch ? parseFloat(ratingMatch[1]) : null;
-    };
+    for (const [path, file] of Object.entries(zip.files)) {
+      if (file.dir) continue;
 
-    const extractStructuredData = (html, path) => {
-      const results = [];
-      
-      const articles = html.match(/<article[^>]*>[\s\S]*?<\/article>/gi) || [];
-      articles.forEach(article => {
-        const header = article.match(/<h3[^>]*id="[^"]*"[^>]*>([^<]+)<\/h3>/);
-        const paragraphs = article.match(/<p[^>]*>([^<]+)<\/p>/gi) || [];
-        const links = article.match(/<a[^>]*href="[^"]*"[^>]*>([^<]+)<\/a>/gi) || [];
-        
-        const content = {
-          title: header ? header[1] : '',
-          text: paragraphs.map(p => p.replace(/<[^>]+>/g, '').trim()).filter(t => t.length > 0),
-          links: links.map(l => l.replace(/<[^>]+>/g, '').trim()).filter(t => t.length > 0),
-        };
-        
-        if (content.title || content.text.length > 0 || content.links.length > 0) {
-          results.push(content);
-        }
-      });
-      
-      const tables = html.match(/<table[^>]*>[\s\S]*?<\/table>/gi) || [];
-      tables.forEach(table => {
-        const rows = table.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-        rows.forEach(row => {
-          const cells = row.match(/<t[dh][^>]*>([^<]*(?:<[^>]+>[^<]*)*)<\/t[dh]>/gi) || [];
-          const rowData = cells.map(cell => {
-            return cell.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-          }).filter(text => text.length > 0);
-          
-          if (rowData.length > 0) {
-            results.push({ table_row: rowData });
-          }
-        });
-      });
-      
-      return results;
-    };
-
-    // Process files based on Facebook's actual archive structure
-    console.log("Extracting data from archive...");
-
-    const files = Object.entries(zip.files).filter(([path, file]) => !file.dir);
-
-    // First pass: Extract all images and videos from files/ directory
-    for (const [path, file] of files) {
-      if (path.match(/^[^\/]*\/?files\//i) && path.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i)) {
+      // Extract photos
+      if (path.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i) && !path.includes('icon')) {
         try {
           const imageData = await file.async("base64");
           const ext = path.split('.').pop().toLowerCase();
-          const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 
-                         ext === 'png' ? 'image/png' : 
-                         ext === 'gif' ? 'image/gif' : 
-                         ext === 'webp' ? 'image/webp' : 'image/jpeg';
+          const mimeType = {
+            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+            'png': 'image/png', 'gif': 'image/gif',
+            'webp': 'image/webp', 'bmp': 'image/bmp'
+          }[ext] || 'image/jpeg';
+
           data.photoFiles[path] = `data:${mimeType};base64,${imageData}`;
-          data.photos.push({ 
-            path, 
-            filename: path.split('/').pop(),
-            timestamp: ""
-          });
+          data.photos.push({ path, filename: path.split('/').pop(), timestamp: "" });
+          photoCount++;
         } catch (err) {
-          console.error(`Failed to extract photo ${path}:`, err);
+          console.error(`❌ Failed to extract photo ${path}:`, err.message);
         }
       }
 
-      if (path.match(/^[^\/]*\/?files\//i) && path.match(/\.(mp4|mov|avi|mkv|webm|m4v)$/i)) {
+      // Extract videos
+      if (path.match(/\.(mp4|mov|avi|mkv|webm|m4v)$/i)) {
         try {
           const videoData = await file.async("base64");
           const ext = path.split('.').pop().toLowerCase();
-          const mimeType = ext === 'mp4' ? 'video/mp4' : 
-                         ext === 'webm' ? 'video/webm' : 
-                         ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+          const mimeType = {
+            'mp4': 'video/mp4', 'webm': 'video/webm',
+            'mov': 'video/quicktime', 'avi': 'video/x-msvideo'
+          }[ext] || 'video/mp4';
+
           data.videoFiles[path] = `data:${mimeType};base64,${videoData}`;
-          data.videos.push({ 
-            path, 
-            filename: path.split('/').pop(),
-            timestamp: ""
-          });
+          data.videos.push({ path, filename: path.split('/').pop(), timestamp: "" });
+          videoCount++;
         } catch (err) {
-          console.error(`Failed to extract video ${path}:`, err);
+          console.error(`❌ Failed to extract video ${path}:`, err.message);
         }
       }
     }
 
-    // Second pass: Process HTML and JSON files
-    for (const [path, file] of files) {
-      if (!path.endsWith('.html') && !path.endsWith('.json')) continue;
+    console.log(`✅ Extracted ${photoCount} photos, ${videoCount} videos`);
+
+    // PHASE 2: Process all HTML and JSON files
+    console.log("📄 Phase 2: Processing HTML and JSON files...");
+
+    for (const [path, file] of Object.entries(zip.files)) {
+      if (file.dir || (!path.endsWith('.html') && !path.endsWith('.json'))) continue;
 
       try {
         const content = await file.async("text");
 
-        const pathParts = path.split('/');
-        const category = pathParts[0];
-        const subcategory = pathParts.length > 1 ? pathParts[1] : '';
-
-        if (!data.allData[category]) {
-          data.allData[category] = {};
-        }
-        if (subcategory && !data.allData[category][subcategory]) {
-          data.allData[category][subcategory] = [];
-        }
-
-        // PROFILE - extract from profile_information or personal_information
-        if ((path.match(/personal_information|profile_information/i)) && path.endsWith(".html")) {
-          const bodyMatch = content.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-          if (bodyMatch) {
-            const bodyContent = bodyMatch[1];
-
-            // Extract name from h1 or title
-            const h1Match = bodyContent.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-            if (h1Match && !data.profile.name) {
-              data.profile.name = h1Match[1].trim();
-            }
-
-            // Extract email
-            const emailMatch = bodyContent.match(/[\w\.-]+@[\w\.-]+\.\w+/);
-            if (emailMatch && !data.profile.email) {
-              data.profile.email = emailMatch[0];
-            }
+        // PROFILE
+        if (!data.profile.name) {
+          const generatedMatch = content.match(/Generated by ([^<\n]+) on/i);
+          if (generatedMatch) {
+            data.profile.name = generatedMatch[1].trim();
+            console.log(`👤 Found profile name: ${data.profile.name}`);
           }
         }
 
-        // Extract profile name from "Generated by X on Y" pattern in any HTML
-        if (!data.profile.name && path.endsWith(".html")) {
-          const generatedByMatch = content.match(/Generated by ([^<\n]+) on/i);
-          if (generatedByMatch) {
-            data.profile.name = generatedByMatch[1].trim();
+        if (path.match(/personal_information|profile/i) && path.endsWith('.html')) {
+          const bodyContent = getBodyContent(content);
+          const emailMatch = bodyContent.match(/[\w\.-]+@[\w\.-]+\.\w+/);
+          if (emailMatch && !data.profile.email) {
+            data.profile.email = emailMatch[0];
           }
         }
 
-        // POSTS - look in your_facebook_activity or posts directories
-        if (path.match(/your_facebook_activity|\/posts\//i) && path.endsWith(".html") && data.posts.length < 100) {
-          // Extract body content only
-          const bodyMatch = content.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-          if (!bodyMatch) continue;
+        // POSTS
+        if (path.match(/posts|your_posts|timeline/i) && path.endsWith('.html')) {
+          const bodyContent = getBodyContent(content);
+          const divs = bodyContent.match(/<div[^>]*>[\s\S]*?<\/div>/gi) || [];
 
-          const bodyContent = bodyMatch[1];
+          for (const div of divs) {
+            const text = extractText(div);
+            if (!text || text.length < 15 || text.match(/^(html|body|font-family|background)/i)) continue;
 
-          // Look for div elements with content
-          const divMatches = bodyContent.match(/<div[^>]*>[\s\S]*?<\/div>/gi) || [];
-
-          for (const div of divMatches) {
-            // Skip if it contains style or script
-            if (div.match(/<style|<script/i)) continue;
-
-            const text = parseHTML(div);
-
-            // Skip CSS, empty, or very short content
-            if (!text || text.length < 20 || 
-                text.match(/^(html\{|body\{|font-family|background:#|color:#)/i)) {
-              continue;
-            }
-
-            // Look for timestamp
             const timestamp = extractTimestamp(div);
-
-            // Look for reactions/likes
-            const reactions = [];
-            const reactionMatch = div.match(/(\d+)\s*(like|love|haha|wow|sad|angry)/gi);
-            let totalReactions = 0;
-            if (reactionMatch) {
-              reactionMatch.forEach(r => {
-                const count = parseInt(r.match(/\d+/)?.[0] || 0);
-                totalReactions += count;
-                reactions.push(r);
-              });
-            }
-
-            // Look for images in the post
-            const imgMatch = div.match(/<img[^>]*src="([^"]+)"/i);
+            const imgMatch = div.match(/<img[^>]*src=["']([^"']+)["']/i);
             let photo_url = null;
+
             if (imgMatch) {
-              const imgPath = imgMatch[1];
-              // Try to find this image in our photoFiles
-              const matchingPhoto = Object.keys(data.photoFiles).find(p => p.includes(imgPath) || imgPath.includes(p.split('/').pop()));
-              if (matchingPhoto) {
-                photo_url = data.photoFiles[matchingPhoto];
-              }
+              const imgSrc = imgMatch[1];
+              const photoKey = Object.keys(data.photoFiles).find(k => 
+                k.includes(imgSrc) || imgSrc.includes(k.split('/').pop())
+              );
+              if (photoKey) photo_url = data.photoFiles[photoKey];
             }
 
-            if (text.length >= 20) {
+            if (text.length >= 15 && data.posts.length < 200) {
               data.posts.push({
-                text: text.substring(0, 500),
+                text: text.substring(0, 600),
                 timestamp,
-                reactions,
-                likes_count: totalReactions,
+                photo_url,
+                likes_count: 0,
                 comments_count: 0,
-                comments: [],
-                photo_url
+                comments: []
               });
             }
           }
         }
 
-        // FRIENDS - specifically look for your_friends.html and friends.json
-        if (path.match(/your_friends\.html|friends\.json/i)) {
+        // FRIENDS
+        if (path.match(/friends/i) && (path.endsWith('.html') || path.endsWith('.json'))) {
           if (path.endsWith('.json')) {
             try {
-              const jsonData = JSON.parse(content);
-              let friendsList = [];
-
-              if (jsonData.friends_v2) {
-                friendsList = jsonData.friends_v2;
-              } else if (jsonData.friends) {
-                friendsList = jsonData.friends;
-              } else if (Array.isArray(jsonData)) {
-                friendsList = jsonData;
-              }
-
-              if (Array.isArray(friendsList) && friendsList.length > 0) {
-                friendsList.forEach(friend => {
-                  const name = friend.name || friend.title || "";
-                  if (name.length > 2) {
-                    data.friends.push({ 
-                      name, 
-                      date_added: friend.timestamp ? new Date(friend.timestamp * 1000).toLocaleDateString() : "",
-                      source: path
-                    });
-                  }
-                });
-              }
-            } catch (e) {
-              console.error("Failed to parse friends JSON:", e);
-            }
+              const json = JSON.parse(content);
+              const friendsList = json.friends_v2 || json.friends || (Array.isArray(json) ? json : []);
+              friendsList.forEach(f => {
+                const name = f.name || f.title || "";
+                if (name.length > 2 && !data.friends.find(fr => fr.name === name)) {
+                  data.friends.push({ 
+                    name, 
+                    date_added: f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : ""
+                  });
+                }
+              });
+            } catch (e) {}
           } else {
-            // Parse HTML friends list
-            const bodyMatch = content.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-            if (bodyMatch) {
-              const bodyContent = bodyMatch[1];
-
-              // Look for list items or table rows with friend names
-              const listItems = bodyContent.match(/<li[^>]*>([^<]+)<\/li>/gi) || [];
-              listItems.forEach(item => {
-                const name = item.replace(/<[^>]+>/g, '').trim();
-                if (name.length >= 3 && name.length < 100 && name.match(/[a-z]/i) && 
-                    !data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
-                  data.friends.push({ name, date_added: "", source: path });
-                }
-              });
-
-              // Also check table cells
-              const tableCells = bodyContent.match(/<td[^>]*>([^<]+)<\/td>/gi) || [];
-              tableCells.forEach(cell => {
-                const name = cell.replace(/<[^>]+>/g, '').trim();
-                const excludedTerms = ['name', 'friend', 'date', 'privacy', 'settings'];
-
-                if (name.length >= 3 && name.length < 100 && 
-                    name.match(/[a-z]/i) && name.match(/\s/) &&
-                    !excludedTerms.includes(name.toLowerCase()) &&
-                    !data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
-                  data.friends.push({ name, date_added: "", source: path });
-                }
-              });
-            }
+            const bodyContent = getBodyContent(content);
+            const items = bodyContent.match(/<li[^>]*>([^<]+)<\/li>/gi) || [];
+            items.forEach(item => {
+              const name = extractText(item);
+              if (name.length > 2 && name.length < 100 && 
+                  !data.friends.find(f => f.name.toLowerCase() === name.toLowerCase())) {
+                data.friends.push({ name, date_added: "" });
+              }
+            });
           }
         }
 
         // MESSAGES
-        if ((path.includes('message') || path.includes('inbox')) && path.endsWith('.json')) {
+        if (path.match(/messages|inbox/i) && path.endsWith('.json')) {
           try {
-            const jsonData = JSON.parse(content);
+            const json = JSON.parse(content);
+            if (json.messages && Array.isArray(json.messages)) {
+              const convoName = json.title || path.split('/').pop().replace('.json', '').replace(/_/g, ' ');
+              const msgs = json.messages.map(m => ({
+                sender: m.sender_name || "Unknown",
+                text: m.content || "",
+                timestamp: m.timestamp_ms ? new Date(m.timestamp_ms).toLocaleString() : "",
+                timestamp_ms: m.timestamp_ms || 0
+              })).filter(m => m.text);
 
-            if (jsonData.messages && Array.isArray(jsonData.messages)) {
-              const pathMatch = path.match(/inbox\/([^\/]+)\//);
-              const conversationName = jsonData.title || (pathMatch ? decodeURIComponent(pathMatch[1]).replace(/_/g, ' ') : "Unknown");
-
-              const messages = jsonData.messages.map(msg => ({
-                sender: msg.sender_name || "Unknown",
-                text: msg.content || "",
-                timestamp: msg.timestamp_ms ? new Date(msg.timestamp_ms).toLocaleString() : "",
-                timestamp_ms: msg.timestamp_ms || 0
-              })).filter(msg => msg.text && msg.text.length > 0);
-
-              if (messages.length > 0) {
-                const lastMessageTimestamp = messages[0].timestamp_ms;
-
-                data.messages.push({ 
-                  conversation_with: conversationName, 
-                  messages,
-                  lastMessageTimestamp,
-                  totalMessages: messages.length
+              if (msgs.length > 0) {
+                data.messages.push({
+                  conversation_with: convoName,
+                  messages: msgs,
+                  lastMessageTimestamp: msgs[0]?.timestamp_ms || 0,
+                  totalMessages: msgs.length
                 });
               }
             }
-          } catch (e) {
-            // Ignore JSON parse errors
-          }
+          } catch (e) {}
         }
 
         // COMMENTS
-        if (path.includes('comment') && path.endsWith('.html') && data.comments.length < 50) {
-          const sections = content.split(/<div/gi);
-          sections.slice(0, 30).forEach(section => {
-            const text = parseHTML(section);
-            if (text.length > 20 && text.length < 500) {
-              const timestamp = extractTimestamp(section);
-              data.comments.push({ text: text.substring(0, 300), timestamp, on_post_by: "" });
-            }
-          });
-        }
-
-        // LIKES
-        if (path.includes('like') && path.endsWith('.html')) {
-          const structuredData = extractStructuredData(content, path);
-
-          structuredData.forEach(item => {
-            if (item.title) {
-              const type = item.title.match(/\b(page|post|video|photo|comment)\b/i)?.[1] || 'item';
-              data.likes.push({
-                item: item.title,
-                type,
-                details: item.text.join(' ').substring(0, 200),
-                timestamp: extractTimestamp(content)
+        if (path.match(/comment/i) && path.endsWith('.html')) {
+          const bodyContent = getBodyContent(content);
+          const divs = bodyContent.match(/<div[^>]*>[\s\S]{20,500}?<\/div>/gi) || [];
+          divs.slice(0, 30).forEach(div => {
+            const text = extractText(div);
+            if (text.length > 15 && text.length < 400 && data.comments.length < 100) {
+              data.comments.push({ 
+                text: text.substring(0, 300), 
+                timestamp: extractTimestamp(div) 
               });
-            }
-
-            if (item.links) {
-              item.links.forEach(linkText => {
-                if (linkText.length > 2 && linkText.length < 200) {
-                  data.likes.push({
-                    item: linkText,
-                    type: 'page',
-                    timestamp: extractTimestamp(content)
-                  });
-                }
-              });
-            }
-          });
-        }
-
-        // CHECK-INS
-        if ((path.includes('check') || path.includes('place') || path.includes('location')) && path.endsWith('.html') && data.checkins.length < 50) {
-          const locationMatches = content.split(/<div[^>]*>/gi);
-          for (const chunk of locationMatches.slice(0, 30)) {
-            if (chunk.length > 30 && chunk.length < 2000) {
-              const text = parseHTML(chunk);
-              const timestamp = extractTimestamp(chunk);
-              if (text.length > 15 && text.length < 500 && (chunk.includes("checked in") || chunk.includes("location") || path.includes("places"))) {
-                data.checkins.push({ location: text.substring(0, 200), timestamp });
-              }
-            }
-          }
-        }
-
-        // EVENTS
-        if (path.includes('event') && path.endsWith('.html')) {
-          const structuredData = extractStructuredData(content, path);
-
-          structuredData.forEach(item => {
-            if (item.title) {
-              const details = item.text.join(' ');
-              const rsvp = details.match(/\b(going|interested|maybe|not going|hosted?|invited)\b/i)?.[1] || null;
-              const location = details.match(/(?:at|@)\s+([^,\n]{5,100})/i)?.[1] || null;
-
-              const eventData = {
-                name: item.title,
-                details,
-                rsvp,
-                location,
-                timestamp: extractTimestamp(content),
-                source: path
-              };
-              data.events.push(eventData);
-            }
-
-            if (item.table_row) {
-              const rowText = item.table_row.join(' ');
-              if (rowText.length > 10 && rowText.length < 500) {
-                const rsvp = rowText.match(/\b(going|interested|maybe|not going|hosted?|invited)\b/i)?.[1] || null;
-
-                data.events.push({
-                  name: item.table_row[0] || 'Event',
-                  details: rowText,
-                  rsvp,
-                  timestamp: extractTimestamp(rowText),
-                  source: path
-                });
-              }
-            }
-          });
-        }
-
-        // REVIEWS
-        if (path.includes('review') && path.endsWith('.html')) {
-          const structuredData = extractStructuredData(content, path);
-
-          structuredData.forEach(item => {
-            if (item.title || (item.text && item.text.length > 0)) {
-              const reviewText = item.text.join(' ');
-              if (reviewText.length > 10) {
-                const rating = extractRating(reviewText) || extractRating(content);
-                const place = item.title || item.links?.[0] || '';
-
-                data.reviews.push({
-                  place,
-                  text: reviewText.substring(0, 500),
-                  rating,
-                  timestamp: extractTimestamp(content),
-                  source: path
-                });
-              }
-            }
-
-            if (item.table_row) {
-              const rowText = item.table_row.join(' ');
-              if (rowText.length > 10) {
-                const rating = extractRating(rowText);
-
-                data.reviews.push({
-                  text: rowText.substring(0, 500),
-                  rating,
-                  timestamp: extractTimestamp(rowText),
-                  source: path
-                });
-              }
             }
           });
         }
 
         // GROUPS
-        if (path.includes('group') && path.endsWith('.html')) {
-          const structuredData = extractStructuredData(content, path);
-
-          structuredData.forEach(item => {
-            if (item.title) {
-              const groupName = item.title.trim();
-              if (groupName.length > 2 && groupName.length < 200) {
-                data.groups.push({ 
-                  name: groupName,
-                  details: item.text.join(' ').substring(0, 200),
-                  source: path
-                });
-              }
-            }
-
-            if (item.table_row) {
-              item.table_row.forEach(cellText => {
-                const groupName = cellText.trim();
-                if (groupName.length > 3 && groupName.length < 200 &&
-                    !groupName.match(/^(Group|Name|Date|Privacy|Type|Notification|Settings)$/i)) {
-                  data.groups.push({ 
-                    name: groupName,
-                    source: path
-                  });
-                }
-              });
-            }
-
-            if (item.links) {
-              item.links.forEach(linkText => {
-                const groupName = linkText.trim();
-                if (groupName.length > 3 && groupName.length < 200 &&
-                    !groupName.match(/^(Group|Name|Date|Privacy|Terms|Cookies)$/i)) {
-                  data.groups.push({ 
-                    name: groupName,
-                    source: path
-                  });
-                }
-              });
-            }
-          });
-
-          const linkMatches = content.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
-          linkMatches.forEach(link => {
-            const groupName = link.replace(/<[^>]+>/g, '').trim();
-            if (groupName.length > 3 && groupName.length < 200 &&
-                !groupName.match(/^(Group|Name|Date|Privacy|Terms|Cookies|disabled|false|true)$/i)) {
-              data.groups.push({ 
-                name: groupName,
-                source: path
-              });
-            }
-          });
-        }
-
-        // MARKETPLACE
-        if (path.includes('marketplace') && path.endsWith('.html')) {
-          const structuredData = extractStructuredData(content, path);
-
-          structuredData.forEach(item => {
-            if (item.title || (item.text && item.text.length > 0)) {
-              const itemText = item.text.join(' ');
-              if (itemText.length > 5) {
-                const price = extractPrice(itemText) || extractPrice(content);
-                const status = itemText.match(/\b(sold|available|pending|deleted)\b/i)?.[1] || "unknown";
-
-                data.marketplace.push({
-                  title: item.title || '',
-                  text: itemText.substring(0, 500),
-                  price,
-                  status,
-                  links: item.links,
-                  timestamp: extractTimestamp(content),
-                  source: path
-                });
-              }
-            }
-
-            if (item.table_row) {
-              const rowText = item.table_row.join(' ');
-              if (rowText.length > 5) {
-                const price = extractPrice(rowText);
-                const status = rowText.match(/\b(sold|available|pending|deleted)\b/i)?.[1] || "unknown";
-
-                data.marketplace.push({
-                  text: rowText.substring(0, 500),
-                  price,
-                  status,
-                  timestamp: extractTimestamp(rowText),
-                  source: path
-                });
-              }
-            }
-          });
-        }
-
-        // REELS
-        if (path.includes('reel') && path.endsWith('.html') && data.reels.length < 50) {
-          const sections = content.split(/<div/gi);
-          sections.slice(0, 20).forEach(section => {
-            const text = parseHTML(section);
-            if (text.length > 20 && text.length < 500) {
-              const timestamp = extractTimestamp(section);
-              data.reels.push({ text: text.substring(0, 400), timestamp });
+        if (path.match(/group/i) && path.endsWith('.html')) {
+          const bodyContent = getBodyContent(content);
+          const items = bodyContent.match(/<li[^>]*>([^<]+)<\/li>/gi) || 
+                       bodyContent.match(/<a[^>]*>([^<]+)<\/a>/gi) || [];
+          items.forEach(item => {
+            const name = extractText(item);
+            if (name.length > 3 && name.length < 150 && 
+                !name.match(/^(Group|Privacy|Settings)$/i) &&
+                !data.groups.find(g => g.name === name)) {
+              data.groups.push({ name });
             }
           });
         }
@@ -618,26 +307,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Deduplicate
+    // Deduplicate and clean up
     data.friends = [...new Map(data.friends.map(f => [f.name.toLowerCase(), f])).values()];
-    data.events = [...new Map(data.events.map(e => [e.name.toLowerCase(), e])).values()];
-    data.reviews = [...new Map(data.reviews.map((r, i) => [r.text.substring(0, 50), r])).values()];
     data.groups = [...new Map(data.groups.map(g => [g.name.toLowerCase(), g])).values()];
-    
     data.messages.sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
 
-    console.log("Extraction complete:", {
-      friends: data.friends.length,
-      posts: data.posts.length,
-      messages: data.messages.length,
-      photos: data.photos.length,
-      videos: data.videos.length,
-      photoFilesCount: Object.keys(data.photoFiles).length,
-      videoFilesCount: Object.keys(data.videoFiles).length,
-      groups: data.groups.length,
-      events: data.events.length,
-      reviews: data.reviews.length
-    });
+    console.log("\n✅ EXTRACTION COMPLETE:");
+    console.log(`  👤 Profile: ${data.profile.name || 'Unknown'}`);
+    console.log(`  👥 Friends: ${data.friends.length}`);
+    console.log(`  📝 Posts: ${data.posts.length}`);
+    console.log(`  💬 Messages: ${data.messages.length} conversations`);
+    console.log(`  📸 Photos: ${Object.keys(data.photoFiles).length} (${data.photos.length} metadata)`);
+    console.log(`  🎥 Videos: ${Object.keys(data.videoFiles).length}`);
+    console.log(`  💭 Comments: ${data.comments.length}`);
+    console.log(`  👥 Groups: ${data.groups.length}`);
 
     return Response.json(data);
     
