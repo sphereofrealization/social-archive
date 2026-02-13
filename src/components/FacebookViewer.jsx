@@ -434,52 +434,67 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
         </TabsContent>
 
         <TabsContent value="photos" className="mt-4">
-          {photosList.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                No photos found
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {photosList.map((photo, i) => {
-                const path = photo.path;
-                const dataUrl = photoFilesObj[path] || loadedMedia[path];
-                return (
-                  <Dialog key={i}>
-                    <DialogTrigger asChild>
-                      <div 
-                        className="aspect-square cursor-pointer hover:opacity-90 transition-opacity bg-gray-100 flex items-center justify-center rounded-lg"
-                        onClick={() => {
-                          if (!dataUrl && !loadedMedia[path]) loadMedia(path, 'image');
-                        }}
-                      >
-                        {dataUrl ? (
-                          <img 
-                            src={dataUrl} 
-                            alt={path.split('/').pop()} 
-                            className="w-full h-full object-cover rounded-lg"
-                          />
-                        ) : (
-                          <div className="text-gray-400 text-xs text-center p-2">
-                            <p className="mb-1">Loading...</p>
-                            <p className="text-xs">{path.split('/').pop()}</p>
-                          </div>
-                        )}
-                      </div>
-                    </DialogTrigger>
-                    {dataUrl && (
-                      <DialogContent className="max-w-4xl">
-                        <img src={dataUrl} alt={path} className="w-full h-auto" />
-                        <p className="text-sm text-gray-500 mt-2">{path}</p>
-                      </DialogContent>
-                    )}
-                  </Dialog>
-                );
-              })}
-            </div>
-          )}
-        </TabsContent>
+           {photosList.length === 0 ? (
+             <Card>
+               <CardContent className="p-8 text-center text-gray-500">
+                 No photos found
+               </CardContent>
+             </Card>
+           ) : (
+             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+               {photosList.map((photo, i) => {
+                 const path = photo.path;
+                 const mediaState = loadedMedia[path];
+                 const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
+                 const isLoading = mediaState === 'loading';
+                 const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
+
+                 return (
+                   <Dialog key={i}>
+                     <DialogTrigger asChild>
+                       <div 
+                         className="aspect-square cursor-pointer hover:opacity-90 transition-opacity bg-gray-100 flex items-center justify-center rounded-lg"
+                         onClick={() => {
+                           if (!isLoaded && !isLoading) loadMedia(path, 'image');
+                         }}
+                       >
+                         {isLoaded && typeof mediaState === 'string' ? (
+                           <img 
+                             src={mediaState} 
+                             alt={path.split('/').pop()} 
+                             className="w-full h-full object-cover rounded-lg"
+                           />
+                         ) : (
+                           <div className={`text-xs text-center p-2 ${hasError ? 'text-red-600' : 'text-gray-400'}`}>
+                             {isLoading && <p className="mb-1">Loading...</p>}
+                             {hasError && (
+                               <>
+                                 <p className="mb-1 font-semibold">⚠ Error</p>
+                                 <p className="text-xs">{hasError}</p>
+                               </>
+                             )}
+                             {!isLoading && !hasError && (
+                               <>
+                                 <p className="mb-1">Click to load</p>
+                                 <p className="text-xs">{path.split('/').pop()}</p>
+                               </>
+                             )}
+                           </div>
+                         )}
+                       </div>
+                     </DialogTrigger>
+                     {isLoaded && typeof mediaState === 'string' && (
+                       <DialogContent className="max-w-4xl">
+                         <img src={mediaState} alt={path} className="w-full h-auto" />
+                         <p className="text-sm text-gray-500 mt-2">{path}</p>
+                       </DialogContent>
+                     )}
+                   </Dialog>
+                 );
+               })}
+             </div>
+           )}
+         </TabsContent>
 
         <TabsContent value="videos" className="mt-4">
           {videosList.length === 0 ? (
