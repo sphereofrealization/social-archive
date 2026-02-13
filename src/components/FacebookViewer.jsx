@@ -25,7 +25,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [activeTab, setActiveTab] = useState("posts");
-  const [loadingMedia, setLoadingMedia] = useState({});
+  const [loadedMedia, setLoadedMedia] = useState({});
 
   const profile = data?.profile || {};
   const posts = Array.isArray(data?.posts) ? data.posts : [];
@@ -54,14 +54,12 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   
   // Get actual media files from photoFiles and videoFiles objects
   const photoFilesObj = data?.photoFiles || photoFiles || {};
-  const videoFilesObj = data?.videoFiles || {};
   const videosList = Array.isArray(data?.videos) ? data.videos : [];
   const photosList = Array.isArray(data?.photos) ? data.photos : [];
   
-  // Load media on demand using blob URLs
+  // Load media on demand
   const loadMedia = async (mediaPath, type) => {
-    if (loadingMedia[mediaPath] || photoFilesObj[mediaPath]) return;
-    setLoadingMedia(prev => ({ ...prev, [mediaPath]: true }));
+    if (loadedMedia[mediaPath]) return;
     try {
       const response = await base44.functions.invoke('getArchiveEntry', {
         fileUrl: archiveUrl,
@@ -69,12 +67,12 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
         responseType: 'base64'
       });
       if (response.data?.content) {
-        photoFilesObj[mediaPath] = response.data.content;
+        const mimeType = type === 'image' ? 'image/jpeg' : 'video/mp4';
+        const dataUrl = `data:${mimeType};base64,${response.data.content}`;
+        setLoadedMedia(prev => ({ ...prev, [mediaPath]: dataUrl }));
       }
     } catch (err) {
-      console.error(`Failed to load media ${mediaPath}:`, err);
-    } finally {
-      setLoadingMedia(prev => ({ ...prev, [mediaPath]: false }));
+      console.error(`Failed to load ${type} ${mediaPath}:`, err);
     }
   };
 
@@ -408,14 +406,14 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {photosList.map((photo, i) => {
                 const path = photo.path;
-                const dataUrl = photoFilesObj[path];
+                const dataUrl = photoFilesObj[path] || loadedMedia[path];
                 return (
                   <Dialog key={i}>
                     <DialogTrigger asChild>
                       <div 
                         className="aspect-square cursor-pointer hover:opacity-90 transition-opacity bg-gray-100 flex items-center justify-center rounded-lg"
                         onClick={() => {
-                          if (!dataUrl) loadMedia(path, 'image');
+                          if (!dataUrl && !loadedMedia[path]) loadMedia(path, 'image');
                         }}
                       >
                         {dataUrl ? (
@@ -425,7 +423,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
                             className="w-full h-full object-cover rounded-lg"
                           />
                         ) : (
-                          <span className="text-gray-400 text-xs text-center p-2">{path.split('/').pop()}</span>
+                          <div className="text-gray-400 text-xs text-center p-2">
+                            <p className="mb-1">Loading...</p>
+                            <p className="text-xs">{path.split('/').pop()}</p>
+                          </div>
                         )}
                       </div>
                     </DialogTrigger>
@@ -452,25 +453,33 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {videosList.map((video, i) => {
-                const videoData = videoFilesObj[video.path];
+                const videoData = loadedMedia[video.path];
+                const isLoading = !videoData && loadedMedia[video.path] !== false;
                 return (
                   <Card key={i}>
                     <CardContent className="p-4">
-                      <video 
-                        controls 
-                        className="w-full rounded-lg"
-                        style={{ maxHeight: '400px' }}
-                        onPlay={() => {
-                          if (!videoData && archiveUrl) {
-                            loadMedia(video.path, 'video');
-                          }
-                        }}
-                      >
-                        {videoData && (
+                      {!videoData ? (
+                        <div 
+                          className="w-full rounded-lg bg-gray-200 flex items-center justify-center"
+                          style={{ height: '200px' }}
+                          onClick={() => loadMedia(video.path, 'video')}
+                        >
+                          <div className="text-center">
+                            <p className="text-gray-600 font-medium mb-2">Click to load video</p>
+                            <p className="text-xs text-gray-500">{video.filename}</p>
+                            <p className="text-xs text-gray-400">{(video.size / 1024 / 1024).toFixed(2)} MB</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <video 
+                          controls 
+                          className="w-full rounded-lg"
+                          style={{ maxHeight: '400px' }}
+                        >
                           <source src={videoData} type="video/mp4" />
-                        )}
-                        Your browser does not support the video tag.
-                      </video>
+                          Your browser does not support the video tag.
+                        </video>
+                      )}
                       <p className="text-sm text-gray-500 mt-2">{video.filename}</p>
                       <p className="text-xs text-gray-400">{(video.size / 1024 / 1024).toFixed(2)} MB</p>
                     </CardContent>
