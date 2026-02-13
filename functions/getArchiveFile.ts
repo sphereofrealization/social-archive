@@ -579,6 +579,8 @@ Deno.serve(async (req) => {
       friends: data.friends.length,
       posts: data.posts.length,
       messages: data.messages.length,
+      photos: data.photos.length,
+      videos: data.videos.length,
       groups: data.groups.length,
       events: data.events.length,
       reviews: data.reviews.length
