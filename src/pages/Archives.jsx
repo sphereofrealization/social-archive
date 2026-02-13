@@ -389,22 +389,31 @@ export default function Archives() {
                       </Select>
                     </div>
 
-                    <div className="flex gap-2 pt-2">
+                    <div className="flex gap-2 pt-4 flex-col">
                       {archive.file_url && (
                         <>
-                          <Button 
-                            variant="outline" 
-                            size="icon"
-                            onClick={() => copyUrlToClipboard(archive.file_url, archive.id)}
-                            title="Copy download link"
-                            className="flex-shrink-0"
-                          >
-                            {copiedUrl === archive.id ? (
-                              <Check className="w-4 h-4 text-green-600" />
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
-                          </Button>
+                           <div className="space-y-2">
+                             <Label className="text-xs text-gray-600">Download Link</Label>
+                             <div className="flex gap-2 items-center">
+                               <code className="flex-1 text-xs bg-gray-50 p-2 rounded border border-gray-200 overflow-x-auto text-gray-700 break-all">
+                                 {archive.file_url}
+                               </code>
+                               <Button 
+                                 variant="outline" 
+                                 size="icon"
+                                 onClick={() => copyUrlToClipboard(archive.file_url, archive.id)}
+                                 title="Copy download link"
+                                 className="flex-shrink-0"
+                               >
+                                 {copiedUrl === archive.id ? (
+                                   <Check className="w-4 h-4 text-green-600" />
+                                 ) : (
+                                   <Copy className="w-4 h-4" />
+                                 )}
+                               </Button>
+                             </div>
+                           </div>
+                           <div className="flex gap-2 pt-2">
                            <Button 
                              variant="outline" 
                              className="flex-1"
