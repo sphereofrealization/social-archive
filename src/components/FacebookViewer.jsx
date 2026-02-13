@@ -42,15 +42,19 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   
   // Map friends to their conversations with flexible matching
   const friendConversations = {};
-  messages.forEach(conv => {
-    const normalized = conv.conversation_with.toLowerCase().trim();
-    friendConversations[normalized] = conv;
-    // Also try to match by first and last name parts
-    const parts = conv.conversation_with.split(/\s+/);
-    if (parts.length > 1) {
-      friendConversations[parts[parts.length - 1].toLowerCase()] = conv;
-    }
-  });
+  if (Array.isArray(messages)) {
+    messages.forEach(conv => {
+      if (conv?.conversation_with) {
+        const normalized = conv.conversation_with.toLowerCase().trim();
+        friendConversations[normalized] = conv;
+        // Also try to match by first and last name parts
+        const parts = conv.conversation_with.split(/\s+/);
+        if (parts.length > 1) {
+          friendConversations[parts[parts.length - 1].toLowerCase()] = conv;
+        }
+      }
+    });
+  }
   
   // Get actual media files from photoFiles and videoFiles objects
   const photoFilesObj = data?.photoFiles || photoFiles || {};
