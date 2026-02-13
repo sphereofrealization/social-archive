@@ -389,42 +389,44 @@ export default function Archives() {
                       </Select>
                     </div>
 
-                    <div className="flex gap-2 pt-4 flex-col">
-                      {archive.file_url && (
-                        <>
-                           <div className="space-y-2">
-                             <Label className="text-xs text-gray-600">Download Link</Label>
-                             <div className="flex gap-2 items-center">
-                               <code className="flex-1 text-xs bg-gray-50 p-2 rounded border border-gray-200 overflow-x-auto text-gray-700 break-all">
-                                 {archive.file_url}
-                               </code>
-                               <Button 
-                                 variant="outline" 
-                                 size="icon"
-                                 onClick={() => copyUrlToClipboard(archive.file_url, archive.id)}
-                                 title="Copy download link"
-                                 className="flex-shrink-0"
-                               >
-                                 {copiedUrl === archive.id ? (
-                                   <Check className="w-4 h-4 text-green-600" />
-                                 ) : (
-                                   <Copy className="w-4 h-4" />
-                                 )}
-                               </Button>
-                             </div>
-                           </div>
-                           <div className="flex gap-2 pt-2">
-                             <Button 
-                               variant="outline" 
-                               className="flex-1"
-                               onClick={() => window.open(archive.file_url, '_blank')}
-                             >
-                               <Download className="w-4 h-4 mr-2" />
-                               Download
-                             </Button>
+                    {archive.file_url && (
+                      <div className="space-y-2 pt-4 border-t">
+                        <Label className="text-xs text-gray-600">Download Link</Label>
+                        <div className="flex gap-2 items-center">
+                          <code className="flex-1 text-xs bg-gray-50 p-2 rounded border border-gray-200 overflow-x-auto text-gray-700 break-all">
+                            {archive.file_url}
+                          </code>
                           <Button 
                             variant="outline" 
-                            className="flex-1"
+                            size="icon"
+                            onClick={() => copyUrlToClipboard(archive.file_url, archive.id)}
+                            title="Copy download link"
+                            className="flex-shrink-0"
+                          >
+                            {copiedUrl === archive.id ? (
+                              <Check className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-4 flex-wrap">
+                      {archive.file_url && (
+                        <>
+                          <Button 
+                            variant="outline" 
+                            className="flex-1 min-w-max"
+                            onClick={() => window.open(archive.file_url, '_blank')}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            className="flex-1 min-w-max"
                             onClick={() => window.location.href = createPageUrl("ArchiveFileTree") + `?archiveId=${archive.id}&archiveUrl=${encodeURIComponent(archive.file_url)}&archiveName=${encodeURIComponent(archive.file_name)}`}
                           >
                             <FileJson className="w-4 h-4 mr-2" />
@@ -432,7 +434,7 @@ export default function Archives() {
                           </Button>
                           <Button 
                             variant="outline" 
-                            className="flex-1"
+                            className="flex-1 min-w-max"
                             onClick={() => toggleArchiveExpansion(archive.id)}
                           >
                             {isExpanded ? (
@@ -447,16 +449,16 @@ export default function Archives() {
                               </>
                             )}
                           </Button>
-                          </>
-                          )}
-                          <Button 
-                          variant="outline" 
-                          size="icon"
-                          onClick={() => deleteArchiveMutation.mutate(archive.id)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                          <Trash2 className="w-4 h-4" />
-                          </Button>
+                        </>
+                      )}
+                      <Button 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => deleteArchiveMutation.mutate(archive.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
 
                     {isExpanded && archive.file_url && (
