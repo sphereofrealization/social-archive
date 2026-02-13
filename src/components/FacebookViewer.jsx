@@ -484,8 +484,8 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
                        </div>
                      </DialogTrigger>
                      {isLoaded && typeof mediaState === 'string' && (
-                       <DialogContent className="max-w-4xl">
-                         <img src={mediaState} alt={path} className="w-full h-auto" />
+                       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+                         <img src={mediaState} alt={path} className="w-full h-auto max-h-[75vh] object-contain mx-auto" />
                          <p className="text-sm text-gray-500 mt-2">{path}</p>
                        </DialogContent>
                      )}
