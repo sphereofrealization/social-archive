@@ -66,7 +66,8 @@ Deno.serve(async (req) => {
     }
 
     if (responseType === 'base64') {
-      const base64 = await file.async('base64');
+      const data = await file.async('arraybuffer');
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(data)));
       const ext = entryPath.split('.').pop().toLowerCase();
       const mimeTypes = {
         'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
@@ -74,6 +75,8 @@ Deno.serve(async (req) => {
         'mov': 'video/quicktime', 'm4v': 'video/mp4', 'webm': 'video/webm'
       };
       const mime = mimeTypes[ext] || 'application/octet-stream';
+      
+      console.log(`[getArchiveEntry] Extracted ${entryPath}, size: ${data.byteLength}, mime: ${mime}`);
       
       return Response.json({
         type: 'base64',
