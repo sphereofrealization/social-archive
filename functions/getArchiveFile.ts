@@ -121,66 +121,129 @@ Deno.serve(async (req) => {
             }
           }
           
-          // FRIENDS
-          if (path.includes('friends') && (json.friends_v2 || json.friends)) {
-            const friendsList = json.friends_v2 || json.friends || [];
-            friendsList.forEach(f => {
-              const name = decode(f.name || "");
-              const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
-              if (name && !data.friends.find(fr => fr.name === name)) {
-                data.friends.push({ name, date_added: timestamp });
-              }
-            });
+          // FRIENDS (multiple possible locations and formats)
+          if (path.includes('friends')) {
+            // Format 1: friends_v2 array
+            if (json.friends_v2 && Array.isArray(json.friends_v2)) {
+              json.friends_v2.forEach(f => {
+                const name = decode(f.name || "");
+                const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
+                if (name && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
+                  data.friends.push({ name, date_added: timestamp });
+                }
+              });
+            }
+            // Format 2: friends array
+            else if (json.friends && Array.isArray(json.friends)) {
+              json.friends.forEach(f => {
+                const name = decode(f.name || "");
+                const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
+                if (name && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
+                  data.friends.push({ name, date_added: timestamp });
+                }
+              });
+            }
+            // Format 3: Direct array at root
+            else if (Array.isArray(json)) {
+              json.forEach(f => {
+                const name = decode(f.name || "");
+                const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
+                if (name && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
+                  data.friends.push({ name, date_added: timestamp });
+                }
+              });
+            }
           }
           
-          // POSTS
-          if (path.includes('posts/your_posts') && Array.isArray(json)) {
-            json.forEach(post => {
-              const text = decode(post.data?.[0]?.post || post.post || post.title || "");
+          // POSTS (various locations)
+          if (path.includes('posts') && !path.includes('other_people')) {
+            const posts = Array.isArray(json) ? json : (json.posts || []);
+            posts.forEach(post => {
+              // Multiple text field possibilities
+              const text = decode(
+                post.data?.[0]?.post || 
+                post.post || 
+                post.title || 
+                post.data?.[0]?.update_timestamp ||
+                ""
+              );
               const timestamp = post.timestamp ? new Date(post.timestamp * 1000).toLocaleString() : "";
-              if (text) {
+              
+              // Extract attachments/media if present
+              const attachments = post.attachments || post.data?.[0]?.attachments || [];
+              const hasMedia = attachments.length > 0;
+              
+              if (text && text.length > 1) {
                 data.posts.push({ 
                   text, 
                   timestamp, 
                   photo_url: null, 
                   likes_count: 0, 
                   comments_count: 0, 
-                  comments: [] 
+                  comments: [],
+                  hasMedia
                 });
               }
             });
           }
           
-          // COMMENTS
-          if (path.includes('comments') && json.comments) {
-            json.comments.forEach(c => {
-              const text = decode(c.data?.[0]?.comment?.comment || c.comment || c.title || "");
+          // COMMENTS (multiple formats)
+          if (path.includes('comments')) {
+            const comments = json.comments || (Array.isArray(json) ? json : []);
+            comments.forEach(c => {
+              const text = decode(
+                c.data?.[0]?.comment?.comment || 
+                c.comment || 
+                c.title ||
+                c.data?.[0]?.comment ||
+                ""
+              );
               const timestamp = c.timestamp ? new Date(c.timestamp * 1000).toLocaleString() : "";
-              if (text) {
-                data.comments.push({ text, timestamp, author: decode(c.author || "") });
+              const author = decode(c.author || c.data?.[0]?.comment?.author || "");
+              
+              if (text && text.length > 1) {
+                data.comments.push({ text, timestamp, author });
               }
             });
           }
           
-          // LIKES AND REACTIONS
-          if (path.includes('likes_and_reactions')) {
-            const items = json.reactions_v2 || json.reactions || json.likes || [];
+          // LIKES AND REACTIONS (comprehensive extraction)
+          if (path.includes('likes_and_reactions') || path.includes('reactions')) {
+            // Handle multiple formats
+            let items = [];
+            if (json.reactions_v2) items = json.reactions_v2;
+            else if (json.reactions) items = json.reactions;
+            else if (json.likes) items = json.likes;
+            else if (json.page_likes) items = json.page_likes;
+            else if (Array.isArray(json)) items = json;
+            
             items.forEach(item => {
-              const title = decode(item.title || item.data?.[0]?.title || "");
+              const title = decode(
+                item.title || 
+                item.name ||
+                item.data?.[0]?.title || 
+                item.data?.[0]?.name ||
+                ""
+              );
               const timestamp = item.timestamp ? new Date(item.timestamp * 1000).toLocaleString() : "";
-              if (title) {
+              if (title && title.length > 1) {
                 data.likes.push({ title, timestamp });
               }
             });
           }
           
-          // GROUPS
-          if (path.includes('groups') && (json.groups_joined || json.groups)) {
-            const groups = json.groups_joined?.groups_joined || json.groups || [];
+          // GROUPS (comprehensive formats)
+          if (path.includes('groups')) {
+            let groups = [];
+            if (json.groups_joined?.groups_joined) groups = json.groups_joined.groups_joined;
+            else if (json.groups_joined) groups = json.groups_joined;
+            else if (json.groups) groups = json.groups;
+            else if (Array.isArray(json)) groups = json;
+            
             groups.forEach(g => {
               const name = decode(g.name || g.title || "");
               const timestamp = g.timestamp ? new Date(g.timestamp * 1000).toLocaleString() : "";
-              if (name && !data.groups.find(gr => gr.name === name)) {
+              if (name && name.length > 1 && !data.groups.find(gr => gr.name.toLowerCase() === name.toLowerCase())) {
                 data.groups.push({ name, timestamp });
               }
             });
@@ -199,12 +262,18 @@ Deno.serve(async (req) => {
             });
           }
           
-          // EVENTS
-          if (path.includes('events') && json.events_joined) {
-            json.events_joined.forEach(e => {
-              const name = decode(e.name || "");
-              const timestamp = e.start_timestamp ? new Date(e.start_timestamp * 1000).toLocaleString() : "";
-              if (name) {
+          // EVENTS (multiple formats)
+          if (path.includes('events')) {
+            let events = [];
+            if (json.events_joined) events = json.events_joined;
+            else if (json.event_invitations) events = json.event_invitations;
+            else if (Array.isArray(json)) events = json;
+            
+            events.forEach(e => {
+              const name = decode(e.name || e.title || "");
+              const timestamp = e.start_timestamp ? new Date(e.start_timestamp * 1000).toLocaleString() : 
+                              e.timestamp ? new Date(e.timestamp * 1000).toLocaleString() : "";
+              if (name && name.length > 1) {
                 data.events.push({ text: name, timestamp });
               }
             });
