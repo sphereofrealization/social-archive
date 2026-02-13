@@ -58,6 +58,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   
   // Get actual media files from photoFiles and videoFiles objects
   const photoFilesObj = data?.photoFiles || photoFiles || {};
+  const videoFilesObj = data?.videoFiles || {};
   const videosList = Array.isArray(data?.videos) ? data.videos : [];
   const photosList = Array.isArray(data?.photos) ? data.photos : [];
   
