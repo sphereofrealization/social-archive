@@ -92,6 +92,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
     friends: friends.length,
     messages: messages.length,
     comments: comments.length,
+    commentsRaw: data?.comments,
     groups: groups.length,
     reviews: reviews.length,
     likes: likes.length
