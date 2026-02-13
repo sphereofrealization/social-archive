@@ -96,7 +96,15 @@ export default function Archives() {
         const file = uploadData.file;
         const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks for better progress feedback
 
-        // Start multipart upload
+        // Start multipart upload (with auth token)
+        const sessionToken = localStorage.getItem('session_token');
+        const originalInvoke = base44.functions.invoke;
+        base44.functions.invoke = (fnName, payload) => {
+          return originalInvoke.call(base44.functions, fnName, payload, {
+            headers: { 'Authorization': `Bearer ${sessionToken}` }
+          });
+        };
+        
         const { data: startData } = await base44.functions.invoke('uploadToS3', {
           action: 'start',
           fileName: file.name

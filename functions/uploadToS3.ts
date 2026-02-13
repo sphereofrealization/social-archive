@@ -3,14 +3,25 @@ import { S3Client, PutObjectCommand, CreateMultipartUploadCommand, UploadPartCom
 
 Deno.serve(async (req) => {
     try {
-        const base44 = createClientFromRequest(req);
-        const user = await base44.auth.me();
-
-        if (!user) {
+        const body = await req.json();
+        
+        // Validate session token
+        const sessionToken = req.headers.get('Authorization')?.replace('Bearer ', '');
+        if (!sessionToken) {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const body = await req.json();
+        const base44 = createClientFromRequest(req);
+        const validateResponse = await base44.functions.invoke('passwordlessAuth', {
+            action: 'validate',
+            sessionToken
+        });
+        
+        if (!validateResponse.data?.valid) {
+            return Response.json({ error: 'Invalid session' }, { status: 401 });
+        }
+
+        const userId = validateResponse.data.userId;
         const { action, fileName, uploadId, fileKey, partNumber, chunkBase64, parts } = body;
         
         console.log('Upload action:', action);
@@ -28,7 +39,7 @@ Deno.serve(async (req) => {
         const bucket = Deno.env.get('DREAMHOST_BUCKET');
 
         if (action === 'start') {
-            const fileKey = `${user.id}/${Date.now()}_${fileName}`;
+            const fileKey = `${userId}/${Date.now()}_${fileName}`;
 
             const command = new CreateMultipartUploadCommand({
                 Bucket: bucket,
