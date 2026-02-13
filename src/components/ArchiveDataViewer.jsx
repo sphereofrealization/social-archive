@@ -39,7 +39,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
     try {
       console.log("Invoking backend extraction for:", fileUrl);
-      const response = await base44.functions.invoke('getArchiveFile', { fileUrl });
+      const response = await base44.functions.invoke('extractArchiveData', { fileUrl });
 
       if (!response.data) {
         throw new Error('No data returned from server');
