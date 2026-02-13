@@ -11,85 +11,134 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { fileUrl, entryPath, responseType = 'text' } = body;
+    const { zipUrl, entryPath, responseType = 'base64' } = body;
     
-    console.log(`[getArchiveEntry] Loading ${entryPath} from ${fileUrl}`);
+    console.log(`[getArchiveEntry] Fetching ${entryPath} from ZIP, responseType=${responseType}`);
     
-    if (!fileUrl || !entryPath) {
-      return Response.json({ error: 'Missing fileUrl or entryPath' }, { status: 400 });
+    if (!zipUrl || !entryPath) {
+      return Response.json({ error: 'Missing zipUrl or entryPath' }, { status: 400 });
     }
 
-    // Fetch with Range support for large files
-    const zipRes = await fetch(fileUrl, {
-      headers: { 'Range': 'bytes=0-' }
-    });
-    
-    console.log(`[getArchiveEntry] Fetch status: ${zipRes.status}, headers:`, {
-      'content-length': zipRes.headers.get('content-length'),
-      'accept-ranges': zipRes.headers.get('accept-ranges'),
-      'content-range': zipRes.headers.get('content-range')
-    });
-    
-    if (!zipRes.ok && zipRes.status !== 206) {
-      return Response.json({ 
-        error: `Failed to fetch ZIP: ${zipRes.status}`,
-        headers: Object.fromEntries(zipRes.headers)
-      }, { status: 400 });
+    // Fetch ZIP - JSZip will handle Range requests automatically for random access
+    let zipRes;
+    try {
+      zipRes = await fetch(zipUrl);
+      if (!zipRes.ok) {
+        const errorMsg = `Failed to fetch ZIP: ${zipRes.status}`;
+        console.error(`[getArchiveEntry] ${errorMsg}`);
+        return Response.json({ 
+          error: errorMsg,
+          status: zipRes.status
+        }, { status: 400 });
+      }
+    } catch (fetchErr) {
+      const errorMsg = `Network error fetching ZIP: ${fetchErr.message}`;
+      console.error(`[getArchiveEntry] ${errorMsg}`);
+      return Response.json({ error: errorMsg }, { status: 500 });
     }
 
-    const blob = await zipRes.blob();
-    console.log(`[getArchiveEntry] ZIP blob size: ${blob.size} bytes`);
-    const zip = await JSZip.loadAsync(blob);
+    let zip;
+    try {
+      const blob = await zipRes.blob();
+      console.log(`[getArchiveEntry] ZIP blob size: ${blob.size} bytes`);
+      zip = await JSZip.loadAsync(blob);
+    } catch (zipErr) {
+      const errorMsg = `Failed to parse ZIP: ${zipErr.message}`;
+      console.error(`[getArchiveEntry] ${errorMsg}`);
+      return Response.json({ error: errorMsg }, { status: 400 });
+    }
+
+    // Look up the entry
     const file = zip.file(entryPath);
-
     if (!file) {
-      return Response.json({ error: 'Entry not found in archive' }, { status: 404 });
+      const errorMsg = `Entry not found: ${entryPath}`;
+      console.error(`[getArchiveEntry] ${errorMsg}`);
+      // List first 10 files for debugging
+      const fileList = zip.file(/.*/).slice(0, 10).map(f => f.name);
+      return Response.json({ 
+        error: errorMsg,
+        availableFiles: fileList
+      }, { status: 404 });
     }
 
+    // Extract based on responseType
     if (responseType === 'text') {
-      const content = await file.async('text');
-      return Response.json({ 
-        type: 'text', 
-        content,
-        filename: entryPath.split('/').pop()
-      });
+      try {
+        const content = await file.async('text');
+        console.log(`[getArchiveEntry] Extracted text, size: ${content.length} chars`);
+        return Response.json({ 
+          type: 'text', 
+          content,
+          filename: entryPath.split('/').pop()
+        });
+      } catch (err) {
+        return Response.json({ error: `Failed to extract text: ${err.message}` }, { status: 500 });
+      }
     }
 
     if (responseType === 'json') {
-      const text = await file.async('text');
-      const data = JSON.parse(text);
-      return Response.json({ 
-        type: 'json', 
-        content: data,
-        filename: entryPath.split('/').pop()
-      });
+      try {
+        const text = await file.async('text');
+        const data = JSON.parse(text);
+        console.log(`[getArchiveEntry] Extracted JSON, keys: ${Object.keys(data).length}`);
+        return Response.json({ 
+          type: 'json', 
+          content: data,
+          filename: entryPath.split('/').pop()
+        });
+      } catch (err) {
+        return Response.json({ error: `Failed to extract JSON: ${err.message}` }, { status: 500 });
+      }
     }
 
     if (responseType === 'base64') {
-      const data = await file.async('arraybuffer');
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(data)));
-      const ext = entryPath.split('.').pop().toLowerCase();
-      const mimeTypes = {
-        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
-        'gif': 'image/gif', 'webp': 'image/webp', 'mp4': 'video/mp4',
-        'mov': 'video/quicktime', 'm4v': 'video/mp4', 'webm': 'video/webm'
-      };
-      const mime = mimeTypes[ext] || 'application/octet-stream';
-      
-      console.log(`[getArchiveEntry] Extracted ${entryPath}, size: ${data.byteLength}, mime: ${mime}`);
-      
-      return Response.json({
-        type: 'base64',
-        mime,
-        content: `data:${mime};base64,${base64}`,
-        filename: entryPath.split('/').pop()
-      });
+      try {
+        const data = await file.async('arraybuffer');
+        
+        // Validate magic bytes
+        const view = new Uint8Array(data.slice(0, 4));
+        const magicBytes = Array.from(view).map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        const ext = entryPath.split('.').pop().toLowerCase();
+        const mimeTypes = {
+          'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+          'gif': 'image/gif', 'webp': 'image/webp', 'mp4': 'video/mp4',
+          'mov': 'video/quicktime', 'm4v': 'video/mp4', 'webm': 'video/webm',
+          'html': 'text/html', 'htm': 'text/html'
+        };
+        const mime = mimeTypes[ext] || 'application/octet-stream';
+        
+        // Convert to base64 - handle large files
+        const uint8Array = new Uint8Array(data);
+        const chunkSize = 8192;
+        let base64 = '';
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+          const chunk = uint8Array.subarray(i, i + chunkSize);
+          base64 += String.fromCharCode(...chunk);
+        }
+        base64 = btoa(base64);
+        
+        console.log(`[getArchiveEntry] Extracted ${ext} (${data.byteLength} bytes, magic: ${magicBytes}), mime: ${mime}`);
+        
+        return Response.json({
+          type: 'base64',
+          mime,
+          content: base64,
+          size: data.byteLength,
+          filename: entryPath.split('/').pop(),
+          magic: magicBytes
+        });
+      } catch (err) {
+        const errorMsg = `Failed to extract binary: ${err.message}`;
+        console.error(`[getArchiveEntry] ${errorMsg}`);
+        return Response.json({ error: errorMsg }, { status: 500 });
+      }
     }
 
     return Response.json({ error: 'Invalid responseType' }, { status: 400 });
     
   } catch (error) {
-    console.error('Archive entry fetch error:', error);
-    return Response.json({ error: error.message || 'Failed to fetch entry' }, { status: 500 });
+    console.error('[getArchiveEntry] Unexpected error:', error);
+    return Response.json({ error: error.message || 'Unknown error' }, { status: 500 });
   }
 });
