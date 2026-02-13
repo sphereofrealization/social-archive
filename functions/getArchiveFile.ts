@@ -54,12 +54,8 @@ Deno.serve(async (req) => {
     };
 
     const parseHTML = (html) => {
-      return html
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+      // Fast HTML stripping - avoid expensive regex
+      return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 1000);
     };
 
     const extractTimestamp = (html) => {
@@ -117,9 +113,12 @@ Deno.serve(async (req) => {
 
     // Process files - extract text content only (no images/videos in backend)
     console.log("Extracting data from archive...");
-    
-    for (const [path, file] of Object.entries(zip.files)) {
-      if (file.dir) continue;
+
+    const files = Object.entries(zip.files).filter(([path, file]) => !file.dir);
+    const maxFiles = 200; // Limit processing
+
+    for (let i = 0; i < Math.min(files.length, maxFiles); i++) {
+      const [path, file] = files[i];
 
       try {
         const content = await file.async("text");
@@ -178,51 +177,19 @@ Deno.serve(async (req) => {
           });
         }
 
-        // POSTS
-        if (path.includes('post') && path.endsWith(".html")) {
-          const postSections = content.split(/<div[^>]*class="[^"]*pam[^"]*"[^>]*>/gi);
-
-          postSections.forEach((section, idx) => {
-            if (section.length < 100) return;
-
-            const text = parseHTML(section.substring(0, 2000));
-            if (text.length < 10) return;
-
-            const timestamp = extractTimestamp(section);
-            const reactions = [];
-            const reactionMatch = section.match(/(\d+)\s*(like|love|haha|wow|sad|angry)/gi);
-            let totalReactions = 0;
-            if (reactionMatch) {
-              reactionMatch.forEach(r => {
-                const count = parseInt(r.match(/\d+/)?.[0] || 0);
-                totalReactions += count;
-                reactions.push(r);
-              });
-            }
-
-            const comments = [];
-            const commentMatches = section.match(/<div[^>]*comment[^>]*>[\s\S]{20,800}?<\/div>/gi) || [];
-            commentMatches.forEach(commentHtml => {
-              const commentText = parseHTML(commentHtml);
-              if (commentText.length > 10 && commentText.length < 500) {
-                const commenter = commentHtml.match(/<a[^>]*>([^<]{3,50})<\/a>/)?.[1] || "Someone";
-                comments.push({
-                  author: commenter,
-                  text: commentText,
-                  timestamp: extractTimestamp(commentHtml)
-                });
-              }
-            });
-
+        // POSTS - simplified
+        if (path.includes('post') && path.endsWith(".html") && data.posts.length < 50) {
+          const text = parseHTML(content);
+          if (text.length > 20) {
             data.posts.push({
-              text: text.substring(0, 500),
-              timestamp,
-              reactions,
-              likes_count: totalReactions,
-              comments_count: comments.length,
-              comments
+              text: text.substring(0, 300),
+              timestamp: extractTimestamp(content),
+              reactions: [],
+              likes_count: 0,
+              comments_count: 0,
+              comments: []
             });
-          });
+          }
         }
 
         // FRIENDS
@@ -312,16 +279,12 @@ Deno.serve(async (req) => {
           }
         }
 
-        // COMMENTS
-        if (path.includes('comment') && path.endsWith('.html')) {
-          const sections = content.split(/<div/gi);
-          sections.slice(0, 100).forEach(section => {
-            const text = parseHTML(section);
-            if (text.length > 20 && text.length < 500) {
-              const timestamp = extractTimestamp(section);
-              data.comments.push({ text: text.substring(0, 300), timestamp, on_post_by: "" });
-            }
-          });
+        // COMMENTS - simplified
+        if (path.includes('comment') && path.endsWith('.html') && data.comments.length < 30) {
+          const text = parseHTML(content);
+          if (text.length > 20) {
+            data.comments.push({ text: text.substring(0, 200), timestamp: extractTimestamp(content), on_post_by: "" });
+          }
         }
 
         // LIKES
@@ -353,17 +316,11 @@ Deno.serve(async (req) => {
           });
         }
 
-        // CHECK-INS
-        if ((path.includes('check') || path.includes('place') || path.includes('location')) && path.endsWith('.html')) {
-          const locationMatches = content.split(/<div[^>]*>/gi);
-          for (const chunk of locationMatches) {
-            if (chunk.length > 30 && chunk.length < 2000) {
-              const text = parseHTML(chunk);
-              const timestamp = extractTimestamp(chunk);
-              if (text.length > 15 && text.length < 500 && (chunk.includes("checked in") || chunk.includes("location") || path.includes("places"))) {
-                data.checkins.push({ location: text.substring(0, 200), timestamp });
-              }
-            }
+        // CHECK-INS - simplified
+        if ((path.includes('check') || path.includes('place') || path.includes('location')) && path.endsWith('.html') && data.checkins.length < 30) {
+          const text = parseHTML(content);
+          if (text.length > 15) {
+            data.checkins.push({ location: text.substring(0, 150), timestamp: extractTimestamp(content) });
           }
         }
 
@@ -539,16 +496,12 @@ Deno.serve(async (req) => {
           });
         }
 
-        // REELS
-        if (path.includes('reel') && path.endsWith('.html')) {
-          const sections = content.split(/<div/gi);
-          sections.forEach(section => {
-            const text = parseHTML(section);
-            if (text.length > 20 && text.length < 500) {
-              const timestamp = extractTimestamp(section);
-              data.reels.push({ text: text.substring(0, 400), timestamp });
-            }
-          });
+        // REELS - simplified
+        if (path.includes('reel') && path.endsWith('.html') && data.reels.length < 30) {
+          const text = parseHTML(content);
+          if (text.length > 20) {
+            data.reels.push({ text: text.substring(0, 200), timestamp: extractTimestamp(content) });
+          }
         }
 
       } catch (err) {
