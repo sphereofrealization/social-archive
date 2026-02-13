@@ -234,7 +234,13 @@ Deno.serve(async (req) => {
             if (section.length < 100) return;
 
             const text = parseHTML(section.substring(0, 2000));
-            if (text.length < 10) return;
+
+            // Skip if it's CSS or script content
+            if (text.startsWith('html{') || text.startsWith('body{') || 
+                text.includes('font-family:') || text.includes('background:#') ||
+                text.length < 10) {
+              return;
+            }
 
             const timestamp = extractTimestamp(section);
             const reactions = [];
@@ -604,6 +610,8 @@ Deno.serve(async (req) => {
       messages: data.messages.length,
       photos: data.photos.length,
       videos: data.videos.length,
+      photoFilesCount: Object.keys(data.photoFiles).length,
+      videoFilesCount: Object.keys(data.videoFiles).length,
       groups: data.groups.length,
       events: data.events.length,
       reviews: data.reviews.length
