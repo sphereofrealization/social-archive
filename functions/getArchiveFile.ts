@@ -128,20 +128,20 @@ Be accurate - only count items that are clearly identifiable as the data type. R
     }
 
     return Response.json({
-      posts: result.posts || 0,
-      friends: result.friends || 0,
-      conversations: result.conversations || 0,
-      photos: result.photos || photos.length,
-      videos: result.videos || videos.length,
-      comments: result.comments || 0,
-      events: result.events || 0,
-      reviews: result.reviews || 0,
-      groups: result.groups || 0,
-      likes: result.likes || 0,
-      marketplace: result.marketplace || 0,
-      checkins: result.checkins || 0,
-      reels: result.reels || 0,
+      profile: { name: "", email: "" },
+      posts: [],
+      friends: [],
+      messages: [],
+      comments: [],
+      events: [],
+      groups: [],
+      reviews: [],
+      marketplace: [],
+      reels: [],
+      checkins: [],
+      likes: [],
       photoFiles,
+      videoFiles: {},
       notes: result.notes || ""
     });
     
