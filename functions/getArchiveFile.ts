@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
         data.photos.push({ 
           path, 
           filename: path.split('/').pop(),
-          timestamp: extractTimestamp(path)
+          timestamp: ""
         });
         continue;
       }
@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
         data.videos.push({ 
           path, 
           filename: path.split('/').pop(),
-          timestamp: extractTimestamp(path)
+          timestamp: ""
         });
         continue;
       }
