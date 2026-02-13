@@ -25,147 +25,124 @@ Deno.serve(async (req) => {
     const blob = await response.blob();
     const zip = await JSZip.loadAsync(blob);
     
-    // Scan archive structure and collect file samples
-    const filesByType = {
-      posts: [],
-      friends: [],
-      conversations: [],
-      likes: [],
-      videos: [],
-      comments: [],
-      events: [],
-      photos: [],
-      groups: [],
-      reviews: [],
-      marketplace: [],
-      other: []
-    };
-    
-    const fileSamples = [];
+    // Extract ALL text content from archive
+    let fullArchiveText = "";
+    const photos = [];
+    const videos = [];
     
     for (const [path, file] of Object.entries(zip.files)) {
       if (file.dir) continue;
       
       const pathLower = path.toLowerCase();
       
-      // Categorize by folder structure
-      if (pathLower.includes('posts')) filesByType.posts.push(path);
-      else if (pathLower.includes('friends')) filesByType.friends.push(path);
-      else if (pathLower.includes('messages') || pathLower.includes('conversations')) filesByType.conversations.push(path);
-      else if (pathLower.includes('likes')) filesByType.likes.push(path);
-      else if (pathLower.includes('videos')) filesByType.videos.push(path);
-      else if (pathLower.includes('comments')) filesByType.comments.push(path);
-      else if (pathLower.includes('events')) filesByType.events.push(path);
-      else if (pathLower.includes('photos') || pathLower.match(/\.(jpg|jpeg|png|gif)$/i)) filesByType.photos.push(path);
-      else if (pathLower.includes('groups')) filesByType.groups.push(path);
-      else if (pathLower.includes('reviews')) filesByType.reviews.push(path);
-      else if (pathLower.includes('marketplace')) filesByType.marketplace.push(path);
-      else filesByType.other.push(path);
+      // Extract photos
+      if (pathLower.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !pathLower.includes('icon')) {
+        photos.push(path);
+      }
       
-      // Collect text file samples for LLM analysis
-      if ((pathLower.endsWith('.html') || pathLower.endsWith('.json')) && fileSamples.length < 30) {
+      // Extract videos
+      if (pathLower.match(/\.(mp4|mov|avi|mkv|webm)$/i)) {
+        videos.push(path);
+      }
+      
+      // Extract text content
+      if (pathLower.endsWith('.html') || pathLower.endsWith('.json') || pathLower.endsWith('.txt')) {
         try {
           const content = await file.async("text");
-          fileSamples.push({
-            path,
-            content: content.slice(0, 2000),
-            category: Object.keys(filesByType).find(key => filesByType[key].includes(path)) || 'unknown'
-          });
+          fullArchiveText += `\n\n=== FILE: ${path} ===\n${content}`;
         } catch {}
       }
     }
     
-    // Now use LLM to extract actual data from the samples
-    const extractionPrompt = `Analyze these Facebook archive files and extract REAL data only. Ignore metadata, labels, and headers.
+    // Use LLM to analyze the complete archive content
+    const analysisPrompt = `You are analyzing a complete Facebook archive export. Here is ALL the text content from the archive:
 
-${fileSamples.map(s => `FILE: ${s.path}
-CATEGORY: ${s.category}
-CONTENT:
-${s.content}
----`).join('\n\n')}
+${fullArchiveText.slice(0, 100000)}
 
-Extract and return ONLY a JSON object with counts and samples:
+Based on this content, count and extract:
+1. Posts - actual status updates/posts the user made
+2. Friends - actual people in the user's friend list
+3. Messages/Conversations - actual message threads
+4. Comments - comments the user made on posts
+5. Likes - things the user liked
+6. Events - events the user was part of
+7. Groups - groups the user was in
+8. Reviews - reviews the user wrote
+9. Marketplace - marketplace items
+10. Videos - video files the user uploaded
+11. Check-ins - places the user checked in to
+
+Return ONLY a valid JSON object with this structure:
 {
-  "posts_count": 0,
-  "posts_samples": [],
-  "friends_count": 0,
-  "friends_names": [],
-  "messages_count": 0,
-  "message_participants": [],
-  "likes_count": 0,
-  "likes_samples": [],
-  "videos_count": 0,
-  "video_files": [],
-  "comments_count": 0,
-  "events_count": 0,
-  "event_samples": [],
-  "groups_count": 0,
-  "group_names": [],
-  "reviews_count": 0,
-  "marketplace_count": 0
+  "posts": 0,
+  "friends": 0,
+  "conversations": 0,
+  "comments": 0,
+  "likes": 0,
+  "events": 0,
+  "groups": 0,
+  "reviews": 0,
+  "marketplace": 0,
+  "checkins": 0,
+  "videos": 0,
+  "reels": 0,
+  "photos": 0,
+  "notes": "Brief explanation of what was found"
 }
 
-RULES:
-- Count should be actual count of items, not file count
-- Friends must be actual friend names (not "Your Friends", not metadata)
-- Posts must be actual status updates you wrote
-- Videos must be actual video files you uploaded
-- Be conservative - only count what you can clearly identify
-- Return ONLY valid JSON`;
+Be accurate - only count items that are clearly identifiable as the data type. Return ONLY the JSON, no other text.`;
 
     const result = await base44.integrations.Core.InvokeLLM({
-      prompt: extractionPrompt,
+      prompt: analysisPrompt,
       response_json_schema: {
         type: "object",
         properties: {
-          posts_count: { type: "number" },
-          friends_count: { type: "number" },
-          messages_count: { type: "number" },
-          likes_count: { type: "number" },
-          videos_count: { type: "number" },
-          comments_count: { type: "number" },
-          events_count: { type: "number" },
-          groups_count: { type: "number" },
-          reviews_count: { type: "number" },
-          marketplace_count: { type: "number" },
-          posts_samples: { type: "array" },
-          friends_names: { type: "array" },
-          video_files: { type: "array" }
+          posts: { type: "number" },
+          friends: { type: "number" },
+          conversations: { type: "number" },
+          comments: { type: "number" },
+          likes: { type: "number" },
+          events: { type: "number" },
+          groups: { type: "number" },
+          reviews: { type: "number" },
+          marketplace: { type: "number" },
+          checkins: { type: "number" },
+          videos: { type: "number" },
+          reels: { type: "number" },
+          photos: { type: "number" },
+          notes: { type: "string" }
         }
       }
     });
 
-    // Extract photos
+    // Load first 30 photos as base64
     const photoFiles = {};
-    let photoCount = 0;
-    for (const photoPath of filesByType.photos) {
-      if (photoCount >= 30) break;
-      if (photoPath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        try {
-          const file = zip.file(photoPath);
-          const imageData = await file.async("base64");
-          const ext = photoPath.split('.').pop().toLowerCase();
-          const mimeTypes = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'};
-          photoFiles[photoPath] = `data:${mimeTypes[ext] || 'image/jpeg'};base64,${imageData}`;
-          photoCount++;
-        } catch {}
-      }
+    for (let i = 0; i < Math.min(30, photos.length); i++) {
+      try {
+        const file = zip.file(photos[i]);
+        const imageData = await file.async("base64");
+        const ext = photos[i].split('.').pop().toLowerCase();
+        const mimeTypes = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'};
+        photoFiles[photos[i]] = `data:${mimeTypes[ext] || 'image/jpeg'};base64,${imageData}`;
+      } catch {}
     }
 
     return Response.json({
-      posts: result.posts_count || 0,
-      friends: result.friends_count || 0,
-      conversations: result.messages_count || 0,
-      photos: photoCount,
-      videos: result.videos_count || 0,
-      comments: result.comments_count || 0,
-      events: result.events_count || 0,
-      reviews: result.reviews_count || 0,
-      groups: result.groups_count || 0,
-      likes: result.likes_count || 0,
-      marketplace: result.marketplace_count || 0,
+      posts: result.posts || 0,
+      friends: result.friends || 0,
+      conversations: result.conversations || 0,
+      photos: result.photos || photos.length,
+      videos: result.videos || videos.length,
+      comments: result.comments || 0,
+      events: result.events || 0,
+      reviews: result.reviews || 0,
+      groups: result.groups || 0,
+      likes: result.likes || 0,
+      marketplace: result.marketplace || 0,
+      checkins: result.checkins || 0,
+      reels: result.reels || 0,
       photoFiles,
-      raw: result
+      notes: result.notes || ""
     });
     
   } catch (error) {
