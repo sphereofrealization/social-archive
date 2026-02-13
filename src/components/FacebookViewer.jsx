@@ -150,7 +150,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <TabsTrigger value="friends" className="bg-orange-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-orange-600">Friends ({friends.length})</TabsTrigger>
           <TabsTrigger value="messages" className="bg-yellow-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-yellow-600">Conversations ({messages.length})</TabsTrigger>
           <TabsTrigger value="photos" className="bg-green-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-green-600">Photos ({actualPhotos.length})</TabsTrigger>
-          <TabsTrigger value="videos" className="bg-teal-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-teal-600">Videos ({actualVideos.length})</TabsTrigger>
+          <TabsTrigger value="videos" className="bg-teal-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-teal-600">Videos ({videosList.length})</TabsTrigger>
           <TabsTrigger value="comments" className="bg-blue-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-blue-600">Comments ({comments.length})</TabsTrigger>
           <TabsTrigger value="reels" className="bg-indigo-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-indigo-600">Reels ({reels.length})</TabsTrigger>
           <TabsTrigger value="checkins" className="bg-purple-500 text-black font-semibold px-6 py-2 rounded data-[state=active]:bg-purple-600">Check-ins ({checkins.length})</TabsTrigger>
