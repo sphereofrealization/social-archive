@@ -30,7 +30,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   const profile = data?.profile || {};
   const posts = Array.isArray(data?.posts) ? data.posts : [];
   const friends = Array.isArray(data?.friends) ? data.friends : [];
-  const messages = Array.isArray(data?.messages) ? data.messages : [];
+  const messages = Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.messages) ? data.messages : [];
   const comments = Array.isArray(data?.comments) ? data.comments : [];
   const reels = Array.isArray(data?.reels) ? data.reels : [];
   const checkins = Array.isArray(data?.checkins) ? data.checkins : [];
@@ -56,10 +56,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   const photoFilesObj = data?.photoFiles || photoFiles || {};
   const videoFilesObj = data?.videoFiles || {};
   const videosList = Array.isArray(data?.videos) ? data.videos : [];
-  
-  const actualPhotos = Object.entries(photoFilesObj).filter(([path]) => 
-    path.match(/\.(jpg|jpeg|png|gif|webp)$/i) && !path.includes('icon')
-  );
+  const photosList = Array.isArray(data?.photos) ? data.photos : [];
   
   // Load media on demand using blob URLs
   const loadMedia = async (mediaPath, type) => {
