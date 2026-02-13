@@ -613,36 +613,17 @@ Deno.serve(async (req) => {
       result.debug.postCount = postCount;
     }
 
-    // === Process Photos (with base64 thumbnails) ===
+    // === Process Photos (all as metadata; on-demand loading in UI) ===
     result.sourceFilesUsed.photos = index.photos.map(p => p.path);
-    for (let i = 0; i < Math.min(THUMBNAIL_SIZE, index.photos.length); i++) {
-      if (!checkBudget('photos')) break;
-      try {
-        const photo = index.photos[i];
-        const content = await zip.file(photo.path).async('base64');
-        const mimeTypes = {
-          'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
-          'gif': 'image/gif', 'webp': 'image/webp'
-        };
-        const mime = mimeTypes[photo.ext] || 'image/jpeg';
-        result.photoFiles[photo.path] = `data:${mime};base64,${content}`;
-        totalBytesRead += content.length;
-        debug.filesRead[photo.path] = true;
-      } catch (e) {
-        debug.parseErrors.push(`Failed to load photo ${index.photos[i].path}: ${e.message}`);
-      }
-    }
-    
-    // Add remaining photos as metadata only (no base64)
-    for (let i = THUMBNAIL_SIZE; i < index.photos.length; i++) {
+    for (const photo of index.photos) {
       result.photos.push({
-        path: index.photos[i].path,
-        filename: index.photos[i].filename,
-        size: index.photos[i].size
+        path: photo.path,
+        filename: photo.filename,
+        size: photo.size
       });
     }
 
-    // === Process Videos (metadata only, no base64) ===
+    // === Process Videos (metadata only, on-demand loading in UI) ===
     result.sourceFilesUsed.videos = index.videos.map(v => v.path);
     for (const video of index.videos) {
       result.videos.push({
