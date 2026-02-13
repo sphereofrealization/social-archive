@@ -62,27 +62,55 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   const videosList = Array.isArray(data?.videos) ? data.videos : [];
   const photosList = Array.isArray(data?.photos) ? data.photos : [];
   
+  // Convert base64 to blob URL
+  const base64ToBlobUrl = (base64, mimeType) => {
+    try {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: mimeType });
+      return URL.createObjectURL(blob);
+    } catch (err) {
+      console.error('[FacebookViewer] base64ToBlobUrl error:', err);
+      return null;
+    }
+  };
+
   // Load media on demand
   const loadMedia = async (mediaPath, type) => {
-    if (loadedMedia[mediaPath]) return;
+    if (loadedMedia[mediaPath] !== undefined) return; // Already attempted
+    
+    // Mark as loading to prevent duplicate requests
+    setLoadedMedia(prev => ({ ...prev, [mediaPath]: 'loading' }));
+    
     try {
       console.log(`[FacebookViewer] Loading ${type} from ${mediaPath}`);
       const response = await base44.functions.invoke('getArchiveEntry', {
-        fileUrl: archiveUrl,
+        zipUrl: archiveUrl,
         entryPath: mediaPath,
         responseType: 'base64'
       });
       
-      console.log(`[FacebookViewer] Response status:`, response.status, response.data);
+      console.log(`[FacebookViewer] Response:`, { status: response.status, size: response.data?.size, mime: response.data?.mime });
       
-      if (response.data?.content) {
-        console.log(`[FacebookViewer] Successfully got media content for ${mediaPath}`);
-        setLoadedMedia(prev => ({ ...prev, [mediaPath]: response.data.content }));
+      if (response.data?.content && response.data?.mime) {
+        // Convert base64 to blob URL
+        const blobUrl = base64ToBlobUrl(response.data.content, response.data.mime);
+        if (blobUrl) {
+          console.log(`[FacebookViewer] Successfully created blob URL for ${mediaPath}`);
+          setLoadedMedia(prev => ({ ...prev, [mediaPath]: blobUrl }));
+        } else {
+          throw new Error('Failed to create blob URL');
+        }
       } else {
-        console.error(`[FacebookViewer] No content in response for ${mediaPath}:`, response.data);
+        throw new Error(`Invalid response: ${JSON.stringify(response.data)}`);
       }
     } catch (err) {
-      console.error(`[FacebookViewer] Failed to load ${type} ${mediaPath}:`, err.message || err);
+      const errorMsg = `Failed to load ${type}: ${err.message || err}`;
+      console.error(`[FacebookViewer] ${errorMsg}`);
+      setLoadedMedia(prev => ({ ...prev, [mediaPath]: { error: errorMsg } }));
     }
   };
 
