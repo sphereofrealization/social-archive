@@ -110,19 +110,32 @@ Deno.serve(async (req) => {
         // === JSON FILES (Primary data source) ===
         if (path.endsWith('.json')) {
           const content = await file.async("text");
-          const json = JSON.parse(content);
-          
-          // AGGRESSIVE DEBUGGING - Log structure of EVERY JSON file
-          console.log(`\n📄 Processing: ${path}`);
-          console.log(`   Top-level keys: [${Object.keys(json).join(', ')}]`);
-          
-          // Log first item if it's an array
-          if (Array.isArray(json) && json.length > 0) {
-            console.log(`   Array with ${json.length} items, first item keys: [${Object.keys(json[0]).join(', ')}]`);
+          let json;
+          try {
+            json = JSON.parse(content);
+          } catch (e) {
+            console.log(`   ⚠️ Failed to parse ${path}`);
+            continue;
           }
           
-          // MESSAGES / CONVERSATIONS
-          if (path.includes('messages/inbox') && json.messages && Array.isArray(json.messages)) {
+          // AGGRESSIVE DEBUGGING - Log structure of EVERY JSON file
+          console.log(`\n📄 ${path}`);
+          console.log(`   Keys: [${Object.keys(json).join(', ')}]`);
+          if (Array.isArray(json)) {
+            console.log(`   Array length: ${json.length}`);
+            if (json.length > 0 && typeof json[0] === 'object') {
+              console.log(`   First item keys: [${Object.keys(json[0]).join(', ')}]`);
+            }
+          }
+          
+          // SCAN FOR ANY POSSIBLE DATA - Check every JSON regardless of path
+          
+          // MESSAGES / CONVERSATIONS - More aggressive detection
+          if (json.messages && Array.isArray(json.messages)) {
+            console.log(`   💬 Found messages array with ${json.messages.length} messages`);
+          }
+          
+          if ((path.includes('messages') || json.messages) && json.messages && Array.isArray(json.messages)) {
             const msgs = json.messages.map(m => ({
               sender: decode(m.sender_name || ""),
               text: decode(m.content || ""),
@@ -142,38 +155,28 @@ Deno.serve(async (req) => {
             }
           }
           
-          // FRIENDS - AGGRESSIVE SCANNING
-          // Check any file that might contain friends data
-          const pathLower = path.toLowerCase();
-          const couldBeFriends = pathLower.includes('friend') || 
-                                 pathLower.includes('connection') || 
-                                 pathLower.includes('follower') || 
-                                 pathLower.includes('following') ||
-                                 pathLower.includes('contact');
+          // FRIENDS - Scan for any key that might contain friends
+          let friendsList = [];
+          const possibleFriendsKeys = ['friends_v2', 'friends', 'followers_v2', 'followers', 'following_v2', 'following', 'connections_v2', 'connections', 'contacts_v2', 'contacts'];
           
-          if (couldBeFriends) {
-            console.log(`  🔍 Checking potential friends file: ${path}`);
-            console.log(`     JSON keys: ${Object.keys(json).join(', ')}`);
-            
-            let friendsList = [];
-            
-            // Try every possible key and format
-            if (json.friends_v2) friendsList = json.friends_v2;
-            else if (json.friends) friendsList = json.friends;
-            else if (json.followers_v2) friendsList = json.followers_v2;
-            else if (json.followers) friendsList = json.followers;
-            else if (json.following_v2) friendsList = json.following_v2;
-            else if (json.following) friendsList = json.following;
-            else if (json.connections_v2) friendsList = json.connections_v2;
-            else if (json.connections) friendsList = json.connections;
-            else if (json.contacts_v2) friendsList = json.contacts_v2;
-            else if (json.contacts) friendsList = json.contacts;
-            else if (Array.isArray(json)) friendsList = json;
-            
-            console.log(`     Found ${friendsList.length} items in friends list`);
-            
+          for (const key of possibleFriendsKeys) {
+            if (json[key] && Array.isArray(json[key])) {
+              friendsList = json[key];
+              console.log(`   👥 Found friends data in key '${key}': ${friendsList.length} items`);
+              break;
+            }
+          }
+          
+          // If path suggests friends but no key found, try array
+          if (friendsList.length === 0 && path.toLowerCase().includes('friend') && Array.isArray(json)) {
+            friendsList = json;
+            console.log(`   👥 Using root array as friends: ${friendsList.length} items`);
+          }
+          
+          if (friendsList.length > 0) {
             let addedCount = 0;
             friendsList.forEach(f => {
+              if (!f || typeof f !== 'object') return;
               const name = decode(f.name || f.title || "");
               const timestamp = f.timestamp ? new Date(f.timestamp * 1000).toLocaleDateString() : "";
               if (name && name.length > 1 && !data.friends.find(fr => fr.name.toLowerCase() === name.toLowerCase())) {
@@ -181,9 +184,8 @@ Deno.serve(async (req) => {
                 addedCount++;
               }
             });
-            
             if (addedCount > 0) {
-              console.log(`  ✅ Successfully added ${addedCount} friends from this file`);
+              console.log(`   ✅ Added ${addedCount} friends`);
             }
           }
           
@@ -239,69 +241,68 @@ Deno.serve(async (req) => {
             });
           }
           
-          // LIKES AND REACTIONS (comprehensive extraction)
-          const isLikeFile = path.toLowerCase().includes('like') || 
-                            path.toLowerCase().includes('reaction') ||
-                            path.includes('pages_and_profiles_you_follow');
+          // LIKES - Scan for any like/reaction keys
+          let likesList = [];
+          const possibleLikesKeys = ['reactions_v2', 'reactions', 'likes_v2', 'likes', 'page_likes_v2', 'page_likes', 'pages_followed_v2', 'pages_followed', 'pages_and_profiles_you_follow'];
           
-          if (isLikeFile) {
-            console.log(`  → Found likes file: ${path}`);
-            let items = [];
-            
-            // Try all possible formats
-            if (json.reactions_v2) items = json.reactions_v2;
-            else if (json.reactions) items = json.reactions;
-            else if (json.likes_v2) items = json.likes_v2;
-            else if (json.likes) items = json.likes;
-            else if (json.page_likes_v2) items = json.page_likes_v2;
-            else if (json.page_likes) items = json.page_likes;
-            else if (json.pages_followed_v2) items = json.pages_followed_v2;
-            else if (json.pages_followed) items = json.pages_followed;
-            else if (Array.isArray(json)) items = json;
-            
-            items.forEach(item => {
-              const title = decode(
-                item.title || 
-                item.name ||
-                item.data?.[0]?.title || 
-                item.data?.[0]?.name ||
-                ""
-              );
+          for (const key of possibleLikesKeys) {
+            if (json[key] && Array.isArray(json[key])) {
+              likesList = json[key];
+              console.log(`   ❤️ Found likes in key '${key}': ${likesList.length} items`);
+              break;
+            }
+          }
+          
+          if (likesList.length === 0 && path.toLowerCase().includes('like') && Array.isArray(json)) {
+            likesList = json;
+            console.log(`   ❤️ Using root array as likes: ${likesList.length} items`);
+          }
+          
+          if (likesList.length > 0) {
+            likesList.forEach(item => {
+              if (!item || typeof item !== 'object') return;
+              const title = decode(item.title || item.name || item.data?.[0]?.title || item.data?.[0]?.name || "");
               const timestamp = item.timestamp ? new Date(item.timestamp * 1000).toLocaleString() : "";
               if (title && title.length > 1) {
                 data.likes.push({ title, timestamp });
               }
             });
-            
-            if (items.length > 0) {
-              console.log(`  ✓ Extracted ${items.length} likes from this file`);
+            console.log(`   ✅ Added ${likesList.length} likes`);
+          }
+          
+          // GROUPS - Scan for any group keys
+          let groupsList = [];
+          const possibleGroupsKeys = ['groups_v2', 'groups', 'your_groups_v2', 'your_groups', 'groups_joined'];
+          
+          for (const key of possibleGroupsKeys) {
+            if (json[key]) {
+              if (Array.isArray(json[key])) {
+                groupsList = json[key];
+              } else if (json[key].groups_joined) {
+                groupsList = json[key].groups_joined;
+              }
+              if (groupsList.length > 0) {
+                console.log(`   👥 Found groups in key '${key}': ${groupsList.length} items`);
+                break;
+              }
             }
           }
           
-          // GROUPS (comprehensive formats)
-          if (path.toLowerCase().includes('group')) {
-            console.log(`  → Found groups file: ${path}`);
-            let groups = [];
-            
-            if (json.groups_joined?.groups_joined) groups = json.groups_joined.groups_joined;
-            else if (json.groups_joined) groups = json.groups_joined;
-            else if (json.groups_v2) groups = json.groups_v2;
-            else if (json.groups) groups = json.groups;
-            else if (json.your_groups_v2) groups = json.your_groups_v2;
-            else if (json.your_groups) groups = json.your_groups;
-            else if (Array.isArray(json)) groups = json;
-            
-            groups.forEach(g => {
+          if (groupsList.length === 0 && path.toLowerCase().includes('group') && Array.isArray(json)) {
+            groupsList = json;
+            console.log(`   👥 Using root array as groups: ${groupsList.length} items`);
+          }
+          
+          if (groupsList.length > 0) {
+            groupsList.forEach(g => {
+              if (!g || typeof g !== 'object') return;
               const name = decode(g.name || g.title || "");
               const timestamp = g.timestamp ? new Date(g.timestamp * 1000).toLocaleString() : "";
               if (name && name.length > 1 && !data.groups.find(gr => gr.name.toLowerCase() === name.toLowerCase())) {
                 data.groups.push({ name, timestamp });
               }
             });
-            
-            if (groups.length > 0) {
-              console.log(`  ✓ Extracted ${groups.length} groups from this file`);
-            }
+            console.log(`   ✅ Added ${groupsList.length} groups`);
           }
           
           // MARKETPLACE
@@ -327,27 +328,33 @@ Deno.serve(async (req) => {
             }
           }
           
-          // REVIEWS
-          if (path.toLowerCase().includes('review')) {
-            console.log(`  → Found reviews file: ${path}`);
-            let reviews = [];
-            
-            if (json.reviews_written_v2) reviews = json.reviews_written_v2;
-            else if (json.reviews_written) reviews = json.reviews_written;
-            else if (json.reviews) reviews = json.reviews;
-            else if (Array.isArray(json)) reviews = json;
-            
-            reviews.forEach(r => {
-              const text = decode(r.review_text || r.text || r.title || "");
+          // REVIEWS - Scan for any review keys
+          let reviewsList = [];
+          const possibleReviewsKeys = ['reviews_written_v2', 'reviews_written', 'reviews_v2', 'reviews'];
+          
+          for (const key of possibleReviewsKeys) {
+            if (json[key] && Array.isArray(json[key])) {
+              reviewsList = json[key];
+              console.log(`   ⭐ Found reviews in key '${key}': ${reviewsList.length} items`);
+              break;
+            }
+          }
+          
+          if (reviewsList.length === 0 && path.toLowerCase().includes('review') && Array.isArray(json)) {
+            reviewsList = json;
+            console.log(`   ⭐ Using root array as reviews: ${reviewsList.length} items`);
+          }
+          
+          if (reviewsList.length > 0) {
+            reviewsList.forEach(r => {
+              if (!r || typeof r !== 'object') return;
+              const text = decode(r.review_text || r.text || r.title || r.data?.[0]?.review?.text || "");
               const timestamp = r.timestamp ? new Date(r.timestamp * 1000).toLocaleString() : "";
               if (text && text.length > 1) {
                 data.reviews.push({ text, timestamp });
               }
             });
-            
-            if (reviews.length > 0) {
-              console.log(`  ✓ Extracted ${reviews.length} reviews from this file`);
-            }
+            console.log(`   ✅ Added ${reviewsList.length} reviews`);
           }
           
           // EVENTS (multiple formats)
