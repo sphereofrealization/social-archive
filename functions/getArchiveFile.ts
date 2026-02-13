@@ -2,9 +2,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import JSZip from 'npm:jszip@3.10.1';
 import * as cheerio from 'npm:cheerio@1.0.0-rc.12';
 
-const TIME_LIMIT_MS = 25000; // 25 second time budget
-const MAX_HTML_FILES_PER_CATEGORY = 5;
-const MAX_TOTAL_BYTES = 5_000_000; // 5MB max parse size
+const TIME_LIMIT_MS = 22000; // 22 second time budget (leave margin for network)
+const MAX_HTML_FILES_PER_CATEGORY = 10;
+const MAX_TOTAL_BYTES = 8_000_000; // 8MB max parse size
 const THUMBNAIL_SIZE = 30; // First 30 photos as base64
 
 Deno.serve(async (req) => {
@@ -34,22 +34,29 @@ Deno.serve(async (req) => {
     const blob = await zipResponse.blob();
     const zip = await JSZip.loadAsync(blob);
     
-    // === PASS 1: Index all files ===
+    // === PASS 1: Index all files (fast, no parsing) ===
     const index = {
-      friends: [],
-      messages: [],
-      comments: [],
-      posts: [],
-      likes: [],
-      groups: [],
-      reviews: [],
-      marketplace: [],
+      friendsHtml: [],
+      friendsJson: [],
+      messagesHtml: [],
+      messagesJson: [],
+      commentsHtml: [],
+      commentsJson: [],
+      postsHtml: [],
+      postsJson: [],
+      likesHtml: [],
+      likesJson: [],
+      groupsHtml: [],
+      groupsJson: [],
+      reviewsHtml: [],
+      reviewsJson: [],
+      marketplaceHtml: [],
+      marketplaceJson: [],
       photos: [],
-      videos: [],
-      other: []
+      videos: []
     };
 
-    const debug = { candidatesFound: {}, timeoutWarnings: [] };
+    const debug = { candidatesFound: {}, filesRead: {}, parseErrors: [] };
     let totalBytesRead = 0;
 
     for (const [path, file] of Object.entries(zip.files)) {
@@ -60,35 +67,46 @@ Deno.serve(async (req) => {
       const filename = path.split('/').pop().toLowerCase();
       const size = file._data?.uncompressedSize || 0;
 
-      // Classify by path patterns
+      // Categorize by path + extension
+      const entry = { path, filename, ext, size };
+
       if (pathLower.includes('friend')) {
-        index.friends.push({ path, filename, ext, size });
+        if (ext === 'html') index.friendsHtml.push(entry);
+        else if (ext === 'json') index.friendsJson.push(entry);
       } else if (pathLower.includes('message') || pathLower.includes('inbox')) {
-        index.messages.push({ path, filename, ext, size });
+        if (ext === 'html') index.messagesHtml.push(entry);
+        else if (ext === 'json') index.messagesJson.push(entry);
       } else if (pathLower.includes('comment')) {
-        index.comments.push({ path, filename, ext, size });
+        if (ext === 'html') index.commentsHtml.push(entry);
+        else if (ext === 'json') index.commentsJson.push(entry);
       } else if (pathLower.includes('like') || pathLower.includes('reaction')) {
-        index.likes.push({ path, filename, ext, size });
+        if (ext === 'html') index.likesHtml.push(entry);
+        else if (ext === 'json') index.likesJson.push(entry);
       } else if (pathLower.includes('group')) {
-        index.groups.push({ path, filename, ext, size });
+        if (ext === 'html') index.groupsHtml.push(entry);
+        else if (ext === 'json') index.groupsJson.push(entry);
       } else if (pathLower.includes('review')) {
-        index.reviews.push({ path, filename, ext, size });
+        if (ext === 'html') index.reviewsHtml.push(entry);
+        else if (ext === 'json') index.reviewsJson.push(entry);
       } else if (pathLower.includes('marketplace') || pathLower.includes('market')) {
-        index.marketplace.push({ path, filename, ext, size });
-      } else if (pathLower.includes('post') || pathLower.includes('wall') || pathLower.includes('album')) {
-        index.posts.push({ path, filename, ext, size });
+        if (ext === 'html') index.marketplaceHtml.push(entry);
+        else if (ext === 'json') index.marketplaceJson.push(entry);
+      } else if (pathLower.includes('post') || pathLower.includes('wall') || pathLower.includes('album') || pathLower.includes('your_posts')) {
+        if (ext === 'html') index.postsHtml.push(entry);
+        else if (ext === 'json') index.postsJson.push(entry);
       } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) && !filename.includes('icon')) {
-        index.photos.push({ path, filename, ext, size });
+        index.photos.push(entry);
       } else if (['mp4', 'mov', 'm4v', 'webm', 'avi'].includes(ext)) {
-        index.videos.push({ path, filename, ext, size });
+        index.videos.push(entry);
       }
     }
 
+    // Populate debug counts
     Object.keys(index).forEach(cat => {
       debug.candidatesFound[cat] = index[cat].length;
     });
 
-    // === PASS 2: Parse candidate files ===
+    // === PASS 2: Parse candidate files with time/budget limits ===
     const result = {
       profile: { name: '', email: '' },
       posts: [],
@@ -98,6 +116,7 @@ Deno.serve(async (req) => {
       likes: [],
       groups: [],
       reviews: [],
+      events: [],
       marketplace: [],
       reels: [],
       checkins: [],
@@ -111,296 +130,410 @@ Deno.serve(async (req) => {
     };
 
     // Helper to check time/budget
-    const checkBudget = () => {
-      if (Date.now() - startTime > TIME_LIMIT_MS) {
-        result.warnings.push('Extraction stopped early to prevent timeout (time budget exceeded).');
+    const checkBudget = (category = '') => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed > TIME_LIMIT_MS) {
+        if (category) {
+          result.warnings.push(`Stopped parsing ${category} (time budget ${TIME_LIMIT_MS}ms exceeded, used ${elapsed}ms)`);
+        }
         return false;
       }
       if (totalBytesRead > MAX_TOTAL_BYTES) {
-        result.warnings.push('Extraction stopped early (max bytes exceeded).');
+        if (category) {
+          result.warnings.push(`Stopped parsing ${category} (byte budget exceeded, used ${totalBytesRead}b)`);
+        }
         return false;
       }
       return true;
     };
 
-    // === Parse Friends ===
-    if (checkBudget()) {
-      const friendFiles = index.friends.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
-      result.sourceFilesUsed.friends = [];
+    // Helper: Parse HTML with proper DOM cleaning
+    const parseHtmlText = (html, selectors = ['div', 'p', 'span', 'li', 'a']) => {
+      const $ = cheerio.load(html);
+      // Remove noise
+      $('style, script, noscript, meta, link, head').remove();
       
-      for (const f of friendFiles) {
-        if (!checkBudget()) break;
+      const texts = new Set();
+      selectors.forEach(sel => {
+        $(sel).each((_, el) => {
+          const text = $(el).text().trim();
+          if (text && text.length > 2 && text.length < 2000 && !text.match(/^[\d\s]+$/)) {
+            texts.add(text);
+          }
+        });
+      });
+      return Array.from(texts);
+    };
+
+    // === Parse Friends ===
+    if (checkBudget('friends')) {
+      result.sourceFilesUsed.friends = [];
+      const filesToRead = [...index.friendsHtml, ...index.friendsJson].slice(0, MAX_HTML_FILES_PER_CATEGORY);
+      
+      for (const f of filesToRead) {
+        if (!checkBudget('friends')) break;
         try {
           const content = await zip.file(f.path).async('text');
           totalBytesRead += content.length;
           result.sourceFilesUsed.friends.push(f.path);
+          debug.filesRead[f.path] = true;
           
           if (f.ext === 'html') {
-            const $ = cheerio.load(content);
-            // Remove style/script
-            $('style, script, noscript').remove();
-            
-            // Extract friend names from various possible structures
-            const names = new Set();
-            
-            // Pattern 1: List items with names
-            $('li').each((_, el) => {
-              const text = $(el).text().trim();
-              if (text.length > 1 && text.length < 100 && !text.includes('\n')) {
-                names.add(text);
+            const texts = parseHtmlText(content, ['li', 'a', 'div', 'p']);
+            texts.forEach(text => {
+              if (text.length < 100 && !result.friends.find(f => f.name === text)) {
+                result.friends.push({ name: text, sourceFile: f.path });
               }
             });
-            
-            // Pattern 2: Anchor links (common FB pattern)
-            $('a').each((_, el) => {
-              const text = $(el).text().trim();
-              const href = $(el).attr('href');
-              if (text && text.length > 1 && text.length < 100 && !text.includes('\n') && !text.match(/^\d+$/)) {
-                names.add(text);
+          } else if (f.ext === 'json') {
+            try {
+              const data = JSON.parse(content);
+              const friendsArray = data.friends || data.data || [];
+              if (Array.isArray(friendsArray)) {
+                friendsArray.forEach(item => {
+                  const name = item.name || item.title || '';
+                  if (name && !result.friends.find(f => f.name === name)) {
+                    result.friends.push({ name, sourceFile: f.path });
+                  }
+                });
               }
-            });
-            
-            // Pattern 3: Divs with data attributes
-            $('div[data-name], div[title]').each((_, el) => {
-              const text = $(el).attr('data-name') || $(el).attr('title');
-              if (text && text.length > 1 && text.length < 100) {
-                names.add(text);
-              }
-            });
-
-            names.forEach(name => {
-              if (!result.friends.find(f => f.name === name)) {
-                result.friends.push({ name, sourceFile: f.path });
-              }
-            });
+            } catch (e) {
+              debug.parseErrors.push(`JSON parse error in ${f.path}: ${e.message}`);
+            }
           }
         } catch (e) {
-          console.error(`Failed to parse ${f.path}:`, e.message);
+          debug.parseErrors.push(`Failed to read ${f.path}: ${e.message}`);
         }
       }
     }
 
     // === Parse Messages/Conversations ===
-    if (checkBudget()) {
-      const msgFiles = index.messages.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+    if (checkBudget('messages')) {
       result.sourceFilesUsed.messages = [];
+      const filesToRead = [...index.messagesHtml, ...index.messagesJson].slice(0, MAX_HTML_FILES_PER_CATEGORY);
       
-      for (const f of msgFiles) {
-        if (!checkBudget()) break;
+      for (const f of filesToRead) {
+        if (!checkBudget('messages')) break;
         try {
           const content = await zip.file(f.path).async('text');
           totalBytesRead += content.length;
           result.sourceFilesUsed.messages.push(f.path);
+          debug.filesRead[f.path] = true;
           
           if (f.ext === 'html') {
             const $ = cheerio.load(content);
-            $('style, script, noscript').remove();
+            $('style, script, noscript, head, meta').remove();
             
-            // Extract conversation metadata and message samples
-            const threadName = $('title').text().trim() || f.filename;
-            const messageTexts = [];
+            const threadTitle = $('title').text().trim() || f.filename.replace('.html', '');
+            const messages = [];
             
-            // Extract message containers
-            $('[data-message], .message, .msg, p').each((_, el) => {
+            // Extract message text from common FB structures
+            $('div[data-message], .message, p, span').each((_, el) => {
               const text = $(el).text().trim();
-              if (text.length > 0 && text.length < 500 && messageTexts.length < 50) {
-                messageTexts.push(text);
+              if (text && text.length > 1 && text.length < 1000 && messages.length < 50) {
+                messages.push({ text, sender: '', timestamp: '' });
               }
             });
 
-            if (messageTexts.length > 0) {
+            if (messages.length > 0) {
               result.messages.push({
-                conversation_with: threadName,
-                messages: messageTexts.map(text => ({ text, timestamp: '', sender: '' })),
+                conversation_with: threadTitle,
+                messages,
                 sourceFile: f.path,
-                totalMessages: messageTexts.length
+                totalMessages: messages.length
               });
+            }
+          } else if (f.ext === 'json') {
+            try {
+              const data = JSON.parse(content);
+              const convs = data.conversations || data.messages || [];
+              if (Array.isArray(convs)) {
+                convs.slice(0, MAX_HTML_FILES_PER_CATEGORY).forEach(conv => {
+                  const msgs = conv.messages || [];
+                  if (Array.isArray(msgs) && msgs.length > 0) {
+                    result.messages.push({
+                      conversation_with: conv.title || conv.name || 'Conversation',
+                      messages: msgs.slice(0, 50).map(m => ({
+                        text: m.content || m.text || '',
+                        sender: m.sender || m.from || '',
+                        timestamp: m.timestamp || ''
+                      })),
+                      sourceFile: f.path,
+                      totalMessages: msgs.length
+                    });
+                  }
+                });
+              }
+            } catch (e) {
+              debug.parseErrors.push(`JSON parse error in ${f.path}: ${e.message}`);
             }
           }
         } catch (e) {
-          console.error(`Failed to parse ${f.path}:`, e.message);
+          debug.parseErrors.push(`Failed to read ${f.path}: ${e.message}`);
         }
       }
     }
 
     // === Parse Comments ===
-    if (checkBudget()) {
-      const commentFiles = index.comments.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+    if (checkBudget('comments')) {
       result.sourceFilesUsed.comments = [];
+      const filesToRead = [...index.commentsHtml, ...index.commentsJson].slice(0, MAX_HTML_FILES_PER_CATEGORY);
       
-      for (const f of commentFiles) {
-        if (!checkBudget()) break;
+      for (const f of filesToRead) {
+        if (!checkBudget('comments')) break;
         try {
           const content = await zip.file(f.path).async('text');
           totalBytesRead += content.length;
           result.sourceFilesUsed.comments.push(f.path);
+          debug.filesRead[f.path] = true;
           
           if (f.ext === 'html') {
-            const $ = cheerio.load(content);
-            $('style, script, noscript').remove();
-            
-            $('div, p, span').each((_, el) => {
-              const text = $(el).text().trim();
+            const texts = parseHtmlText(content, ['div', 'p', 'span']);
+            texts.forEach(text => {
               if (text.length > 5 && text.length < 500 && result.comments.length < 100) {
                 if (!result.comments.find(c => c.text === text)) {
                   result.comments.push({ text, timestamp: '', sourceFile: f.path });
                 }
               }
             });
+          } else if (f.ext === 'json') {
+            try {
+              const data = JSON.parse(content);
+              const comments = data.comments || data.data || [];
+              if (Array.isArray(comments)) {
+                comments.slice(0, 100).forEach(comment => {
+                  const text = comment.text || comment.content || '';
+                  if (text && !result.comments.find(c => c.text === text)) {
+                    result.comments.push({
+                      text,
+                      timestamp: comment.timestamp || '',
+                      sourceFile: f.path
+                    });
+                  }
+                });
+              }
+            } catch (e) {
+              debug.parseErrors.push(`JSON parse error in ${f.path}: ${e.message}`);
+            }
           }
         } catch (e) {
-          console.error(`Failed to parse ${f.path}:`, e.message);
+          debug.parseErrors.push(`Failed to read ${f.path}: ${e.message}`);
         }
       }
     }
 
     // === Parse Likes/Reactions ===
-    if (checkBudget()) {
-      const likeFiles = index.likes.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+    if (checkBudget('likes')) {
       result.sourceFilesUsed.likes = [];
+      const filesToRead = [...index.likesHtml, ...index.likesJson].slice(0, MAX_HTML_FILES_PER_CATEGORY);
       
-      for (const f of likeFiles) {
-        if (!checkBudget()) break;
+      for (const f of filesToRead) {
+        if (!checkBudget('likes')) break;
         try {
           const content = await zip.file(f.path).async('text');
           totalBytesRead += content.length;
           result.sourceFilesUsed.likes.push(f.path);
+          debug.filesRead[f.path] = true;
           
           if (f.ext === 'html') {
-            const $ = cheerio.load(content);
-            $('style, script, noscript').remove();
-            
-            $('a, div, span').each((_, el) => {
-              const text = $(el).text().trim();
-              if (text.length > 2 && text.length < 100 && result.likes.length < 200) {
+            const texts = parseHtmlText(content, ['a', 'div', 'p']);
+            texts.forEach(text => {
+              if (text.length > 2 && text.length < 200 && result.likes.length < 200) {
                 if (!result.likes.find(l => l.item === text)) {
                   result.likes.push({ item: text, type: 'like', sourceFile: f.path });
                 }
               }
             });
+          } else if (f.ext === 'json') {
+            try {
+              const data = JSON.parse(content);
+              const likes = data.reactions || data.likes || data.data || [];
+              if (Array.isArray(likes)) {
+                likes.slice(0, 200).forEach(like => {
+                  const item = like.title || like.name || like.text || '';
+                  if (item && !result.likes.find(l => l.item === item)) {
+                    result.likes.push({
+                      item,
+                      type: like.reaction || 'like',
+                      sourceFile: f.path
+                    });
+                  }
+                });
+              }
+            } catch (e) {
+              debug.parseErrors.push(`JSON parse error in ${f.path}: ${e.message}`);
+            }
           }
         } catch (e) {
-          console.error(`Failed to parse ${f.path}:`, e.message);
+          debug.parseErrors.push(`Failed to read ${f.path}: ${e.message}`);
         }
       }
     }
 
     // === Parse Groups ===
-    if (checkBudget()) {
-      const groupFiles = index.groups.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+    if (checkBudget('groups')) {
       result.sourceFilesUsed.groups = [];
+      const filesToRead = [...index.groupsHtml, ...index.groupsJson].slice(0, MAX_HTML_FILES_PER_CATEGORY);
       
-      for (const f of groupFiles) {
-        if (!checkBudget()) break;
+      for (const f of filesToRead) {
+        if (!checkBudget('groups')) break;
         try {
           const content = await zip.file(f.path).async('text');
           totalBytesRead += content.length;
           result.sourceFilesUsed.groups.push(f.path);
+          debug.filesRead[f.path] = true;
           
           if (f.ext === 'html') {
             const $ = cheerio.load(content);
-            $('style, script, noscript').remove();
+            $('style, script, noscript, head, meta').remove();
             
-            const title = $('title').text().trim() || f.filename.replace('.html', '');
-            if (title && !result.groups.find(g => g.name === title)) {
+            const title = $('title').text().trim() || f.filename.replace('.html', '').replace(/_/g, ' ');
+            if (title && title.length > 1 && title.length < 200 && !result.groups.find(g => g.name === title)) {
               result.groups.push({ name: title, sourceFile: f.path });
             }
             
-            $('h1, h2, h3, a').each((_, el) => {
-              const text = $(el).text().trim();
-              if (text.length > 2 && text.length < 100 && !result.groups.find(g => g.name === text)) {
+            const texts = parseHtmlText(content, ['h1', 'h2', 'h3', 'a']);
+            texts.forEach(text => {
+              if (text.length > 2 && text.length < 200 && !result.groups.find(g => g.name === text)) {
                 result.groups.push({ name: text, sourceFile: f.path });
               }
             });
+          } else if (f.ext === 'json') {
+            try {
+              const data = JSON.parse(content);
+              const groups = data.groups || data.data || [];
+              if (Array.isArray(groups)) {
+                groups.forEach(group => {
+                  const name = group.name || group.title || '';
+                  if (name && !result.groups.find(g => g.name === name)) {
+                    result.groups.push({ name, sourceFile: f.path });
+                  }
+                });
+              }
+            } catch (e) {
+              debug.parseErrors.push(`JSON parse error in ${f.path}: ${e.message}`);
+            }
           }
         } catch (e) {
-          console.error(`Failed to parse ${f.path}:`, e.message);
+          debug.parseErrors.push(`Failed to read ${f.path}: ${e.message}`);
         }
       }
     }
 
     // === Parse Reviews ===
-    if (checkBudget()) {
-      const reviewFiles = index.reviews.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+    if (checkBudget('reviews')) {
       result.sourceFilesUsed.reviews = [];
+      const filesToRead = [...index.reviewsHtml, ...index.reviewsJson].slice(0, MAX_HTML_FILES_PER_CATEGORY);
       
-      for (const f of reviewFiles) {
-        if (!checkBudget()) break;
+      for (const f of filesToRead) {
+        if (!checkBudget('reviews')) break;
         try {
           const content = await zip.file(f.path).async('text');
           totalBytesRead += content.length;
           result.sourceFilesUsed.reviews.push(f.path);
+          debug.filesRead[f.path] = true;
           
           if (f.ext === 'html') {
-            const $ = cheerio.load(content);
-            $('style, script, noscript').remove();
-            
-            $('div, p').each((_, el) => {
-              const text = $(el).text().trim();
-              if (text.length > 5 && text.length < 500 && result.reviews.length < 100) {
+            const texts = parseHtmlText(content, ['div', 'p']);
+            texts.forEach(text => {
+              if (text.length > 5 && text.length < 1000 && result.reviews.length < 100) {
                 if (!result.reviews.find(r => r.text === text)) {
                   result.reviews.push({ text, place: '', rating: 0, sourceFile: f.path });
                 }
               }
             });
+          } else if (f.ext === 'json') {
+            try {
+              const data = JSON.parse(content);
+              const reviews = data.reviews || data.data || [];
+              if (Array.isArray(reviews)) {
+                reviews.slice(0, 100).forEach(review => {
+                  const text = review.text || review.content || '';
+                  if (text && !result.reviews.find(r => r.text === text)) {
+                    result.reviews.push({
+                      text,
+                      place: review.place || review.location || '',
+                      rating: review.rating || 0,
+                      sourceFile: f.path
+                    });
+                  }
+                });
+              }
+            } catch (e) {
+              debug.parseErrors.push(`JSON parse error in ${f.path}: ${e.message}`);
+            }
           }
         } catch (e) {
-          console.error(`Failed to parse ${f.path}:`, e.message);
+          debug.parseErrors.push(`Failed to read ${f.path}: ${e.message}`);
         }
       }
     }
 
     // === Parse Marketplace ===
-    if (checkBudget()) {
-      const mktFiles = index.marketplace.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+    if (checkBudget('marketplace')) {
       result.sourceFilesUsed.marketplace = [];
+      const filesToRead = [...index.marketplaceHtml, ...index.marketplaceJson].slice(0, MAX_HTML_FILES_PER_CATEGORY);
       
-      for (const f of mktFiles) {
-        if (!checkBudget()) break;
+      for (const f of filesToRead) {
+        if (!checkBudget('marketplace')) break;
         try {
           const content = await zip.file(f.path).async('text');
           totalBytesRead += content.length;
           result.sourceFilesUsed.marketplace.push(f.path);
+          debug.filesRead[f.path] = true;
           
           if (f.ext === 'html') {
-            const $ = cheerio.load(content);
-            $('style, script, noscript').remove();
-            
-            $('a, div, span').each((_, el) => {
-              const text = $(el).text().trim();
-              if (text.length > 2 && text.length < 200 && result.marketplace.length < 100) {
+            const texts = parseHtmlText(content, ['div', 'a', 'p']);
+            texts.forEach(text => {
+              if (text.length > 2 && text.length < 300 && result.marketplace.length < 100) {
                 if (!result.marketplace.find(m => m.title === text)) {
                   result.marketplace.push({ title: text, text: '', sourceFile: f.path });
                 }
               }
             });
+          } else if (f.ext === 'json') {
+            try {
+              const data = JSON.parse(content);
+              const items = data.marketplace || data.items || data.data || [];
+              if (Array.isArray(items)) {
+                items.slice(0, 100).forEach(item => {
+                  const title = item.title || item.name || '';
+                  if (title && !result.marketplace.find(m => m.title === title)) {
+                    result.marketplace.push({
+                      title,
+                      text: item.description || item.text || '',
+                      sourceFile: f.path
+                    });
+                  }
+                });
+              }
+            } catch (e) {
+              debug.parseErrors.push(`JSON parse error in ${f.path}: ${e.message}`);
+            }
           }
         } catch (e) {
-          console.error(`Failed to parse ${f.path}:`, e.message);
+          debug.parseErrors.push(`Failed to read ${f.path}: ${e.message}`);
         }
       }
     }
 
     // === Parse Posts ===
-    if (checkBudget()) {
-      const postFiles = index.posts.filter(f => ['html', 'json'].includes(f.ext)).slice(0, MAX_HTML_FILES_PER_CATEGORY);
+    if (checkBudget('posts')) {
       result.sourceFilesUsed.posts = [];
+      const filesToRead = [...index.postsHtml, ...index.postsJson].slice(0, MAX_HTML_FILES_PER_CATEGORY);
       
-      for (const f of postFiles) {
-        if (!checkBudget()) break;
+      for (const f of filesToRead) {
+        if (!checkBudget('posts')) break;
         try {
           const content = await zip.file(f.path).async('text');
           totalBytesRead += content.length;
           result.sourceFilesUsed.posts.push(f.path);
+          debug.filesRead[f.path] = true;
           
           if (f.ext === 'html') {
-            const $ = cheerio.load(content);
-            $('style, script, noscript').remove();
-            
-            // Extract structured posts
-            $('div[data-post], article, .post').each((_, el) => {
-              const text = $(el).text().trim();
-              if (text.length > 5 && text.length < 5000 && result.posts.length < 100) {
+            const texts = parseHtmlText(content, ['div', 'p']);
+            texts.forEach(text => {
+              if (text.length > 5 && text.length < 2000 && result.posts.length < 100) {
                 if (!result.posts.find(p => p.text === text)) {
                   result.posts.push({
                     text: text.substring(0, 500),
@@ -412,17 +545,38 @@ Deno.serve(async (req) => {
                 }
               }
             });
+          } else if (f.ext === 'json') {
+            try {
+              const data = JSON.parse(content);
+              const posts = data.posts || data.data || [];
+              if (Array.isArray(posts)) {
+                posts.slice(0, 100).forEach(post => {
+                  const text = post.content || post.text || '';
+                  if (text && !result.posts.find(p => p.text === text)) {
+                    result.posts.push({
+                      text: text.substring(0, 500),
+                      timestamp: post.timestamp || post.date || '',
+                      likes_count: post.likes || 0,
+                      comments_count: post.comments || 0,
+                      sourceFile: f.path
+                    });
+                  }
+                });
+              }
+            } catch (e) {
+              debug.parseErrors.push(`JSON parse error in ${f.path}: ${e.message}`);
+            }
           }
         } catch (e) {
-          console.error(`Failed to parse ${f.path}:`, e.message);
+          debug.parseErrors.push(`Failed to read ${f.path}: ${e.message}`);
         }
       }
     }
 
-    // === Process Photos ===
+    // === Process Photos (with base64 thumbnails) ===
     result.sourceFilesUsed.photos = index.photos.map(p => p.path);
     for (let i = 0; i < Math.min(THUMBNAIL_SIZE, index.photos.length); i++) {
-      if (!checkBudget()) break;
+      if (!checkBudget('photos')) break;
       try {
         const photo = index.photos[i];
         const content = await zip.file(photo.path).async('base64');
@@ -433,8 +587,9 @@ Deno.serve(async (req) => {
         const mime = mimeTypes[photo.ext] || 'image/jpeg';
         result.photoFiles[photo.path] = `data:${mime};base64,${content}`;
         totalBytesRead += content.length;
+        debug.filesRead[photo.path] = true;
       } catch (e) {
-        console.error(`Failed to load photo ${index.photos[i].path}:`, e.message);
+        debug.parseErrors.push(`Failed to load photo ${index.photos[i].path}: ${e.message}`);
       }
     }
     
@@ -447,7 +602,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // === Process Videos ===
+    // === Process Videos (metadata only, no base64) ===
     result.sourceFilesUsed.videos = index.videos.map(v => v.path);
     for (const video of index.videos) {
       result.videos.push({
@@ -456,6 +611,10 @@ Deno.serve(async (req) => {
         size: video.size
       });
     }
+
+    const elapsed = Date.now() - startTime;
+    result.debug.executionTimeMs = elapsed;
+    result.debug.totalBytesRead = totalBytesRead;
 
     return Response.json(result);
     
