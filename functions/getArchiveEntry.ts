@@ -13,17 +13,32 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { fileUrl, entryPath, responseType = 'text' } = body;
     
+    console.log(`[getArchiveEntry] Loading ${entryPath} from ${fileUrl}`);
+    
     if (!fileUrl || !entryPath) {
       return Response.json({ error: 'Missing fileUrl or entryPath' }, { status: 400 });
     }
 
-    // Fetch and load ZIP
-    const zipRes = await fetch(fileUrl);
-    if (!zipRes.ok) {
-      return Response.json({ error: `Failed to fetch ZIP: ${zipRes.status}` }, { status: 400 });
+    // Fetch with Range support for large files
+    const zipRes = await fetch(fileUrl, {
+      headers: { 'Range': 'bytes=0-' }
+    });
+    
+    console.log(`[getArchiveEntry] Fetch status: ${zipRes.status}, headers:`, {
+      'content-length': zipRes.headers.get('content-length'),
+      'accept-ranges': zipRes.headers.get('accept-ranges'),
+      'content-range': zipRes.headers.get('content-range')
+    });
+    
+    if (!zipRes.ok && zipRes.status !== 206) {
+      return Response.json({ 
+        error: `Failed to fetch ZIP: ${zipRes.status}`,
+        headers: Object.fromEntries(zipRes.headers)
+      }, { status: 400 });
     }
 
     const blob = await zipRes.blob();
+    console.log(`[getArchiveEntry] ZIP blob size: ${blob.size} bytes`);
     const zip = await JSZip.loadAsync(blob);
     const file = zip.file(entryPath);
 
