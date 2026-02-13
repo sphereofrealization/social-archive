@@ -506,21 +506,38 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {videosList.map((video, i) => {
-                const videoData = loadedMedia[video.path];
-                const isLoading = !videoData && loadedMedia[video.path] !== false;
+                const mediaState = loadedMedia[video.path];
+                const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
+                const isLoading = mediaState === 'loading';
+                const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
+
                 return (
                   <Card key={i}>
                     <CardContent className="p-4">
-                      {!videoData ? (
+                      {!isLoaded ? (
                         <div 
-                          className="w-full rounded-lg bg-gray-200 flex items-center justify-center"
+                          className={`w-full rounded-lg flex items-center justify-center cursor-pointer transition-colors ${hasError ? 'bg-red-100' : 'bg-gray-200 hover:bg-gray-300'}`}
                           style={{ height: '200px' }}
-                          onClick={() => loadMedia(video.path, 'video')}
+                          onClick={() => {
+                            if (!isLoading && !hasError) loadMedia(video.path, 'video');
+                          }}
                         >
                           <div className="text-center">
-                            <p className="text-gray-600 font-medium mb-2">Click to load video</p>
-                            <p className="text-xs text-gray-500">{video.filename}</p>
-                            <p className="text-xs text-gray-400">{(video.size / 1024 / 1024).toFixed(2)} MB</p>
+                            {isLoading && (
+                              <p className="text-gray-600 font-medium">Loading video...</p>
+                            )}
+                            {hasError ? (
+                              <>
+                                <p className="text-red-700 font-medium mb-2">⚠ Failed to load</p>
+                                <p className="text-xs text-red-600">{hasError}</p>
+                              </>
+                            ) : !isLoading && (
+                              <>
+                                <p className="text-gray-600 font-medium mb-2">Click to load video</p>
+                                <p className="text-xs text-gray-500">{video.filename}</p>
+                                <p className="text-xs text-gray-400">{(video.size / 1024 / 1024).toFixed(2)} MB</p>
+                              </>
+                            )}
                           </div>
                         </div>
                       ) : (
@@ -528,8 +545,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
                           controls 
                           className="w-full rounded-lg"
                           style={{ maxHeight: '400px' }}
+                          onError={(e) => console.error('[FacebookViewer] Video error:', e)}
                         >
-                          <source src={videoData} type="video/mp4" />
+                          <source src={mediaState} type="video/mp4" />
                           Your browser does not support the video tag.
                         </video>
                       )}
