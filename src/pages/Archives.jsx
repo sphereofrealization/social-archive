@@ -395,12 +395,25 @@ export default function Archives() {
                         <>
                           <Button 
                             variant="outline" 
-                            className="flex-1"
-                            onClick={() => window.open(archive.file_url, '_blank')}
+                            size="icon"
+                            onClick={() => copyUrlToClipboard(archive.file_url, archive.id)}
+                            title="Copy download link"
+                            className="flex-shrink-0"
                           >
-                            <Download className="w-4 h-4 mr-2" />
-                            Download
+                            {copiedUrl === archive.id ? (
+                              <Check className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
                           </Button>
+                           <Button 
+                             variant="outline" 
+                             className="flex-1"
+                             onClick={() => window.open(archive.file_url, '_blank')}
+                           >
+                             <Download className="w-4 h-4 mr-2" />
+                             Download
+                           </Button>
                           <Button 
                             variant="outline" 
                             className="flex-1"
