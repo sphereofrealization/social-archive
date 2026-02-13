@@ -66,18 +66,23 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   const loadMedia = async (mediaPath, type) => {
     if (loadedMedia[mediaPath]) return;
     try {
+      console.log(`[FacebookViewer] Loading ${type} from ${mediaPath}`);
       const response = await base44.functions.invoke('getArchiveEntry', {
         fileUrl: archiveUrl,
         entryPath: mediaPath,
         responseType: 'base64'
       });
+      
+      console.log(`[FacebookViewer] Response status:`, response.status, response.data);
+      
       if (response.data?.content) {
-        const mimeType = type === 'image' ? 'image/jpeg' : 'video/mp4';
-        const dataUrl = `data:${mimeType};base64,${response.data.content}`;
-        setLoadedMedia(prev => ({ ...prev, [mediaPath]: dataUrl }));
+        console.log(`[FacebookViewer] Successfully got media content for ${mediaPath}`);
+        setLoadedMedia(prev => ({ ...prev, [mediaPath]: response.data.content }));
+      } else {
+        console.error(`[FacebookViewer] No content in response for ${mediaPath}:`, response.data);
       }
     } catch (err) {
-      console.error(`Failed to load ${type} ${mediaPath}:`, err);
+      console.error(`[FacebookViewer] Failed to load ${type} ${mediaPath}:`, err.message || err);
     }
   };
 
