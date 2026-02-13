@@ -35,6 +35,26 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
     setUploadingFile(false);
   };
 
+  const testRemoteZipConnectivity = async (zipUrl) => {
+    setTestingConnectivity(true);
+    setConnectivityTest(null);
+    
+    try {
+      const response = await base44.functions.invoke('testZipConnectivity', { zipUrl });
+      console.log('[ArchiveDataViewer] Connectivity test result:', response.data);
+      setConnectivityTest(response.data);
+      
+      if (response.data?.summary?.canRandomAccess === false) {
+        setError(`Remote ZIP connectivity issue: ${response.data.summary.issues?.join('; ') || 'Unknown issue'}`);
+      }
+    } catch (err) {
+      console.error('[ArchiveDataViewer] Connectivity test failed:', err);
+      setConnectivityTest({ error: err.message });
+    }
+    
+    setTestingConnectivity(false);
+  };
+
   const analyzeFile = async (fileUrl) => {
     setExtracting(true);
     setError(null);
