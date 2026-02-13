@@ -156,12 +156,15 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <TabsTrigger value="posts" className="bg-red-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-red-600 text-sm">Posts ({posts.length})</TabsTrigger>
           <TabsTrigger value="friends" className="bg-orange-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-orange-600 text-sm">Friends ({friends.length})</TabsTrigger>
           <TabsTrigger value="messages" className="bg-yellow-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-yellow-600 text-sm">Chats ({messages.length})</TabsTrigger>
-          <TabsTrigger value="photos" className="bg-green-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-green-600 text-sm">Photos ({data?.counts?.photos || 0})</TabsTrigger>
-          <TabsTrigger value="videos" className="bg-teal-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-teal-600 text-sm">Videos ({data?.counts?.videos || 0})</TabsTrigger>
+          <TabsTrigger value="photos" className="bg-green-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-green-600 text-sm">Photos ({photosList.length})</TabsTrigger>
+          <TabsTrigger value="videos" className="bg-teal-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-teal-600 text-sm">Videos ({videosList.length})</TabsTrigger>
           <TabsTrigger value="comments" className="bg-blue-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-blue-600 text-sm">Comments ({comments.length})</TabsTrigger>
+          <TabsTrigger value="reels" className="bg-indigo-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-indigo-600 text-sm">Reels ({reels.length})</TabsTrigger>
+          <TabsTrigger value="checkins" className="bg-purple-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-purple-600 text-sm">Check-ins ({checkins.length})</TabsTrigger>
           <TabsTrigger value="likes" className="bg-pink-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-pink-600 text-sm">Likes ({likes.length})</TabsTrigger>
-          <TabsTrigger value="groups" className="bg-violet-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-violet-600 text-sm">Groups ({groups.length})</TabsTrigger>
+          <TabsTrigger value="events" className="bg-rose-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-rose-600 text-sm">Events ({events.length})</TabsTrigger>
           <TabsTrigger value="reviews" className="bg-fuchsia-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-fuchsia-600 text-sm">Reviews ({reviews.length})</TabsTrigger>
+          <TabsTrigger value="groups" className="bg-violet-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-violet-600 text-sm">Groups ({groups.length})</TabsTrigger>
           <TabsTrigger value="marketplace" className="bg-cyan-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-cyan-600 text-sm">Marketplace ({marketplace.length})</TabsTrigger>
         </TabsList>
 
@@ -396,7 +399,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
         </TabsContent>
 
         <TabsContent value="photos" className="mt-4">
-          {data?.photos && data.photos.length === 0 ? (
+          {photosList.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
                 No photos found
@@ -404,8 +407,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             </Card>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {data?.photos?.map((photo, i) => {
-                const [path, dataUrl] = Array.isArray(photo) ? photo : [photo.path, null];
+              {photosList.map((photo, i) => {
+                const path = photo.path;
+                const dataUrl = photoFilesObj[path];
                 return (
                   <Dialog key={i}>
                     <DialogTrigger asChild>
@@ -440,7 +444,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
         </TabsContent>
 
         <TabsContent value="videos" className="mt-4">
-          {data?.videos && data.videos.length === 0 ? (
+          {videosList.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
                 No videos found
@@ -448,29 +452,32 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {data?.videos?.map((video, i) => (
-                <Card key={i}>
-                  <CardContent className="p-4">
-                    <video 
-                      controls 
-                      className="w-full rounded-lg"
-                      style={{ maxHeight: '400px' }}
-                      onPlay={() => {
-                        if (!videoFilesObj[video.path] && archiveUrl) {
-                          loadMedia(video.path, 'video');
-                        }
-                      }}
-                    >
-                      {videoFilesObj[video.path] && (
-                        <source src={videoFilesObj[video.path]} type="video/mp4" />
-                      )}
-                      Your browser does not support the video tag.
-                    </video>
-                    <p className="text-sm text-gray-500 mt-2">{video.filename}</p>
-                    <p className="text-xs text-gray-400">{(video.size / 1024 / 1024).toFixed(2)} MB</p>
-                  </CardContent>
-                </Card>
-              ))}
+              {videosList.map((video, i) => {
+                const videoData = videoFilesObj[video.path];
+                return (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <video 
+                        controls 
+                        className="w-full rounded-lg"
+                        style={{ maxHeight: '400px' }}
+                        onPlay={() => {
+                          if (!videoData && archiveUrl) {
+                            loadMedia(video.path, 'video');
+                          }
+                        }}
+                      >
+                        {videoData && (
+                          <source src={videoData} type="video/mp4" />
+                        )}
+                        Your browser does not support the video tag.
+                      </video>
+                      <p className="text-sm text-gray-500 mt-2">{video.filename}</p>
+                      <p className="text-xs text-gray-400">{(video.size / 1024 / 1024).toFixed(2)} MB</p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
