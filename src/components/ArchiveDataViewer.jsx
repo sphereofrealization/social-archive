@@ -95,36 +95,74 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
   if (!extractedData) {
     return (
-      <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-white">
-        <CardContent className="p-6">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Sparkles className="w-8 h-8 text-purple-600" />
-            </div>
-            <h3 className="font-semibold text-lg mb-2">Extract Archive Data</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Automatically parse your {archive.platform} archive and view it in a familiar interface
-            </p>
-            <Button 
-              onClick={() => analyzeFile(archive.file_url)}
-              disabled={extracting}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              {extracting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Extracting Data...
-                </>
+      <div className="space-y-4">
+        {connectivityTest && (
+          <Alert className={connectivityTest.error || !connectivityTest.summary?.canRandomAccess ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}>
+            <AlertDescription className={connectivityTest.error || !connectivityTest.summary?.canRandomAccess ? 'text-red-800' : 'text-green-800'}>
+              {connectivityTest.error ? (
+                `Connectivity test error: ${connectivityTest.error}`
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Extract & View Data
+                  <strong>{connectivityTest.summary?.canRandomAccess ? '✓ ZIP accessible' : '✗ ZIP not accessible'}</strong>
+                  {connectivityTest.summary?.issues?.length > 0 && (
+                    <div className="mt-2 text-sm">
+                      {connectivityTest.summary.issues.map((issue, i) => (
+                        <div key={i}>• {issue}</div>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+            </AlertDescription>
+          </Alert>
+        )}
+        <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-white">
+          <CardContent className="p-6">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-8 h-8 text-purple-600" />
+              </div>
+              <h3 className="font-semibold text-lg mb-2">Extract Archive Data</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Automatically parse your {archive.platform} archive and view it in a familiar interface
+              </p>
+              <div className="flex gap-3 justify-center">
+                <Button 
+                  onClick={() => testRemoteZipConnectivity(archive.file_url)}
+                  disabled={testingConnectivity || extracting}
+                  variant="outline"
+                >
+                  {testingConnectivity ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Testing...
+                    </>
+                  ) : (
+                    'Test Connection'
+                  )}
+                </Button>
+                <Button 
+                  onClick={() => analyzeFile(archive.file_url)}
+                  disabled={extracting}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  {extracting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Extracting Data...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Extract & View Data
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
