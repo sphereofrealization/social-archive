@@ -149,8 +149,6 @@ export default function Archives() {
           fileKey,
           parts: uploadedParts
         });
-
-        const sessionToken = localStorage.getItem('session_token');
         await base44.entities.Archive.create({
           account_id: sessionToken,
           platform: uploadData.platform,
