@@ -277,6 +277,11 @@ Deno.serve(async (req) => {
       allPaths: []
     };
 
+    // Create read functions for central directory (cdBytes)
+    const readU16CD = (offset) => cdBytes[offset] | (cdBytes[offset + 1] << 8);
+    const readU32CD = (offset) => cdBytes[offset] | (cdBytes[offset + 1] << 8) | 
+                                   (cdBytes[offset + 2] << 16) | (cdBytes[offset + 3] << 24);
+
     let offset = 0;
     let entriesProcessed = 0;
     const messagesByThread = {};
@@ -289,10 +294,10 @@ Deno.serve(async (req) => {
         break;
       }
 
-      const fileNameLength = readU16LE(offset + 28);
-      const extraFieldLength = readU16LE(offset + 30);
-      const fileCommentLength = readU16LE(offset + 32);
-      const uncompressedSize = readU32LE(offset + 24);
+      const fileNameLength = readU16CD(offset + 28);
+      const extraFieldLength = readU16CD(offset + 30);
+      const fileCommentLength = readU16CD(offset + 32);
+      const uncompressedSize = readU32CD(offset + 24);
 
       const fileNameBytes = cdBytes.slice(offset + 46, offset + 46 + fileNameLength);
       const fileName = new TextDecoder().decode(fileNameBytes);
