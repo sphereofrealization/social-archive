@@ -237,16 +237,32 @@ export async function parseCommentsFromHtml(htmlString, sourceFile) {
     const doc = parseHtml(htmlString);
     if (!doc) throw new Error('Failed to parse HTML');
     
+    const probe = probeFacebookExportHtml(htmlString, sourceFile);
     const items = [];
     
     // Look for comment-like containers
-    const commentContainers = doc.querySelectorAll('[data-testid*="comment"], .comment, [role="comment"]');
+    let commentContainers = doc.querySelectorAll('[data-testid*="comment"], .comment, [role="comment"]');
+    
+    if (commentContainers.length === 0) {
+      // Fallback: table rows (comments often stored in tables)
+      commentContainers = doc.querySelectorAll('tr');
+    }
+    
+    if (commentContainers.length === 0) {
+      // Fallback: list items
+      commentContainers = doc.querySelectorAll('li');
+    }
+    
+    if (commentContainers.length === 0) {
+      // Fallback: divs with text
+      commentContainers = doc.querySelectorAll('.contents > div, .contents > section');
+    }
     
     commentContainers.forEach(container => {
       const text = getText(container);
-      if (text && text.length > 0) {
+      if (text && text.length > 10) { // Minimum meaningful comment length
         items.push({
-          text,
+          text: text.slice(0, 500),
           timestamp: null,
           sourceFile
         });
@@ -254,10 +270,10 @@ export async function parseCommentsFromHtml(htmlString, sourceFile) {
     });
     
     console.log(`[parseCommentsFromHtml] Extracted ${items.length} comments from ${sourceFile}`);
-    return { items, sourceFile };
+    return { items, sourceFile, probe: items.length === 0 ? probe : undefined };
   } catch (err) {
     console.error(`[parseCommentsFromHtml] Error:`, err);
-    return { items: [], sourceFile, error: err.message };
+    return { items: [], sourceFile, error: err.message, probe: probeFacebookExportHtml(htmlString, sourceFile) };
   }
 }
 
