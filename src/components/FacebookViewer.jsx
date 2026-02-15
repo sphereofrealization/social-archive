@@ -1033,36 +1033,60 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
         <TabsContent value="groups" className="space-y-4 mt-4">
           {isStreamingIndex && !loadedSections.groups ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-600 mb-4">
-                  Found {normalized.groupFiles.html.length + normalized.groupFiles.json.length} group files
-                </p>
-                <Button 
-                  onClick={() => loadSection('groups')}
-                  disabled={loadingSection === 'groups'}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
-                  {loadingSection === 'groups' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading Groups...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Load Groups
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Files Detected ({normalized.groupFiles.html.length + normalized.groupFiles.json.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {normalized.groupFiles.json.map((file, i) => (
+                    <div key={`json-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                  {normalized.groupFiles.html.map((file, i) => (
+                    <div key={`html-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Button 
+                onClick={() => loadSection('groups')}
+                disabled={loadingSection === 'groups'}
+                className="w-full bg-purple-600 hover:bg-purple-700"
+              >
+                {loadingSection === 'groups' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading Groups...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Load & Parse Groups
+                  </>
+                )}
+              </Button>
+            </div>
           ) : (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                {groups.length === 0 ? 'No groups found' : `${groups.length} groups`}
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              {groups.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-gray-500">
+                    No groups found
+                  </CardContent>
+                </Card>
+              ) : (
+                groups.map((group, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <p className="text-sm font-medium">{group.groupName || group.name || JSON.stringify(group).slice(0, 200)}</p>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
           )}
         </TabsContent>
 
