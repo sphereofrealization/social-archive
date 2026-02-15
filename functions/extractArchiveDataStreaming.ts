@@ -299,7 +299,7 @@ Deno.serve(async (req) => {
       if (!fileName.endsWith('/')) {
         const pathLower = fileName.toLowerCase();
         const ext = fileName.split('.').pop()?.toLowerCase() || '';
-        const entry = { path: fileName, size: uncompressedSize, name: fileName.split('/').pop(), ext };
+        const entry = { path: fileName, size: zipEntry._data?.uncompressedSize || 0, name: fileName.split('/').pop(), ext };
         
         fileIndex.allPaths.push(fileName);
         
