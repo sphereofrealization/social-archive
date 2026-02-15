@@ -184,6 +184,23 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   });
                   const result = await parsePostsFromHtml(resp.data.content, filePath);
 
+                  // Resolve mediaRefs to actual ZIP entry paths
+                  const resolvedItems = (result.items || []).map(item => {
+                    if (item.mediaRefs && item.mediaRefs.length > 0) {
+                      const resolvedPaths = item.mediaRefs
+                        .map(ref => resolveZipEntryPath(filePath, ref, data?.rootPrefix || '', knownMediaPathSet))
+                        .filter(Boolean);
+
+                      return {
+                        ...item,
+                        mediaRefs: undefined,
+                        mediaPaths: resolvedPaths.length > 0 ? resolvedPaths : undefined,
+                        mediaRefsEmptyReason: resolvedPaths.length === 0 && item.mediaRefs.length > 0 ? 'Refs not found in media index' : undefined
+                      };
+                    }
+                    return item;
+                  });
+
                   // Capture debug info (ALWAYS collect it)
                   if (result.debug) {
                     debugRawFiles.push({
@@ -201,7 +218,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                     );
                   }
 
-                  return result.items || [];
+                  return resolvedItems;
                 } catch (err) {
                   console.error(`Failed to load ${filePath}:`, err);
                   addLog(sectionName, 'FILE_ERROR', `${filePath} → ${err.message}`, 'error');
