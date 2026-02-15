@@ -20,8 +20,11 @@ Deno.serve(async (req) => {
                 }, { status: 401 });
             }
             
-            // Derive accountId from sessionToken (deterministic, safe for S3 keys)
+            // CRITICAL: Derive accountId from sessionToken (deterministic, safe for S3 keys)
+            // This MUST be returned so Archives page can filter by account
             const accountId = await sha256Hex(sessionToken);
+            
+            console.log('[passwordlessAuth] Validate success - accountId:', accountId);
             
             return Response.json({ 
                 valid: true,
