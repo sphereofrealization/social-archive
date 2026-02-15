@@ -196,7 +196,7 @@ export async function parsePostsFromHtml(htmlString, sourceFile) {
           const caption = getText(img.parentElement) || '';
           items.push({
             text: caption.slice(0, 300) || '(media)',
-            mediaPaths: [src],
+            mediaRefs: [src],
             sourceFile
           });
           seenSrc.add(src);
