@@ -19,6 +19,51 @@ const parseHtml = (htmlString) => {
 const getText = (el) => el?.textContent?.trim() || '';
 const getAttr = (el, attr) => el?.getAttribute(attr)?.trim() || '';
 
+// PHASE 1: Structure probe — inspect HTML layout without exposing content
+export function probeFacebookHtmlStructure(htmlString, sourceFile) {
+  try {
+    const doc = parseHtml(htmlString);
+    if (!doc) throw new Error('Failed to parse HTML');
+    
+    const contentsDiv = doc.querySelector('.contents');
+    const topChildClassCounts = {};
+    
+    // Count top-level children and their classes
+    if (contentsDiv) {
+      contentsDiv.children && Array.from(contentsDiv.children).forEach(child => {
+        const classes = child.className || '(no-class)';
+        topChildClassCounts[classes] = (topChildClassCounts[classes] || 0) + 1;
+      });
+    }
+    
+    // Convert to sorted array
+    const topChildClasses = Object.entries(topChildClassCounts)
+      .map(([className, count]) => ({ className, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10); // Top 10
+    
+    return {
+      sourceFile,
+      title: doc.querySelector('title')?.textContent?.slice(0, 100) || 'N/A',
+      hasContentsDiv: !!contentsDiv,
+      selectorCounts: {
+        '.contents': contentsDiv ? 1 : 0,
+        '.contents .pam': contentsDiv ? contentsDiv.querySelectorAll('.pam').length : 0,
+        '.contents > div': contentsDiv ? contentsDiv.querySelectorAll('> div').length : 0,
+        '.contents section': contentsDiv ? contentsDiv.querySelectorAll('section').length : 0,
+        'div.timestamp': doc.querySelectorAll('div.timestamp').length,
+        'abbr': doc.querySelectorAll('abbr').length,
+        'img': doc.querySelectorAll('img').length,
+        'video': doc.querySelectorAll('video').length,
+      },
+      topChildClassCounts: topChildClasses
+    };
+  } catch (err) {
+    console.error('[probeFacebookHtmlStructure] Error:', err);
+    return { sourceFile, error: err.message };
+  }
+}
+
 export async function parseFriendsFromHtml(htmlString, sourceFile) {
   try {
     const doc = parseHtml(htmlString);
