@@ -708,15 +708,38 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         </TabsContent>
 
         <TabsContent value="comments" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-8 text-center text-gray-500">
-              {isStreamingIndex ? (
-                `Found ${safeCounts.commentsJsonFiles + safeCounts.commentsHtmlFiles} comment files`
-              ) : (
-                comments.length === 0 ? 'No comments found' : `${comments.length} comments`
-              )}
-            </CardContent>
-          </Card>
+          {isStreamingIndex && !loadedSections.comments ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {normalized.commentFiles.html.length + normalized.commentFiles.json.length} comment files
+                </p>
+                <Button 
+                  onClick={() => loadSection('comments')}
+                  disabled={loadingSection === 'comments'}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {loadingSection === 'comments' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Comments...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Comments
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                {comments.length === 0 ? 'No comments found' : `${comments.length} comments`}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="likes" className="space-y-4 mt-4">
