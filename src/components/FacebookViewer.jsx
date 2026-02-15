@@ -166,33 +166,34 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           if (result.error) addLog(sectionName, 'PARSE_ERROR', result.error, 'error');
         }
       } else if (sectionName === 'friends') {
-        const files = normalized.friendFiles.json.length > 0 ? normalized.friendFiles.json : normalized.friendFiles.html;
-        if (files.length === 0) {
+        selectedFiles = normalized.friendFiles.json.length > 0 ? normalized.friendFiles.json : normalized.friendFiles.html;
+        if (selectedFiles.length === 0) {
           throw new Error('No friends files found in index');
         }
 
-        const filePath = files[0];
+        const filePath = selectedFiles[0];
         const responseType = filePath.endsWith('.json') ? 'json' : 'text';
-        
+
+        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
+
         const response = await base44.functions.invoke('getArchiveEntry', {
           zipUrl: archiveUrl,
           entryPath: filePath,
           responseType
         });
 
+        addLog(sectionName, 'RESPONSE', `Status: ${response.status}, Size: ${response.data?.content?.length || 0} bytes`);
+
         if (responseType === 'json' && response.data?.content) {
           const jsonData = response.data.content;
-          if (jsonData.friends && Array.isArray(jsonData.friends)) {
-            parsedData = jsonData.friends.slice(0, 100).map(friend => ({
-              name: friend.name || 'Unknown',
-              date_added: friend.timestamp ? new Date(friend.timestamp * 1000).toLocaleDateString() : null
-            }));
-          } else if (Array.isArray(jsonData)) {
-            parsedData = jsonData.slice(0, 100).map(friend => ({
-              name: friend.name || 'Unknown',
-              date_added: friend.timestamp ? new Date(friend.timestamp * 1000).toLocaleDateString() : null
-            }));
-          }
+          const result = parseJsonGeneric(jsonData, filePath);
+          parsedData = result.items.slice(0, 100);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
+        } else if (responseType === 'text' && response.data?.content) {
+          const result = await parseFriendsFromHtml(response.data.content, filePath);
+          parsedData = result.items.slice(0, 100);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+          if (result.error) addLog(sectionName, 'PARSE_ERROR', result.error, 'error');
         }
       } else if (sectionName === 'messages') {
         const threads = normalized.messageThreads;
