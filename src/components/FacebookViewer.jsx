@@ -23,6 +23,19 @@ import {
 import { Button } from "@/components/ui/button";
 import AIDataSearch from "./AIDataSearch";
 import { normalizeArchiveAnalysis } from "./normalizeArchiveData";
+import LoadDebugPanel from "./LoadDebugPanel";
+import {
+  parseFriendsFromHtml,
+  parsePostsFromHtml,
+  parseCommentsFromHtml,
+  parseLikesFromHtml,
+  parseGroupsFromHtml,
+  parseMarketplaceFromHtml,
+  parseEventsFromHtml,
+  parseReelsFromHtml,
+  parseCheckinsFromHtml,
+  parseJsonGeneric
+} from "./archiveParsers";
 
 export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "", debugMode = false }) {
   // Normalize data on mount
