@@ -517,6 +517,8 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
       </div>
 
       {/* Content Tabs */}
+      <LoadDebugPanel logs={debugLogs[activeTab]} isLoading={loadingSection === activeTab} />
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex flex-wrap gap-2 mb-6 bg-transparent h-auto p-0">
             <TabsTrigger value="posts" className="bg-red-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-red-600 text-sm">
