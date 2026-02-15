@@ -583,7 +583,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         </TabsContent>
 
         <TabsContent value="photos" className="mt-4">
-          {photosList.length === 0 ? (
+          {normalized.photos.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
                 No photos found
@@ -591,7 +591,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             </Card>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {photosList.map((photo, i) => {
+              {normalized.photos.map((photo, i) => {
                 const path = photo.path;
                 const mediaState = loadedMedia[path];
                 const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
