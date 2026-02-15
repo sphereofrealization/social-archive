@@ -1187,36 +1187,61 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
         <TabsContent value="events" className="space-y-4 mt-4">
           {isStreamingIndex && !loadedSections.events ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-600 mb-4">
-                  Found {normalized.eventFiles.html.length + normalized.eventFiles.json.length} event files
-                </p>
-                <Button 
-                  onClick={() => loadSection('events')}
-                  disabled={loadingSection === 'events'}
-                  className="bg-amber-600 hover:bg-amber-700"
-                >
-                  {loadingSection === 'events' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading Events...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Load Events
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Files Detected ({normalized.eventFiles.html.length + normalized.eventFiles.json.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {normalized.eventFiles.json.map((file, i) => (
+                    <div key={`json-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                  {normalized.eventFiles.html.map((file, i) => (
+                    <div key={`html-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Button 
+                onClick={() => loadSection('events')}
+                disabled={loadingSection === 'events'}
+                className="w-full bg-amber-600 hover:bg-amber-700"
+              >
+                {loadingSection === 'events' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading Events...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Load & Parse Events
+                  </>
+                )}
+              </Button>
+            </div>
           ) : (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                {events.length === 0 ? 'No events found' : `${events.length} events`}
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              {events.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-gray-500">
+                    No events found
+                  </CardContent>
+                </Card>
+              ) : (
+                events.map((event, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <p className="text-sm font-medium">{event.name || event.title || JSON.stringify(event).slice(0, 200)}</p>
+                      {event.date && <p className="text-xs text-gray-600">{event.date}</p>}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
           )}
         </TabsContent>
 
