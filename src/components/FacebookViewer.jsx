@@ -915,36 +915,60 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
         <TabsContent value="comments" className="space-y-4 mt-4">
           {isStreamingIndex && !loadedSections.comments ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-600 mb-4">
-                  Found {normalized.commentFiles.html.length + normalized.commentFiles.json.length} comment files
-                </p>
-                <Button 
-                  onClick={() => loadSection('comments')}
-                  disabled={loadingSection === 'comments'}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {loadingSection === 'comments' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading Comments...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Load Comments
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Files Detected ({normalized.commentFiles.html.length + normalized.commentFiles.json.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {normalized.commentFiles.json.map((file, i) => (
+                    <div key={`json-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                  {normalized.commentFiles.html.map((file, i) => (
+                    <div key={`html-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Button 
+                onClick={() => loadSection('comments')}
+                disabled={loadingSection === 'comments'}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                {loadingSection === 'comments' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading Comments...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Load & Parse Comments
+                  </>
+                )}
+              </Button>
+            </div>
           ) : (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                {comments.length === 0 ? 'No comments found' : `${comments.length} comments`}
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              {comments.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-gray-500">
+                    No comments found
+                  </CardContent>
+                </Card>
+              ) : (
+                comments.map((comment, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <p className="text-sm whitespace-pre-wrap">{comment.text || comment.comment || JSON.stringify(comment).slice(0, 200)}</p>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
           )}
         </TabsContent>
 
