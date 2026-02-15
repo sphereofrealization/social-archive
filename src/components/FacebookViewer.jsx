@@ -34,7 +34,8 @@ import {
   parseEventsFromHtml,
   parseReelsFromHtml,
   parseCheckinsFromHtml,
-  parseJsonGeneric
+  parseJsonGeneric,
+  probeFacebookHtmlStructure
 } from "./archiveParsers";
 
 export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "", debugMode = false }) {
