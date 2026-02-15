@@ -1247,36 +1247,60 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
         <TabsContent value="reels" className="space-y-4 mt-4">
           {isStreamingIndex && !loadedSections.reels ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-600 mb-4">
-                  Found {normalized.reelFiles.html.length + normalized.reelFiles.json.length} reel files
-                </p>
-                <Button 
-                  onClick={() => loadSection('reels')}
-                  disabled={loadingSection === 'reels'}
-                  className="bg-cyan-600 hover:bg-cyan-700"
-                >
-                  {loadingSection === 'reels' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading Reels...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Load Reels
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Files Detected ({normalized.reelFiles.html.length + normalized.reelFiles.json.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {normalized.reelFiles.json.map((file, i) => (
+                    <div key={`json-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                  {normalized.reelFiles.html.map((file, i) => (
+                    <div key={`html-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Button 
+                onClick={() => loadSection('reels')}
+                disabled={loadingSection === 'reels'}
+                className="w-full bg-cyan-600 hover:bg-cyan-700"
+              >
+                {loadingSection === 'reels' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading Reels...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Load & Parse Reels
+                  </>
+                )}
+              </Button>
+            </div>
           ) : (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                {reels.length === 0 ? 'No reels found' : `${reels.length} reels`}
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              {reels.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-gray-500">
+                    No reels found
+                  </CardContent>
+                </Card>
+              ) : (
+                reels.map((reel, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <p className="text-sm">{reel.title || reel.name || JSON.stringify(reel).slice(0, 200)}</p>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
           )}
         </TabsContent>
 
