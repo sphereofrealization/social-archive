@@ -68,7 +68,10 @@ export default function Archives() {
     queryKey: ['archives'],
     queryFn: async () => {
       const sessionToken = localStorage.getItem('session_token');
-      if (!sessionToken) return [];
+      if (!sessionToken) {
+        console.error('[Archives] No session token found');
+        return [];
+      }
       
       // Derive accountId from sessionToken (same as backend)
       const validateResponse = await base44.functions.invoke('passwordlessAuth', {
@@ -76,10 +79,26 @@ export default function Archives() {
         sessionToken
       });
       
-      if (!validateResponse.data?.valid) return [];
+      console.log('[Archives] Validation response:', validateResponse.data);
+      
+      if (!validateResponse.data?.valid) {
+        console.error('[Archives] Invalid session');
+        return [];
+      }
       
       const accountId = validateResponse.data.accountId;
-      return base44.entities.Archive.filter({ account_id: accountId }, '-updated_date');
+      if (!accountId) {
+        console.error('[Archives] No accountId returned from validation');
+        return [];
+      }
+      
+      console.log('[Archives] Filtering by accountId:', accountId);
+      
+      const filteredArchives = await base44.entities.Archive.filter({ account_id: accountId }, '-updated_date');
+      
+      console.log('[Archives] Found archives:', filteredArchives.length);
+      
+      return filteredArchives;
     },
     initialData: [],
   });
