@@ -287,10 +287,11 @@ Deno.serve(async (req) => {
     const messagesByThread = {};
     const pathSegments = new Map(); // Track first path segment for rootPrefix detection
 
-    while (offset < cdBytes.length && entriesProcessed < totalEntries) {
+    while (offset < cdBytes.length - 46 && entriesProcessed < totalEntries) {
       // Central directory file header signature: 0x02014b50
       if (cdBytes[offset] !== 0x50 || cdBytes[offset+1] !== 0x4b || 
           cdBytes[offset+2] !== 0x01 || cdBytes[offset+3] !== 0x02) {
+        console.log(`[extractArchiveDataStreaming] Bad signature at offset ${offset}, processed ${entriesProcessed} entries`);
         break;
       }
 
@@ -299,8 +300,22 @@ Deno.serve(async (req) => {
       const fileCommentLength = readU16CD(offset + 32);
       const uncompressedSize = readU32CD(offset + 24);
 
+      // Validate lengths to prevent buffer overflow
+      if (offset + 46 + fileNameLength > cdBytes.length) {
+        console.log(`[extractArchiveDataStreaming] Filename extends beyond buffer at offset ${offset}`);
+        break;
+      }
+
       const fileNameBytes = cdBytes.slice(offset + 46, offset + 46 + fileNameLength);
-      const fileName = new TextDecoder().decode(fileNameBytes);
+      let fileName;
+      try {
+        fileName = new TextDecoder('utf-8', { fatal: false }).decode(fileNameBytes);
+      } catch (err) {
+        console.error(`[extractArchiveDataStreaming] Failed to decode filename at offset ${offset}:`, err);
+        offset += 46 + fileNameLength + extraFieldLength + fileCommentLength;
+        entriesProcessed++;
+        continue;
+      }
       
       // Skip directories
       if (!fileName.endsWith('/')) {
