@@ -1127,36 +1127,61 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
         <TabsContent value="marketplace" className="space-y-4 mt-4">
           {isStreamingIndex && !loadedSections.marketplace ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-600 mb-4">
-                  Found {normalized.marketplaceFiles.html.length + normalized.marketplaceFiles.json.length} marketplace files
-                </p>
-                <Button 
-                  onClick={() => loadSection('marketplace')}
-                  disabled={loadingSection === 'marketplace'}
-                  className="bg-rose-600 hover:bg-rose-700"
-                >
-                  {loadingSection === 'marketplace' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading Marketplace...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Load Marketplace
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Files Detected ({normalized.marketplaceFiles.html.length + normalized.marketplaceFiles.json.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {normalized.marketplaceFiles.json.map((file, i) => (
+                    <div key={`json-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                  {normalized.marketplaceFiles.html.map((file, i) => (
+                    <div key={`html-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Button 
+                onClick={() => loadSection('marketplace')}
+                disabled={loadingSection === 'marketplace'}
+                className="w-full bg-rose-600 hover:bg-rose-700"
+              >
+                {loadingSection === 'marketplace' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading Marketplace...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Load & Parse Marketplace
+                  </>
+                )}
+              </Button>
+            </div>
           ) : (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                {marketplace.length === 0 ? 'No marketplace items found' : `${marketplace.length} items`}
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              {marketplace.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-gray-500">
+                    No marketplace items found
+                  </CardContent>
+                </Card>
+              ) : (
+                marketplace.map((item, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <p className="text-sm font-medium">{item.title || item.name || JSON.stringify(item).slice(0, 200)}</p>
+                      {item.price && <p className="text-xs text-gray-600">{item.price}</p>}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
           )}
         </TabsContent>
 
