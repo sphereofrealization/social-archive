@@ -11,11 +11,15 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        console.log('[uploadToS3] Got sessionToken:', sessionToken?.substring(0, 16) + '...');
+
         const base44 = createClientFromRequest(req);
         const validateResponse = await base44.functions.invoke('passwordlessAuth', {
             action: 'validate',
             sessionToken
         });
+        
+        console.log('[uploadToS3] Validation response:', validateResponse.data);
         
         // Destructure safely and validate
         const { accountId, userId, valid } = validateResponse.data || {};
@@ -29,13 +33,14 @@ Deno.serve(async (req) => {
         
         if (!folder) {
             return Response.json({ 
-                error: 'Missing accountId from passwordlessAuth.validate' 
+                error: 'Missing accountId from passwordlessAuth.validate',
+                debug: { validateResponse: validateResponse.data }
             }, { status: 500 });
         }
 
         const { action, fileName, uploadId, fileKey, partNumber, chunkBase64, parts } = body;
         
-        console.log('Upload action:', action, 'folder:', folder);
+        console.log('[uploadToS3] Using folder (accountId):', folder, 'for action:', action);
 
         const s3Client = new S3Client({
             region: 'us-east-1',
