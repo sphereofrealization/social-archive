@@ -17,12 +17,30 @@ import {
   Calendar,
   MapPin,
   Loader2,
-  Download
+  Download,
+  ChevronDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AIDataSearch from "./AIDataSearch";
+import { normalizeArchiveAnalysis } from "./normalizeArchiveData";
 
-export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" }) {
+export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "", debugMode = false }) {
+  // Normalize data on mount
+  const normalized = normalizeArchiveAnalysis(data);
+  
+  // Log what we received and normalized
+  React.useEffect(() => {
+    console.log("[FacebookViewer] received data:", {
+      buildId: data?.buildId,
+      mode: data?.mode,
+      rawPhotosLength: data?.index?.photos?.length,
+      rawVideoLength: data?.index?.videos?.length,
+      normalizedPhotosLength: normalized.photos.length,
+      normalizedVideosLength: normalized.videos.length,
+      normalizedCounts: normalized.counts,
+      fullNormalized: normalized
+    });
+  }, [data, normalized]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [activeTab, setActiveTab] = useState("posts");
