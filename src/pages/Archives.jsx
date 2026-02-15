@@ -168,7 +168,12 @@ export default function Archives() {
           action: 'validate',
           sessionToken
         });
-        const accountId = validateResponse.data?.accountId || sessionToken;
+        
+        if (!validateResponse.data?.valid || !validateResponse.data?.accountId) {
+          throw new Error('Failed to validate session for archive creation');
+        }
+        
+        const accountId = validateResponse.data.accountId;
         
         await base44.entities.Archive.create({
           account_id: accountId,

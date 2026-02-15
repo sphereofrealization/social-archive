@@ -17,12 +17,14 @@ Deno.serve(async (req) => {
             sessionToken
         });
         
-        if (!validateResponse.data?.valid) {
+        // Destructure safely and validate
+        const { accountId, userId, valid } = validateResponse.data || {};
+        
+        if (!valid) {
             return Response.json({ error: 'Invalid session' }, { status: 401 });
         }
 
         // Get accountId (or fallback to userId for backward compatibility)
-        const { accountId, userId } = validateResponse.data;
         const folder = accountId || userId;
         
         if (!folder) {
@@ -65,6 +67,13 @@ Deno.serve(async (req) => {
         }
 
         if (action === 'upload') {
+            // Security: Prevent cross-account key injection
+            if (!fileKey || !fileKey.startsWith(folder + '/')) {
+                return Response.json({ 
+                    error: 'fileKey does not match authenticated account' 
+                }, { status: 403 });
+            }
+            
             // Decode base64 chunk
             const chunkBuffer = Uint8Array.from(atob(chunkBase64), c => c.charCodeAt(0));
 
@@ -84,6 +93,13 @@ Deno.serve(async (req) => {
         }
 
         if (action === 'complete') {
+            // Security: Prevent cross-account key injection
+            if (!fileKey || !fileKey.startsWith(folder + '/')) {
+                return Response.json({ 
+                    error: 'fileKey does not match authenticated account' 
+                }, { status: 403 });
+            }
+            
             const command = new CompleteMultipartUploadCommand({
                 Bucket: bucket,
                 Key: fileKey,
