@@ -9,7 +9,10 @@ async function sha256Hex(input) {
 
 Deno.serve(async (req) => {
     try {
-        const { password, action, sessionToken } = await req.json();
+        const body = await req.json();
+        const { password, action, sessionToken } = body;
+        
+        console.log('[passwordlessAuth] Request:', { action, hasSessionToken: !!sessionToken, hasPassword: !!password });
         
         // Validate session
         if (action === "validate") {
