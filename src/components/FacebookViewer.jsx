@@ -43,6 +43,14 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   // Normalize data on mount
   const normalized = normalizeArchiveAnalysis(data);
   
+  // Build knownMediaPathSet from normalized photos + videos
+  const knownMediaPathSet = React.useMemo(() => {
+    const set = new Set();
+    normalized.photos.forEach(p => set.add(p.path));
+    normalized.videos.forEach(v => set.add(v.path));
+    return set;
+  }, [normalized.photos, normalized.videos]);
+  
   // Log what we received and normalized
   React.useEffect(() => {
     console.log("[FacebookViewer] received data:", {
@@ -52,10 +60,11 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
       rawVideoLength: data?.index?.videos?.length,
       normalizedPhotosLength: normalized.photos.length,
       normalizedVideosLength: normalized.videos.length,
+      knownMediaPathCount: knownMediaPathSet.size,
       normalizedCounts: normalized.counts,
       fullNormalized: normalized
     });
-  }, [data, normalized]);
+  }, [data, normalized, knownMediaPathSet]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [activeTab, setActiveTab] = useState("posts");
