@@ -188,20 +188,51 @@ Deno.serve(async (req) => {
       videos: fileIndex.videos.length
     });
 
-    // Step 5: Sample a few files for metadata extraction
+    // Step 5: Build result with counts
     const result = {
       profile: { name: '', email: '' },
       posts: [],
       friends: [],
       messages: [],
+      conversations: [],
       comments: [],
       likes: [],
-      photos: fileIndex.photos.map(p => ({ path: p.path, size: p.size })),
-      videos: fileIndex.videos.map(v => ({ path: v.path, size: v.size })),
+      groups: [],
+      reviews: [],
+      events: [],
+      marketplace: [],
+      reels: [],
+      checkins: [],
+      photos: fileIndex.photos.slice(0, 100).map(p => ({ path: p.path, size: p.size, filename: p.path.split('/').pop() })),
+      videos: fileIndex.videos.slice(0, 100).map(v => ({ path: v.path, size: v.size, filename: v.path.split('/').pop() })),
+      counts: {
+        posts: fileIndex.postsHtml.length,
+        friends: fileIndex.friendsHtml.length,
+        conversations: fileIndex.messagesHtml.length,
+        comments: fileIndex.commentsHtml.length,
+        likes: fileIndex.likesHtml.length,
+        photos: fileIndex.photos.length,
+        videos: fileIndex.videos.length,
+        groups: 0,
+        reviews: 0,
+        events: 0,
+        marketplace: 0,
+        reels: 0,
+        checkins: 0
+      },
       warnings: [`Large archive (${(contentLength/1024/1024).toFixed(0)}MB) - showing metadata only. Click individual items to load content.`],
       debug: {
         totalEntries,
-        sampledFiles: 0,
+        entriesProcessed,
+        filesIndexed: {
+          friendsHtml: fileIndex.friendsHtml.length,
+          messagesHtml: fileIndex.messagesHtml.length,
+          postsHtml: fileIndex.postsHtml.length,
+          commentsHtml: fileIndex.commentsHtml.length,
+          likesHtml: fileIndex.likesHtml.length,
+          photos: fileIndex.photos.length,
+          videos: fileIndex.videos.length
+        },
         executionTimeMs: Date.now() - startTime
       }
     };
