@@ -480,6 +480,39 @@ export async function parseCheckinsFromHtml(htmlString, sourceFile) {
   }
 }
 
+// PHASE 1: Detailed HTML structure probe
+export function probeFacebookExportHtml(htmlString, sourceFile) {
+  try {
+    const doc = parseHtml(htmlString);
+    if (!doc) throw new Error('Failed to parse HTML');
+    
+    const contentsDiv = doc.querySelector('.contents');
+    const tables = doc.querySelectorAll('table');
+    const tableRows = Array.from(tables).reduce((sum, t) => sum + t.querySelectorAll('tr').length, 0);
+    
+    return {
+      sourceFile,
+      htmlLength: htmlString.length,
+      htmlStartsWith: htmlString.slice(0, 60),
+      title: doc.querySelector('title')?.textContent?.slice(0, 100) || 'N/A',
+      hasContentsClass: !!contentsDiv,
+      counts: {
+        contentsPam: contentsDiv ? contentsDiv.querySelectorAll('.pam').length : 0,
+        contentsSections: contentsDiv ? contentsDiv.querySelectorAll('section').length : 0,
+        contentsDivChildren: contentsDiv ? contentsDiv.querySelectorAll('> div').length : 0,
+        tables: tables.length,
+        tableRows: tableRows,
+        listItems: doc.querySelectorAll('li').length,
+        anchors: doc.querySelectorAll('a').length,
+        images: doc.querySelectorAll('img').length,
+        scripts: doc.querySelectorAll('script').length
+      }
+    };
+  } catch (err) {
+    return { sourceFile, error: err.message };
+  }
+}
+
 // Generic JSON parser (fallback for all categories)
 export function parseJsonGeneric(jsonObj, sourceFile) {
   try {
