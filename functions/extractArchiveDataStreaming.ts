@@ -137,14 +137,20 @@ Deno.serve(async (req) => {
     const cdBuffer = await cdResponse.arrayBuffer();
     const cdBytes = new Uint8Array(cdBuffer);
 
-    // Step 4: Parse file entries
+    // Step 4: Parse file entries with robust categorization
     const fileIndex = {
-      friendsHtml: [], messagesHtml: [], postsHtml: [], 
-      commentsHtml: [], likesHtml: [], photos: [], videos: []
+      postsHtml: [], postsJson: [],
+      friendsHtml: [], friendsJson: [], 
+      messageThreads: [],  // { threadPath, messageFiles: [{path, type}] }
+      commentsHtml: [], commentsJson: [],
+      likesHtml: [], likesJson: [],
+      photos: [], videos: [],
+      otherHtml: []
     };
 
     let offset = 0;
     let entriesProcessed = 0;
+    const messagesByThread = {};  // Group messages by thread
 
     while (offset < cdBytes.length && entriesProcessed < totalEntries) {
       // Central directory file header signature: 0x02014b50
@@ -164,75 +170,116 @@ Deno.serve(async (req) => {
       const fileName = new TextDecoder().decode(fileNameBytes);
       const pathLower = fileName.toLowerCase();
       const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      const entry = { path: fileName, size: uncompressedSize, name: fileName.split('/').pop(), ext };
 
-      // Categorize files
-      const entry = { path: fileName, size: uncompressedSize, offset: localHeaderOffset };
-      
-      if (pathLower.includes('friend') && ext === 'html') fileIndex.friendsHtml.push(entry);
-      else if ((pathLower.includes('message') || pathLower.includes('inbox')) && ext === 'html') fileIndex.messagesHtml.push(entry);
-      else if ((pathLower.includes('post') || pathLower.includes('wall')) && ext === 'html') fileIndex.postsHtml.push(entry);
-      else if (pathLower.includes('comment') && ext === 'html') fileIndex.commentsHtml.push(entry);
-      else if (pathLower.includes('like') && ext === 'html') fileIndex.likesHtml.push(entry);
-      else if (['jpg', 'jpeg', 'png'].includes(ext)) fileIndex.photos.push(entry);
-      else if (['mp4', 'mov'].includes(ext)) fileIndex.videos.push(entry);
+      // Categorize by robust patterns
+      // Posts: your_posts_1.json, posts.html, your_activity_across_facebook/posts/
+      if (/posts.*\.(html|json)$/i.test(pathLower) || /your_activity.*posts.*\.(html|json)$/i.test(pathLower)) {
+        if (ext === 'json') fileIndex.postsJson.push(entry);
+        else if (ext === 'html') fileIndex.postsHtml.push(entry);
+      }
+      // Friends: friends.json, connections.json
+      else if (/friend|connection/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+        if (ext === 'json') fileIndex.friendsJson.push(entry);
+        else fileIndex.friendsHtml.push(entry);
+      }
+      // Messages: messages/inbox/threadname/message_1.json
+      else if (/messages\/inbox\/[^/]+\/message_\d+\.(json|html)$/i.test(pathLower)) {
+        const threadMatch = fileName.match(/messages\/inbox\/([^/]+)\//i);
+        const threadName = threadMatch ? threadMatch[1] : 'unknown';
+        if (!messagesByThread[threadName]) {
+          messagesByThread[threadName] = { threadPath: threadName, messageFiles: [] };
+        }
+        messagesByThread[threadName].messageFiles.push({ path: fileName, type: ext });
+      }
+      // Comments
+      else if (/comment/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+        if (ext === 'json') fileIndex.commentsJson.push(entry);
+        else fileIndex.commentsHtml.push(entry);
+      }
+      // Likes
+      else if (/like/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+        if (ext === 'json') fileIndex.likesJson.push(entry);
+        else fileIndex.likesHtml.push(entry);
+      }
+      // Media
+      else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+        fileIndex.photos.push(entry);
+      }
+      else if (['mp4', 'mov', 'm4v', 'webm'].includes(ext)) {
+        fileIndex.videos.push(entry);
+      }
+      // Catch-all HTML for potential parsing later
+      else if (ext === 'html') {
+        fileIndex.otherHtml.push(entry);
+      }
 
       offset += 46 + fileNameLength + extraFieldLength + fileCommentLength;
       entriesProcessed++;
     }
 
+    // Convert messagesByThread to array
+    fileIndex.messageThreads = Object.values(messagesByThread);
+
     console.log('[extractArchiveDataStreaming] Indexed files:', {
-      friendsHtml: fileIndex.friendsHtml.length,
-      messagesHtml: fileIndex.messagesHtml.length,
+      postsJson: fileIndex.postsJson.length,
       postsHtml: fileIndex.postsHtml.length,
+      friendsJson: fileIndex.friendsJson.length,
+      friendsHtml: fileIndex.friendsHtml.length,
+      messageThreads: fileIndex.messageThreads.length,
       photos: fileIndex.photos.length,
       videos: fileIndex.videos.length
     });
 
-    // Step 5: Build result with counts
+    // Step 5: Return index structure for lazy loading
     const result = {
-      profile: { name: '', email: '' },
-      posts: [],
-      friends: [],
-      messages: [],
-      conversations: [],
-      comments: [],
-      likes: [],
-      groups: [],
-      reviews: [],
-      events: [],
-      marketplace: [],
-      reels: [],
-      checkins: [],
-      photos: fileIndex.photos.slice(0, 100).map(p => ({ path: p.path, size: p.size, filename: p.path.split('/').pop() })),
-      videos: fileIndex.videos.slice(0, 100).map(v => ({ path: v.path, size: v.size, filename: v.path.split('/').pop() })),
+      ok: true,
+      isStreaming: true,  // Flag to identify this is index-only response
+      archive: {
+        fileSize: contentLength,
+        entryCount: totalEntries
+      },
+      index: {
+        photos: fileIndex.photos.map(p => ({ path: p.path, name: p.name, size: p.size, ext: p.ext })),
+        videos: fileIndex.videos.map(v => ({ path: v.path, name: v.name, size: v.size, ext: v.ext })),
+        posts: {
+          html: fileIndex.postsHtml.map(f => f.path),
+          json: fileIndex.postsJson.map(f => f.path)
+        },
+        friends: {
+          html: fileIndex.friendsHtml.map(f => f.path),
+          json: fileIndex.friendsJson.map(f => f.path)
+        },
+        messages: {
+          threads: fileIndex.messageThreads
+        },
+        comments: {
+          html: fileIndex.commentsHtml.map(f => f.path),
+          json: fileIndex.commentsJson.map(f => f.path)
+        },
+        likes: {
+          html: fileIndex.likesHtml.map(f => f.path),
+          json: fileIndex.likesJson.map(f => f.path)
+        },
+        otherHtml: fileIndex.otherHtml.map(f => f.path)
+      },
       counts: {
-        posts: fileIndex.postsHtml.length,
-        friends: fileIndex.friendsHtml.length,
-        conversations: fileIndex.messagesHtml.length,
-        comments: fileIndex.commentsHtml.length,
-        likes: fileIndex.likesHtml.length,
         photos: fileIndex.photos.length,
         videos: fileIndex.videos.length,
-        groups: 0,
-        reviews: 0,
-        events: 0,
-        marketplace: 0,
-        reels: 0,
-        checkins: 0
+        postsHtmlFiles: fileIndex.postsHtml.length,
+        postsJsonFiles: fileIndex.postsJson.length,
+        friendsHtmlFiles: fileIndex.friendsHtml.length,
+        friendsJsonFiles: fileIndex.friendsJson.length,
+        messageThreads: fileIndex.messageThreads.length,
+        commentsHtmlFiles: fileIndex.commentsHtml.length,
+        commentsJsonFiles: fileIndex.commentsJson.length,
+        likesHtmlFiles: fileIndex.likesHtml.length,
+        likesJsonFiles: fileIndex.likesJson.length
       },
-      warnings: [`Large archive (${(contentLength/1024/1024).toFixed(0)}MB) - showing metadata only. Click individual items to load content.`],
+      warnings: [`Large archive (${(contentLength/1024/1024).toFixed(0)}MB) - showing index only. Click "Load" buttons to view content.`],
       debug: {
         totalEntries,
         entriesProcessed,
-        filesIndexed: {
-          friendsHtml: fileIndex.friendsHtml.length,
-          messagesHtml: fileIndex.messagesHtml.length,
-          postsHtml: fileIndex.postsHtml.length,
-          commentsHtml: fileIndex.commentsHtml.length,
-          likesHtml: fileIndex.likesHtml.length,
-          photos: fileIndex.photos.length,
-          videos: fileIndex.videos.length
-        },
         executionTimeMs: Date.now() - startTime
       }
     };

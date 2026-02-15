@@ -15,10 +15,11 @@ import {
   ThumbsUp,
   Search,
   Calendar,
-  MapPin
+  MapPin,
+  Loader2,
+  Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
 import AIDataSearch from "./AIDataSearch";
 
 export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" }) {
@@ -26,11 +27,26 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [activeTab, setActiveTab] = useState("posts");
   const [loadedMedia, setLoadedMedia] = useState({});
+  const [loadedSections, setLoadedSections] = useState({});
+  const [loadingSection, setLoadingSection] = useState(null);
 
+  // Check if this is streaming index data
+  const isStreamingIndex = data?.isStreaming === true;
+  const index = data?.index || {};
+  const counts = data?.counts || {};
+
+  console.log('[FacebookViewer] Data received:', {
+    isStreamingIndex,
+    hasIndex: !!index,
+    counts,
+    indexKeys: Object.keys(index)
+  });
+
+  // Legacy parsed data (for non-streaming extractions)
   const profile = data?.profile || {};
-  const posts = Array.isArray(data?.posts) ? data.posts : [];
-  const friends = Array.isArray(data?.friends) ? data.friends : [];
-  const messages = Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.messages) ? data.messages : [];
+  const posts = isStreamingIndex ? (loadedSections.posts || []) : (Array.isArray(data?.posts) ? data.posts : []);
+  const friends = isStreamingIndex ? (loadedSections.friends || []) : (Array.isArray(data?.friends) ? data.friends : []);
+  const messages = isStreamingIndex ? (loadedSections.messages || []) : (Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.messages) ? data.messages : []);
   const comments = Array.isArray(data?.comments) ? data.comments : [];
   const reels = Array.isArray(data?.reels) ? data.reels : [];
   const checkins = Array.isArray(data?.checkins) ? data.checkins : [];
@@ -40,28 +56,39 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   const groups = Array.isArray(data?.groups) ? data.groups : [];
   const marketplace = Array.isArray(data?.marketplace) ? data.marketplace : [];
   
-  // Map friends to their conversations with flexible matching
-  const friendConversations = {};
-  if (Array.isArray(messages)) {
-    messages.forEach(conv => {
-      if (conv?.conversation_with) {
-        const normalized = conv.conversation_with.toLowerCase().trim();
-        friendConversations[normalized] = conv;
-        // Also try to match by first and last name parts
-        const parts = conv.conversation_with.split(/\s+/);
-        if (parts.length > 1) {
-          friendConversations[parts[parts.length - 1].toLowerCase()] = conv;
+  const photosList = isStreamingIndex ? (index.photos || []) : (Array.isArray(data?.photos) ? data.photos : []);
+  const videosList = isStreamingIndex ? (index.videos || []) : (Array.isArray(data?.videos) ? data.videos : []);
+
+  // Load media on demand
+  const loadMedia = async (mediaPath, type) => {
+    if (loadedMedia[mediaPath] !== undefined) return;
+    setLoadedMedia(prev => ({ ...prev, [mediaPath]: 'loading' }));
+    
+    try {
+      console.log(`[FacebookViewer] Loading ${type} from ${mediaPath}`);
+      const response = await base44.functions.invoke('getArchiveEntry', {
+        zipUrl: archiveUrl,
+        entryPath: mediaPath,
+        responseType: 'base64'
+      });
+      
+      if (response.data?.content && response.data?.mime) {
+        const blobUrl = base64ToBlobUrl(response.data.content, response.data.mime);
+        if (blobUrl) {
+          console.log(`[FacebookViewer] Successfully created blob URL for ${mediaPath}`);
+          setLoadedMedia(prev => ({ ...prev, [mediaPath]: blobUrl }));
+        } else {
+          throw new Error('Failed to create blob URL');
         }
+      } else {
+        throw new Error(`Invalid response: ${JSON.stringify(response.data)}`);
       }
-    });
-  }
-  
-  // Get actual media files from photoFiles and videoFiles objects
-  const photoFilesObj = data?.photoFiles || photoFiles || {};
-  const videoFilesObj = data?.videoFiles || {};
-  const videosList = Array.isArray(data?.videos) ? data.videos : [];
-  const photosList = Array.isArray(data?.photos) ? data.photos : [];
-  
+    } catch (err) {
+      console.error(`[FacebookViewer] Failed to load ${type}:`, err);
+      setLoadedMedia(prev => ({ ...prev, [mediaPath]: { error: err.message } }));
+    }
+  };
+
   // Convert base64 to blob URL
   const base64ToBlobUrl = (base64, mimeType) => {
     try {
@@ -78,74 +105,115 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
     }
   };
 
-  // Load media on demand
-  const loadMedia = async (mediaPath, type) => {
-    if (loadedMedia[mediaPath] !== undefined) return; // Already attempted
-    
-    // Mark as loading to prevent duplicate requests
-    setLoadedMedia(prev => ({ ...prev, [mediaPath]: 'loading' }));
-    
+  // Load section data on demand
+  const loadSection = async (sectionName) => {
+    if (loadedSections[sectionName]) return;
+    setLoadingSection(sectionName);
+
     try {
-      console.log(`[FacebookViewer] Loading ${type} from ${mediaPath}`);
-      const response = await base44.functions.invoke('getArchiveEntry', {
-        zipUrl: archiveUrl,
-        entryPath: mediaPath,
-        responseType: 'base64'
-      });
+      console.log(`[FacebookViewer] Loading ${sectionName} section`);
       
-      console.log(`[FacebookViewer] Response:`, { status: response.status, size: response.data?.size, mime: response.data?.mime });
-      
-      if (response.data?.content && response.data?.mime) {
-        // Convert base64 to blob URL
-        const blobUrl = base64ToBlobUrl(response.data.content, response.data.mime);
-        if (blobUrl) {
-          console.log(`[FacebookViewer] Successfully created blob URL for ${mediaPath}`);
-          setLoadedMedia(prev => ({ ...prev, [mediaPath]: blobUrl }));
-        } else {
-          throw new Error('Failed to create blob URL');
+      let parsedData = [];
+
+      if (sectionName === 'posts') {
+        // Prefer JSON, fallback to HTML
+        const files = index.posts?.json?.length > 0 ? index.posts.json : index.posts?.html || [];
+        if (files.length === 0) {
+          throw new Error('No posts files found in index');
         }
-      } else {
-        throw new Error(`Invalid response: ${JSON.stringify(response.data)}`);
+
+        // Load first file only for now
+        const filePath = files[0];
+        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+        
+        const response = await base44.functions.invoke('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: filePath,
+          responseType
+        });
+
+        if (responseType === 'json' && response.data?.content) {
+          // Parse Facebook posts JSON structure
+          const jsonData = response.data.content;
+          if (Array.isArray(jsonData)) {
+            parsedData = jsonData.slice(0, 50).map(item => ({
+              text: item.post || item.data?.[0]?.post || item.title || 'No text',
+              timestamp: item.timestamp ? new Date(item.timestamp * 1000).toLocaleDateString() : null,
+              likes_count: 0,
+              comments_count: 0
+            }));
+          }
+        } else if (responseType === 'text' && response.data?.content) {
+          // Basic HTML parsing fallback
+          parsedData = [{ text: `HTML file loaded: ${files.length} post files found`, timestamp: null }];
+        }
+      } else if (sectionName === 'friends') {
+        const files = index.friends?.json?.length > 0 ? index.friends.json : index.friends?.html || [];
+        if (files.length === 0) {
+          throw new Error('No friends files found in index');
+        }
+
+        const filePath = files[0];
+        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+        
+        const response = await base44.functions.invoke('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: filePath,
+          responseType
+        });
+
+        if (responseType === 'json' && response.data?.content) {
+          const jsonData = response.data.content;
+          if (jsonData.friends && Array.isArray(jsonData.friends)) {
+            parsedData = jsonData.friends.slice(0, 100).map(friend => ({
+              name: friend.name || 'Unknown',
+              date_added: friend.timestamp ? new Date(friend.timestamp * 1000).toLocaleDateString() : null
+            }));
+          } else if (Array.isArray(jsonData)) {
+            parsedData = jsonData.slice(0, 100).map(friend => ({
+              name: friend.name || 'Unknown',
+              date_added: friend.timestamp ? new Date(friend.timestamp * 1000).toLocaleDateString() : null
+            }));
+          }
+        }
+      } else if (sectionName === 'messages') {
+        const threads = index.messages?.threads || [];
+        if (threads.length === 0) {
+          throw new Error('No message threads found in index');
+        }
+
+        // Load first 10 threads
+        parsedData = threads.slice(0, 10).map(thread => ({
+          conversation_with: thread.threadPath.replace(/_/g, ' '),
+          messages: [],
+          totalMessages: thread.messageFiles.length
+        }));
       }
+
+      setLoadedSections(prev => ({ ...prev, [sectionName]: parsedData }));
+      console.log(`[FacebookViewer] Loaded ${parsedData.length} ${sectionName}`);
     } catch (err) {
-      const errorMsg = `Failed to load ${type}: ${err.message || err}`;
-      console.error(`[FacebookViewer] ${errorMsg}`);
-      setLoadedMedia(prev => ({ ...prev, [mediaPath]: { error: errorMsg } }));
+      console.error(`[FacebookViewer] Failed to load ${sectionName}:`, err);
+      setLoadedSections(prev => ({ ...prev, [sectionName]: { error: err.message } }));
+    } finally {
+      setLoadingSection(null);
     }
   };
 
-  console.log("FacebookViewer received data:", {
-    hasPhotoFiles: !!data?.photoFiles,
-    hasVideoFiles: !!data?.videoFiles,
-    photoFilesCount: Object.keys(photoFilesObj).length,
-    videoFilesCount: Object.keys(videoFilesObj).length,
-    photosList: photosList.length,
-    videosList: videosList.length,
-    posts: posts.length,
-    friends: friends.length,
-    conversations: messages.length,
-    comments: comments.length,
-    groups: groups.length,
-    reviews: reviews.length,
-    likes: likes.length
-  });
-
   const filteredPosts = posts.filter(post => 
-    post.text?.toLowerCase().includes(searchTerm.toLowerCase())
+    post?.text?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredFriends = friends.filter(friend =>
-    friend.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    friend?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredMessages = messages.filter(conv =>
-    conv.conversation_with?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    conv.messages?.some(msg => msg.text?.toLowerCase().includes(searchTerm.toLowerCase()))
+    conv?.conversation_with?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="space-y-6">
-      {/* Summary */}
       {data?.warnings && data.warnings.length > 0 && (
         <Alert className="bg-yellow-50 border-yellow-200">
           <AlertDescription className="text-yellow-800 text-sm">
@@ -166,13 +234,18 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             <div>
               <h2 className="text-2xl font-bold">{profile.name || 'Facebook User'}</h2>
               {profile.email && <p className="text-blue-100">{profile.email}</p>}
+              {isStreamingIndex && (
+                <p className="text-blue-100 text-sm mt-1">
+                  Archive: {(data.archive?.fileSize / 1024 / 1024).toFixed(0)} MB • {data.archive?.entryCount || 0} files
+                </p>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* AI Search */}
-      <AIDataSearch data={data} />
+      {!isStreamingIndex && <AIDataSearch data={data} />}
 
       {/* Search */}
       <div className="relative">
@@ -188,26 +261,56 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
       {/* Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex flex-wrap gap-2 mb-6 bg-transparent h-auto p-0">
-          <TabsTrigger value="posts" className="bg-red-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-red-600 text-sm">Posts ({posts.length})</TabsTrigger>
-          <TabsTrigger value="friends" className="bg-orange-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-orange-600 text-sm">Friends ({friends.length})</TabsTrigger>
-          <TabsTrigger value="messages" className="bg-yellow-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-yellow-600 text-sm">Chats ({messages.length})</TabsTrigger>
-          <TabsTrigger value="photos" className="bg-green-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-green-600 text-sm">Photos ({photosList.length})</TabsTrigger>
-          <TabsTrigger value="videos" className="bg-teal-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-teal-600 text-sm">Videos ({videosList.length})</TabsTrigger>
-          <TabsTrigger value="comments" className="bg-blue-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-blue-600 text-sm">Comments ({comments.length})</TabsTrigger>
-          <TabsTrigger value="reels" className="bg-indigo-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-indigo-600 text-sm">Reels ({reels.length})</TabsTrigger>
-          <TabsTrigger value="checkins" className="bg-purple-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-purple-600 text-sm">Check-ins ({checkins.length})</TabsTrigger>
-          <TabsTrigger value="likes" className="bg-pink-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-pink-600 text-sm">Likes ({likes.length})</TabsTrigger>
-          <TabsTrigger value="events" className="bg-rose-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-rose-600 text-sm">Events ({events.length})</TabsTrigger>
-          <TabsTrigger value="reviews" className="bg-fuchsia-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-fuchsia-600 text-sm">Reviews ({reviews.length})</TabsTrigger>
-          <TabsTrigger value="groups" className="bg-violet-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-violet-600 text-sm">Groups ({groups.length})</TabsTrigger>
-          <TabsTrigger value="marketplace" className="bg-cyan-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-cyan-600 text-sm">Marketplace ({marketplace.length})</TabsTrigger>
+          <TabsTrigger value="posts" className="bg-red-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-red-600 text-sm">
+            Posts ({isStreamingIndex ? (counts.postsJsonFiles + counts.postsHtmlFiles) : posts.length})
+          </TabsTrigger>
+          <TabsTrigger value="friends" className="bg-orange-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-orange-600 text-sm">
+            Friends ({isStreamingIndex ? (counts.friendsJsonFiles + counts.friendsHtmlFiles) : friends.length})
+          </TabsTrigger>
+          <TabsTrigger value="messages" className="bg-yellow-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-yellow-600 text-sm">
+            Chats ({isStreamingIndex ? counts.messageThreads : messages.length})
+          </TabsTrigger>
+          <TabsTrigger value="photos" className="bg-green-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-green-600 text-sm">
+            Photos ({counts.photos || photosList.length})
+          </TabsTrigger>
+          <TabsTrigger value="videos" className="bg-teal-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-teal-600 text-sm">
+            Videos ({counts.videos || videosList.length})
+          </TabsTrigger>
+          <TabsTrigger value="comments" className="bg-blue-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-blue-600 text-sm">
+            Comments ({comments.length})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="posts" className="space-y-4 mt-4">
-          {filteredPosts.length === 0 ? (
+          {isStreamingIndex && !loadedSections.posts ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {counts.postsJsonFiles + counts.postsHtmlFiles} post files ({counts.postsJsonFiles} JSON, {counts.postsHtmlFiles} HTML)
+                </p>
+                <Button 
+                  onClick={() => loadSection('posts')}
+                  disabled={loadingSection === 'posts'}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {loadingSection === 'posts' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Posts...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Posts
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : filteredPosts.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
-                No posts found
+                {loadedSections.posts?.error ? `Error: ${loadedSections.posts.error}` : 'No posts found'}
               </CardContent>
             </Card>
           ) : (
@@ -224,62 +327,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
                       <div className="flex items-center gap-2 mb-2">
                         <p className="font-semibold">{profile.name || 'You'}</p>
                         {post.timestamp && (
-                          <span className="text-xs text-gray-500">
-                            {post.timestamp}
-                          </span>
+                          <span className="text-xs text-gray-500">{post.timestamp}</span>
                         )}
                       </div>
                       <p className="text-gray-700 whitespace-pre-wrap">{post.text}</p>
-                      {post.photo_url && (
-                        <img 
-                          src={post.photo_url} 
-                          alt="Post photo" 
-                          className="mt-3 rounded-lg w-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={(e) => {
-                            const img = e.target;
-                            if (img.style.maxHeight === 'none') {
-                              img.style.maxHeight = '24rem';
-                            } else {
-                              img.style.maxHeight = 'none';
-                            }
-                          }}
-                          style={{ maxHeight: '24rem' }}
-                        />
-                      )}
-                      <div className="flex gap-4 mt-3 text-sm text-gray-500">
-                        {post.likes_count > 0 && (
-                          <span className="flex items-center gap-1">
-                            <ThumbsUp className="w-4 h-4" />
-                            {post.likes_count}
-                          </span>
-                        )}
-                        {post.comments_count > 0 && (
-                          <span className="flex items-center gap-1">
-                            <MessageSquare className="w-4 h-4" />
-                            {post.comments_count}
-                          </span>
-                        )}
-                      </div>
-                      {post.comments && post.comments.length > 0 && (
-                        <div className="mt-4 pt-4 border-t space-y-3">
-                          {post.comments.map((comment, ci) => (
-                            <div key={ci} className="flex gap-2">
-                              <Avatar className="w-8 h-8">
-                                <AvatarFallback className="bg-gray-400 text-white text-xs">
-                                  {comment.author?.[0] || 'C'}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1 bg-gray-100 rounded-lg p-3">
-                                <p className="font-semibold text-sm">{comment.author}</p>
-                                <p className="text-sm text-gray-700 mt-1">{comment.text}</p>
-                                {comment.timestamp && (
-                                  <p className="text-xs text-gray-500 mt-1">{comment.timestamp}</p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -289,77 +340,102 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
         </TabsContent>
 
         <TabsContent value="friends" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredFriends.length === 0 ? (
-                  <p className="col-span-2 text-center text-gray-500 py-4">No friends found</p>
-                ) : (
-                  filteredFriends.map((friend, i) => {
-                    const normalized = friend.name.toLowerCase().trim();
-                    const conversation = friendConversations[normalized];
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => {
-                          if (conversation) {
-                            setSelectedConversation(conversation);
-                            setActiveTab("messages");
-                          }
-                        }}
-                        className="w-full text-left flex items-center justify-between gap-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={!conversation}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarFallback className="bg-green-500 text-white">
-                              {friend.name?.[0] || 'F'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">{friend.name}</p>
-                            {friend.date_added && (
-                              <p className="text-xs text-gray-500">Friends since {friend.date_added}</p>
-                            )}
-                            {conversation && (
-                              <p className="text-xs text-blue-600 mt-1">
-                                {conversation.totalMessages} messages
-                              </p>
-                            )}
-                            {!conversation && (
-                              <p className="text-xs text-gray-400 mt-1">No messages</p>
-                            )}
-                          </div>
+          {isStreamingIndex && !loadedSections.friends ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {counts.friendsJsonFiles + counts.friendsHtmlFiles} friend files
+                </p>
+                <Button 
+                  onClick={() => loadSection('friends')}
+                  disabled={loadingSection === 'friends'}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  {loadingSection === 'friends' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Friends...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Friends
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredFriends.length === 0 ? (
+                    <p className="col-span-2 text-center text-gray-500 py-4">
+                      {loadedSections.friends?.error ? `Error: ${loadedSections.friends.error}` : 'No friends found'}
+                    </p>
+                  ) : (
+                    filteredFriends.map((friend, i) => (
+                      <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                        <Avatar>
+                          <AvatarFallback className="bg-green-500 text-white">
+                            {friend.name?.[0] || 'F'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{friend.name}</p>
+                          {friend.date_added && (
+                            <p className="text-xs text-gray-500">Friends since {friend.date_added}</p>
+                          )}
                         </div>
-                        {conversation && (
-                          <MessageSquare className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="messages" className="mt-4">
-          <div className="flex gap-4" style={{ height: 'calc(100vh - 22rem)' }}>
-            {/* Conversations List */}
-            <Card className="w-1/3 flex flex-col">
-              <CardHeader>
-                <CardTitle className="text-sm">Conversations</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 flex-grow overflow-y-auto">
-                <div className="divide-y">
-                  {filteredMessages.length === 0 ? (
-                    <p className="p-4 text-center text-gray-500 text-sm">No conversations found</p>
+          {isStreamingIndex && !loadedSections.messages ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {counts.messageThreads} message threads
+                </p>
+                <Button 
+                  onClick={() => loadSection('messages')}
+                  disabled={loadingSection === 'messages'}
+                  className="bg-yellow-600 hover:bg-yellow-700"
+                >
+                  {loadingSection === 'messages' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Messages...
+                    </>
                   ) : (
-                    filteredMessages.map((conv, i) => {
-                      const lastMsg = conv.messages?.[0];
-                      const lastMsgPreview = lastMsg?.text?.substring(0, 50) || '';
-
-                      return (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Message Threads
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="flex gap-4" style={{ height: 'calc(100vh - 22rem)' }}>
+              <Card className="w-1/3 flex flex-col">
+                <CardHeader>
+                  <CardTitle className="text-sm">Conversations</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 flex-grow overflow-y-auto">
+                  <div className="divide-y">
+                    {filteredMessages.length === 0 ? (
+                      <p className="p-4 text-center text-gray-500 text-sm">
+                        {loadedSections.messages?.error ? `Error: ${loadedSections.messages.error}` : 'No conversations found'}
+                      </p>
+                    ) : (
+                      filteredMessages.map((conv, i) => (
                         <button
                           key={i}
                           onClick={() => setSelectedConversation(conv)}
@@ -375,126 +451,100 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
                             </Avatar>
                             <div className="flex-1 min-w-0">
                               <p className="font-semibold truncate text-sm">{conv.conversation_with}</p>
-                              <p className="text-xs text-gray-500 truncate">{lastMsgPreview}{lastMsgPreview.length >= 50 ? '...' : ''}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <Badge variant="outline" className="text-xs">
-                                  {conv.messages?.length || 0} messages
-                                </Badge>
-                                {lastMsg?.timestamp && (
-                                  <span className="text-xs text-gray-400">{lastMsg.timestamp}</span>
-                                )}
-                              </div>
+                              <Badge variant="outline" className="text-xs mt-1">
+                                {conv.totalMessages || conv.messages?.length || 0} messages
+                              </Badge>
                             </div>
                           </div>
                         </button>
-                      );
-                    })
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Message Thread */}
-            <Card className="w-2/3 flex flex-col">
-              <CardHeader>
-                <CardTitle className="text-sm">
-                  {selectedConversation ? `Chat with ${selectedConversation.conversation_with}` : 'Select a conversation'}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-grow overflow-y-auto">
-                {selectedConversation ? (
-                  <div className="space-y-3 p-4">
-                    {selectedConversation.messages?.map((msg, i) => {
-                      const isYou = msg.sender === profile.name || msg.sender.toLowerCase() === 'you';
-                      return (
-                        <div key={i} className={`flex ${isYou ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-md p-3 rounded-lg ${
-                            isYou ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-900'
-                          }`}>
-                            <p className="text-sm font-medium mb-1">{msg.sender}</p>
-                            <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
-                            {msg.timestamp && (
-                              <p className={`text-xs mt-1 ${isYou ? 'text-blue-100' : 'text-gray-500'}`}>
-                                {msg.timestamp}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-full">
+              <Card className="w-2/3 flex flex-col">
+                <CardHeader>
+                  <CardTitle className="text-sm">
+                    {selectedConversation ? `Chat with ${selectedConversation.conversation_with}` : 'Select a conversation'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex-grow overflow-y-auto">
+                  {selectedConversation ? (
+                    <p className="text-center text-gray-500 py-8">Message loading coming soon</p>
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
                       <p className="text-center text-gray-500 py-8">Select a conversation to view messages</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="photos" className="mt-4">
-           {photosList.length === 0 ? (
-             <Card>
-               <CardContent className="p-8 text-center text-gray-500">
-                 No photos found
-               </CardContent>
-             </Card>
-           ) : (
-             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-               {photosList.map((photo, i) => {
-                 const path = photo.path;
-                 const mediaState = loadedMedia[path];
-                 const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
-                 const isLoading = mediaState === 'loading';
-                 const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
+          {photosList.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                No photos found
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {photosList.map((photo, i) => {
+                const path = photo.path;
+                const mediaState = loadedMedia[path];
+                const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
+                const isLoading = mediaState === 'loading';
+                const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
 
-                 return (
-                   <Dialog key={i}>
-                     <DialogTrigger asChild>
-                       <div 
-                         className="aspect-square cursor-pointer hover:opacity-90 transition-opacity bg-gray-100 flex items-center justify-center rounded-lg"
-                         onClick={() => {
-                           if (!isLoaded && !isLoading) loadMedia(path, 'image');
-                         }}
-                       >
-                         {isLoaded && typeof mediaState === 'string' ? (
-                           <img 
-                             src={mediaState} 
-                             alt={path.split('/').pop()} 
-                             className="w-full h-full object-cover rounded-lg"
-                           />
-                         ) : (
-                           <div className={`text-xs text-center p-2 ${hasError ? 'text-red-600' : 'text-gray-400'}`}>
-                             {isLoading && <p className="mb-1">Loading...</p>}
-                             {hasError && (
-                               <>
-                                 <p className="mb-1 font-semibold">⚠ Error</p>
-                                 <p className="text-xs">{hasError}</p>
-                               </>
-                             )}
-                             {!isLoading && !hasError && (
-                               <>
-                                 <p className="mb-1">Click to load</p>
-                                 <p className="text-xs">{path.split('/').pop()}</p>
-                               </>
-                             )}
-                           </div>
-                         )}
-                       </div>
-                     </DialogTrigger>
-                     {isLoaded && typeof mediaState === 'string' && (
-                       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-                         <img src={mediaState} alt={path} className="w-full h-auto max-h-[75vh] object-contain mx-auto" />
-                         <p className="text-sm text-gray-500 mt-2">{path}</p>
-                       </DialogContent>
-                     )}
-                   </Dialog>
-                 );
-               })}
-             </div>
-           )}
-         </TabsContent>
+                return (
+                  <Dialog key={i}>
+                    <DialogTrigger asChild>
+                      <div 
+                        className="aspect-square cursor-pointer hover:opacity-90 transition-opacity bg-gray-100 flex items-center justify-center rounded-lg"
+                        onClick={() => {
+                          if (!isLoaded && !isLoading) loadMedia(path, 'image');
+                        }}
+                      >
+                        {isLoaded && typeof mediaState === 'string' ? (
+                          <img 
+                            src={mediaState} 
+                            alt={photo.name} 
+                            className="w-full h-full object-cover rounded-lg"
+                          />
+                        ) : (
+                          <div className={`text-xs text-center p-2 ${hasError ? 'text-red-600' : 'text-gray-400'}`}>
+                            {isLoading && <p className="mb-1">Loading...</p>}
+                            {hasError && (
+                              <>
+                                <p className="mb-1 font-semibold">⚠ Error</p>
+                                <p className="text-xs">{hasError}</p>
+                              </>
+                            )}
+                            {!isLoading && !hasError && (
+                              <>
+                                <p className="mb-1">Click to load</p>
+                                <p className="text-xs">{photo.name}</p>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </DialogTrigger>
+                    {isLoaded && typeof mediaState === 'string' && (
+                      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+                        <img src={mediaState} alt={path} className="w-full h-auto max-h-[75vh] object-contain mx-auto" />
+                        <p className="text-sm text-gray-500 mt-2">{path}</p>
+                      </DialogContent>
+                    )}
+                  </Dialog>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
 
         <TabsContent value="videos" className="mt-4">
           {videosList.length === 0 ? (
@@ -523,9 +573,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
                           }}
                         >
                           <div className="text-center">
-                            {isLoading && (
-                              <p className="text-gray-600 font-medium">Loading video...</p>
-                            )}
+                            {isLoading && <p className="text-gray-600 font-medium">Loading video...</p>}
                             {hasError ? (
                               <>
                                 <p className="text-red-700 font-medium mb-2">⚠ Failed to load</p>
@@ -534,7 +582,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
                             ) : !isLoading && (
                               <>
                                 <p className="text-gray-600 font-medium mb-2">Click to load video</p>
-                                <p className="text-xs text-gray-500">{video.filename}</p>
+                                <p className="text-xs text-gray-500">{video.name}</p>
                                 <p className="text-xs text-gray-400">{(video.size / 1024 / 1024).toFixed(2)} MB</p>
                               </>
                             )}
@@ -545,13 +593,12 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
                           controls 
                           className="w-full rounded-lg"
                           style={{ maxHeight: '400px' }}
-                          onError={(e) => console.error('[FacebookViewer] Video error:', e)}
                         >
                           <source src={mediaState} type="video/mp4" />
                           Your browser does not support the video tag.
                         </video>
                       )}
-                      <p className="text-sm text-gray-500 mt-2">{video.filename}</p>
+                      <p className="text-sm text-gray-500 mt-2">{video.name}</p>
                       <p className="text-xs text-gray-400">{(video.size / 1024 / 1024).toFixed(2)} MB</p>
                     </CardContent>
                   </Card>
@@ -562,233 +609,15 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
         </TabsContent>
 
         <TabsContent value="comments" className="space-y-4 mt-4">
-          {comments.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                No comments found
-              </CardContent>
-            </Card>
-          ) : (
-            comments.map((comment, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <Avatar>
-                      <AvatarFallback className="bg-orange-500 text-white">
-                        {profile.name?.[0] || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <p className="font-semibold">{profile.name || 'You'}</p>
-                        {comment.on_post_by && (
-                          <span className="text-xs text-gray-500">
-                            commented on {comment.on_post_by}'s post
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-gray-700">{comment.text}</p>
-                      {comment.timestamp && (
-                        <p className="text-xs text-gray-500 mt-2">{comment.timestamp}</p>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="reels" className="space-y-4 mt-4">
-          {reels.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                No reels found
-              </CardContent>
-            </Card>
-          ) : (
-            reels.map((reel, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <p className="text-gray-700">{reel.text}</p>
-                  {reel.timestamp && <p className="text-xs text-gray-500 mt-2">{reel.timestamp}</p>}
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="checkins" className="space-y-4 mt-4">
-          {checkins.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                No check-ins found
-              </CardContent>
-            </Card>
-          ) : (
-            checkins.map((checkin, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <p className="text-gray-700">{checkin.location}</p>
-                  {checkin.timestamp && <p className="text-xs text-gray-500 mt-2">{checkin.timestamp}</p>}
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="likes" className="space-y-4 mt-4">
-          <Alert className="bg-blue-50 border-blue-200">
-            <AlertDescription className="text-sm text-blue-800">
-              This shows pages, posts, photos, and other content you've liked on Facebook.
-            </AlertDescription>
-          </Alert>
-          {likes.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                No likes found
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {likes.map((like, i) => (
-                <Card key={i}>
-                  <CardContent className="p-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">{like.item}</p>
-                        {like.details && <p className="text-xs text-gray-600 mt-1">{like.details}</p>}
-                      </div>
-                      {like.type && (
-                        <Badge variant="outline" className="text-xs">{like.type}</Badge>
-                      )}
-                    </div>
-                    {like.timestamp && <p className="text-xs text-gray-500 mt-2">{like.timestamp}</p>}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="events" className="space-y-4 mt-4">
-          {events.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                No events found
-              </CardContent>
-            </Card>
-          ) : (
-            events.map((event, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <p className="font-medium text-gray-900 flex-1">{event.name}</p>
-                    {event.rsvp && (
-                      <Badge className={
-                        event.rsvp.toLowerCase() === 'going' ? 'bg-green-500' :
-                        event.rsvp.toLowerCase() === 'interested' ? 'bg-blue-500' :
-                        event.rsvp.toLowerCase().includes('host') ? 'bg-purple-500' :
-                        'bg-gray-500'
-                      }>
-                        {event.rsvp}
-                      </Badge>
-                    )}
-                  </div>
-                  {event.location && (
-                    <p className="text-sm text-gray-600 flex items-center gap-1 mt-1">
-                      <MapPin className="w-3 h-3" />
-                      {event.location}
-                    </p>
-                  )}
-                  {event.details && event.details.length > 0 && (
-                    <p className="text-sm text-gray-700 mt-2">{event.details.substring(0, 200)}</p>
-                  )}
-                  {event.timestamp && <p className="text-xs text-gray-500 mt-2">{event.timestamp}</p>}
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="reviews" className="space-y-4 mt-4">
-          {reviews.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                No reviews found
-              </CardContent>
-            </Card>
-          ) : (
-            reviews.map((review, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  {review.place && (
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="font-medium text-gray-900">{review.place}</p>
-                      {review.rating && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-yellow-500">★</span>
-                          <span className="font-semibold">{review.rating}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <p className="text-gray-700 text-sm">{review.text}</p>
-                  {review.timestamp && <p className="text-xs text-gray-500 mt-2">{review.timestamp}</p>}
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="groups" className="space-y-4 mt-4">
-          {groups.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                No groups found
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {groups.map((group, i) => (
-                <Card key={i}>
-                  <CardContent className="p-3">
-                    <p className="font-medium text-gray-900">{group.name}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="marketplace" className="space-y-4 mt-4">
-          {marketplace.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                No marketplace items found
-              </CardContent>
-            </Card>
-          ) : (
-            marketplace.map((item, i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      {item.title && <p className="font-medium text-gray-900">{item.title}</p>}
-                      {item.price && <p className="text-lg font-bold text-green-600 mt-1">{item.price}</p>}
-                    </div>
-                    {item.status && (
-                      <Badge className={item.status === 'sold' ? 'bg-gray-500' : 'bg-green-500'}>
-                        {item.status}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-gray-700 text-sm">{item.text}</p>
-                  {item.timestamp && <p className="text-xs text-gray-500 mt-2">{item.timestamp}</p>}
-                </CardContent>
-              </Card>
-            ))
-          )}
+          <Card>
+            <CardContent className="p-8 text-center text-gray-500">
+              {isStreamingIndex ? (
+                `Found ${counts.commentsJsonFiles + counts.commentsHtmlFiles} comment files - Loading not yet implemented`
+              ) : (
+                comments.length === 0 ? 'No comments found' : `${comments.length} comments`
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
