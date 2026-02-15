@@ -34,12 +34,41 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   const isStreamingIndex = data?.isStreaming === true;
   const index = data?.index || {};
   const counts = data?.counts || {};
+  
+  // Default all count values to 0 if undefined
+  const safeCounts = {
+    photos: counts.photos || 0,
+    videos: counts.videos || 0,
+    postsJsonFiles: counts.postsJsonFiles || 0,
+    postsHtmlFiles: counts.postsHtmlFiles || 0,
+    friendsJsonFiles: counts.friendsJsonFiles || 0,
+    friendsHtmlFiles: counts.friendsHtmlFiles || 0,
+    messageThreads: counts.messageThreads || 0,
+    commentsJsonFiles: counts.commentsJsonFiles || 0,
+    commentsHtmlFiles: counts.commentsHtmlFiles || 0,
+    likesJsonFiles: counts.likesJsonFiles || 0,
+    likesHtmlFiles: counts.likesHtmlFiles || 0,
+    groupsJsonFiles: counts.groupsJsonFiles || 0,
+    groupsHtmlFiles: counts.groupsHtmlFiles || 0,
+    reviewsJsonFiles: counts.reviewsJsonFiles || 0,
+    reviewsHtmlFiles: counts.reviewsHtmlFiles || 0,
+    marketplaceJsonFiles: counts.marketplaceJsonFiles || 0,
+    marketplaceHtmlFiles: counts.marketplaceHtmlFiles || 0,
+    eventsJsonFiles: counts.eventsJsonFiles || 0,
+    eventsHtmlFiles: counts.eventsHtmlFiles || 0,
+    reelsJsonFiles: counts.reelsJsonFiles || 0,
+    reelsHtmlFiles: counts.reelsHtmlFiles || 0,
+    checkinsJsonFiles: counts.checkinsJsonFiles || 0,
+    checkinsHtmlFiles: counts.checkinsHtmlFiles || 0
+  };
 
   console.log('[FacebookViewer] Data received:', {
     isStreamingIndex,
     hasIndex: !!index,
-    counts,
-    indexKeys: Object.keys(index)
+    counts: safeCounts,
+    indexKeys: Object.keys(index),
+    debug: data?.debug,
+    samplePaths: data?.debug?.samplePaths?.slice(0, 10)
   });
 
   // Legacy parsed data (for non-streaming extractions)
@@ -222,6 +251,30 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
         </Alert>
       )}
 
+      {/* Debug Info Display */}
+      {data?.debug && (
+        <Alert className="bg-gray-50 border-gray-300">
+          <AlertDescription className="text-gray-700 text-xs font-mono">
+            <div className="space-y-1">
+              <div><strong>Debug Info:</strong></div>
+              <div>• Entries Parsed: {data.debug.entriesParsed || 0}</div>
+              <div>• Root Prefix: {data.debug.rootPrefix || 'none'}</div>
+              <div>• EOCD Found: {data.debug.eocdFound ? 'Yes' : 'No'}</div>
+              {data.debug.samplePaths && data.debug.samplePaths.length > 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer hover:text-blue-600">Sample Paths ({data.debug.samplePaths.length})</summary>
+                  <div className="mt-2 pl-4 max-h-48 overflow-y-auto">
+                    {data.debug.samplePaths.slice(0, 30).map((path, i) => (
+                      <div key={i} className="text-xs">{path}</div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Profile Header */}
       <Card className="border-none shadow-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white">
         <CardContent className="p-6">
@@ -262,43 +315,43 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex flex-wrap gap-2 mb-6 bg-transparent h-auto p-0">
           <TabsTrigger value="posts" className="bg-red-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-red-600 text-sm">
-            Posts ({isStreamingIndex ? (counts.postsJsonFiles + counts.postsHtmlFiles) : posts.length})
+            Posts ({isStreamingIndex ? (safeCounts.postsJsonFiles + safeCounts.postsHtmlFiles) : posts.length})
           </TabsTrigger>
           <TabsTrigger value="friends" className="bg-orange-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-orange-600 text-sm">
-            Friends ({isStreamingIndex ? (counts.friendsJsonFiles + counts.friendsHtmlFiles) : friends.length})
+            Friends ({isStreamingIndex ? (safeCounts.friendsJsonFiles + safeCounts.friendsHtmlFiles) : friends.length})
           </TabsTrigger>
           <TabsTrigger value="messages" className="bg-yellow-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-yellow-600 text-sm">
-            Chats ({isStreamingIndex ? counts.messageThreads : messages.length})
+            Chats ({isStreamingIndex ? safeCounts.messageThreads : messages.length})
           </TabsTrigger>
           <TabsTrigger value="photos" className="bg-green-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-green-600 text-sm">
-            Photos ({counts.photos || photosList.length})
+            Photos ({safeCounts.photos || photosList.length})
           </TabsTrigger>
           <TabsTrigger value="videos" className="bg-teal-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-teal-600 text-sm">
-            Videos ({counts.videos || videosList.length})
+            Videos ({safeCounts.videos || videosList.length})
           </TabsTrigger>
           <TabsTrigger value="comments" className="bg-blue-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-blue-600 text-sm">
-            Comments ({isStreamingIndex ? (counts.commentsJsonFiles + counts.commentsHtmlFiles) : comments.length})
+            Comments ({isStreamingIndex ? (safeCounts.commentsJsonFiles + safeCounts.commentsHtmlFiles) : comments.length})
           </TabsTrigger>
           <TabsTrigger value="likes" className="bg-indigo-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-indigo-600 text-sm">
-            Likes ({isStreamingIndex ? (counts.likesJsonFiles + counts.likesHtmlFiles) : likes.length})
+            Likes ({isStreamingIndex ? (safeCounts.likesJsonFiles + safeCounts.likesHtmlFiles) : likes.length})
           </TabsTrigger>
           <TabsTrigger value="groups" className="bg-purple-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-purple-600 text-sm">
-            Groups ({isStreamingIndex ? (counts.groupsJsonFiles + counts.groupsHtmlFiles) : groups.length})
+            Groups ({isStreamingIndex ? (safeCounts.groupsJsonFiles + safeCounts.groupsHtmlFiles) : groups.length})
           </TabsTrigger>
           <TabsTrigger value="reviews" className="bg-pink-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-pink-600 text-sm">
-            Reviews ({isStreamingIndex ? (counts.reviewsJsonFiles + counts.reviewsHtmlFiles) : reviews.length})
+            Reviews ({isStreamingIndex ? (safeCounts.reviewsJsonFiles + safeCounts.reviewsHtmlFiles) : reviews.length})
           </TabsTrigger>
           <TabsTrigger value="marketplace" className="bg-rose-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-rose-600 text-sm">
-            Marketplace ({isStreamingIndex ? (counts.marketplaceJsonFiles + counts.marketplaceHtmlFiles) : marketplace.length})
+            Marketplace ({isStreamingIndex ? (safeCounts.marketplaceJsonFiles + safeCounts.marketplaceHtmlFiles) : marketplace.length})
           </TabsTrigger>
           <TabsTrigger value="events" className="bg-amber-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-amber-600 text-sm">
-            Events ({isStreamingIndex ? (counts.eventsJsonFiles + counts.eventsHtmlFiles) : events.length})
+            Events ({isStreamingIndex ? (safeCounts.eventsJsonFiles + safeCounts.eventsHtmlFiles) : events.length})
           </TabsTrigger>
           <TabsTrigger value="reels" className="bg-cyan-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-cyan-600 text-sm">
-            Reels ({isStreamingIndex ? (counts.reelsJsonFiles + counts.reelsHtmlFiles) : reels.length})
+            Reels ({isStreamingIndex ? (safeCounts.reelsJsonFiles + safeCounts.reelsHtmlFiles) : reels.length})
           </TabsTrigger>
           <TabsTrigger value="checkins" className="bg-emerald-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-emerald-600 text-sm">
-            Check-ins ({isStreamingIndex ? (counts.checkinsJsonFiles + counts.checkinsHtmlFiles) : checkins.length})
+            Check-ins ({isStreamingIndex ? (safeCounts.checkinsJsonFiles + safeCounts.checkinsHtmlFiles) : checkins.length})
           </TabsTrigger>
         </TabsList>
 
@@ -307,7 +360,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             <Card>
               <CardContent className="p-8 text-center">
                 <p className="text-gray-600 mb-4">
-                  Found {counts.postsJsonFiles + counts.postsHtmlFiles} post files ({counts.postsJsonFiles} JSON, {counts.postsHtmlFiles} HTML)
+                  Found {safeCounts.postsJsonFiles + safeCounts.postsHtmlFiles} post files ({safeCounts.postsJsonFiles} JSON, {safeCounts.postsHtmlFiles} HTML)
                 </p>
                 <Button 
                   onClick={() => loadSection('posts')}
@@ -365,7 +418,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             <Card>
               <CardContent className="p-8 text-center">
                 <p className="text-gray-600 mb-4">
-                  Found {counts.friendsJsonFiles + counts.friendsHtmlFiles} friend files
+                  Found {safeCounts.friendsJsonFiles + safeCounts.friendsHtmlFiles} friend files
                 </p>
                 <Button 
                   onClick={() => loadSection('friends')}
@@ -422,7 +475,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             <Card>
               <CardContent className="p-8 text-center">
                 <p className="text-gray-600 mb-4">
-                  Found {counts.messageThreads} message threads
+                  Found {safeCounts.messageThreads} message threads
                 </p>
                 <Button 
                   onClick={() => loadSection('messages')}
@@ -633,7 +686,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <Card>
             <CardContent className="p-8 text-center text-gray-500">
               {isStreamingIndex ? (
-                `Found ${counts.commentsJsonFiles + counts.commentsHtmlFiles} comment files`
+                `Found ${safeCounts.commentsJsonFiles + safeCounts.commentsHtmlFiles} comment files`
               ) : (
                 comments.length === 0 ? 'No comments found' : `${comments.length} comments`
               )}
@@ -645,7 +698,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <Card>
             <CardContent className="p-8 text-center text-gray-500">
               {isStreamingIndex ? (
-                `Found ${counts.likesJsonFiles + counts.likesHtmlFiles} like/reaction files`
+                `Found ${safeCounts.likesJsonFiles + safeCounts.likesHtmlFiles} like/reaction files`
               ) : (
                 likes.length === 0 ? 'No likes found' : `${likes.length} likes`
               )}
@@ -657,7 +710,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <Card>
             <CardContent className="p-8 text-center text-gray-500">
               {isStreamingIndex ? (
-                `Found ${counts.groupsJsonFiles + counts.groupsHtmlFiles} group files`
+                `Found ${safeCounts.groupsJsonFiles + safeCounts.groupsHtmlFiles} group files`
               ) : (
                 groups.length === 0 ? 'No groups found' : `${groups.length} groups`
               )}
@@ -669,7 +722,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <Card>
             <CardContent className="p-8 text-center text-gray-500">
               {isStreamingIndex ? (
-                `Found ${counts.reviewsJsonFiles + counts.reviewsHtmlFiles} review files`
+                `Found ${safeCounts.reviewsJsonFiles + safeCounts.reviewsHtmlFiles} review files`
               ) : (
                 reviews.length === 0 ? 'No reviews found' : `${reviews.length} reviews`
               )}
@@ -681,7 +734,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <Card>
             <CardContent className="p-8 text-center text-gray-500">
               {isStreamingIndex ? (
-                `Found ${counts.marketplaceJsonFiles + counts.marketplaceHtmlFiles} marketplace files`
+                `Found ${safeCounts.marketplaceJsonFiles + safeCounts.marketplaceHtmlFiles} marketplace files`
               ) : (
                 marketplace.length === 0 ? 'No marketplace items found' : `${marketplace.length} items`
               )}
@@ -693,7 +746,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <Card>
             <CardContent className="p-8 text-center text-gray-500">
               {isStreamingIndex ? (
-                `Found ${counts.eventsJsonFiles + counts.eventsHtmlFiles} event files`
+                `Found ${safeCounts.eventsJsonFiles + safeCounts.eventsHtmlFiles} event files`
               ) : (
                 events.length === 0 ? 'No events found' : `${events.length} events`
               )}
@@ -705,7 +758,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <Card>
             <CardContent className="p-8 text-center text-gray-500">
               {isStreamingIndex ? (
-                `Found ${counts.reelsJsonFiles + counts.reelsHtmlFiles} reels files`
+                `Found ${safeCounts.reelsJsonFiles + safeCounts.reelsHtmlFiles} reels files`
               ) : (
                 reels.length === 0 ? 'No reels found' : `${reels.length} reels`
               )}
@@ -717,7 +770,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <Card>
             <CardContent className="p-8 text-center text-gray-500">
               {isStreamingIndex ? (
-                `Found ${counts.checkinsJsonFiles + counts.checkinsHtmlFiles} check-in files`
+                `Found ${safeCounts.checkinsJsonFiles + safeCounts.checkinsHtmlFiles} check-in files`
               ) : (
                 checkins.length === 0 ? 'No check-ins found' : `${checkins.length} check-ins`
               )}
