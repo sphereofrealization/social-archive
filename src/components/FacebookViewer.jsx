@@ -85,8 +85,13 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   const reels = isStreamingIndex ? (Array.isArray(loadedSections.reels) ? loadedSections.reels : []) : (Array.isArray(data?.reels) ? data.reels : []);
   const checkins = isStreamingIndex ? (Array.isArray(loadedSections.checkins) ? loadedSections.checkins : []) : (Array.isArray(data?.checkins) ? data.checkins : []);
   
-  const photosList = isStreamingIndex ? (index.photos || []) : (Array.isArray(data?.photos) ? data.photos : []);
-  const videosList = isStreamingIndex ? (index.videos || []) : (Array.isArray(data?.videos) ? data.videos : []);
+  const photosList = isStreamingIndex 
+    ? (index.photos && Array.isArray(index.photos) ? index.photos : [])
+    : (Array.isArray(data?.photos) ? data.photos : []);
+    
+  const videosList = isStreamingIndex 
+    ? (index.videos && Array.isArray(index.videos) ? index.videos : [])
+    : (Array.isArray(data?.videos) ? data.videos : []);
 
   // Load media on demand
   const loadMedia = async (mediaPath, type) => {
