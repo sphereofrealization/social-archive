@@ -199,17 +199,23 @@ export async function parsePostsFromHtml(htmlString, sourceFile) {
       const seenSrc = new Set();
       
       images.forEach(img => {
-        const src = img.src;
-        if (!seenSrc.has(src)) {
-          const caption = getText(img.parentElement) || '';
-          items.push({
-            text: caption.slice(0, 300) || '(media)',
-            mediaRefs: [src],
-            sourceFile
-          });
-          seenSrc.add(src);
-        }
-      });
+         const src = img.src;
+         if (!seenSrc.has(src)) {
+           const caption = getText(img.parentElement) || '';
+           const item = {
+             text: caption.slice(0, 300) || '(media)',
+             mediaRefs: [src],
+             sourceFile
+           };
+
+           // Add debug fields
+           item._mediaRefsRaw = [src];
+           item._mediaRefsNormalized = [normalizeZipPath('', src)];
+
+           items.push(item);
+           seenSrc.add(src);
+         }
+       });
       itemsBeforeFilter = items.length;
       
     } else {
