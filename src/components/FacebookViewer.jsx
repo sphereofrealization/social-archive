@@ -142,29 +142,67 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           throw new Error('No posts files found in index');
         }
 
-        const filePath = selectedFiles[0];
-        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+        // PHASE 1: Probe first file to understand structure
+        const probeFilePath = selectedFiles[0];
+        const probeResponseType = probeFilePath.endsWith('.json') ? 'json' : 'text';
+        addLog(sectionName, 'PROBE', `Probing structure of: ${probeFilePath}`);
 
-        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
-
-        const response = await base44.functions.invoke('getArchiveEntry', {
+        const probeResponse = await base44.functions.invoke('getArchiveEntry', {
           zipUrl: archiveUrl,
-          entryPath: filePath,
-          responseType
+          entryPath: probeFilePath,
+          responseType: probeResponseType
         });
 
-        addLog(sectionName, 'RESPONSE', `Status: ${response.status}, Size: ${response.data?.content?.length || 0} bytes`);
+        if (probeResponseType === 'text' && probeResponse.data?.content) {
+          const probeResult = probeFacebookHtmlStructure(probeResponse.data.content, probeFilePath);
+          addLog(sectionName, 'STRUCTURE', JSON.stringify(probeResult, null, 2), 'info');
+        }
 
-        if (responseType === 'json' && response.data?.content) {
-          const jsonData = response.data.content;
-          const result = parseJsonGeneric(jsonData, filePath);
+        // PHASE 3: Load all HTML files with concurrency=2
+        const htmlFiles = selectedFiles.filter(f => f.endsWith('.html'));
+        const jsonFiles = selectedFiles.filter(f => f.endsWith('.json'));
+
+        if (jsonFiles.length > 0) {
+          // Prefer JSON if available
+          const filePath = jsonFiles[0];
+          const response = await base44.functions.invoke('getArchiveEntry', {
+            zipUrl: archiveUrl,
+            entryPath: filePath,
+            responseType: 'json'
+          });
+          const result = parseJsonGeneric(response.data.content, filePath);
           parsedData = result.items.slice(0, 50);
           addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
-        } else if (responseType === 'text' && response.data?.content) {
-          const result = await parsePostsFromHtml(response.data.content, filePath);
-          parsedData = result.items.slice(0, 50);
-          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
-          if (result.error) addLog(sectionName, 'PARSE_ERROR', result.error, 'error');
+        } else if (htmlFiles.length > 0) {
+          // Load HTML files with concurrency=2
+          addLog(sectionName, 'LOAD_HTML', `Loading ${htmlFiles.length} HTML files...`);
+          const allPosts = [];
+          const concurrency = 2;
+
+          for (let i = 0; i < htmlFiles.length; i += concurrency) {
+            const batch = htmlFiles.slice(i, i + concurrency);
+            const batchResults = await Promise.all(
+              batch.map(async (filePath) => {
+                try {
+                  const resp = await base44.functions.invoke('getArchiveEntry', {
+                    zipUrl: archiveUrl,
+                    entryPath: filePath,
+                    responseType: 'text'
+                  });
+                  const result = await parsePostsFromHtml(resp.data.content, filePath);
+                  return result.items || [];
+                } catch (err) {
+                  console.error(`Failed to load ${filePath}:`, err);
+                  return [];
+                }
+              })
+            );
+            allPosts.push(...batchResults.flat());
+            addLog(sectionName, 'PROGRESS', `Loaded ${i + batch.length}/${htmlFiles.length} files → ${allPosts.length} posts so far`);
+          }
+
+          parsedData = allPosts.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from ${htmlFiles.length} HTML files`, 'success', parsedData.length);
         }
       } else if (sectionName === 'friends') {
         selectedFiles = normalized.friendFiles.json.length > 0 ? normalized.friendFiles.json : normalized.friendFiles.html;
