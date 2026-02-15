@@ -284,24 +284,33 @@ export async function parseLikesFromHtml(htmlString, sourceFile) {
     const doc = parseHtml(htmlString);
     if (!doc) throw new Error('Failed to parse HTML');
     
+    const probe = probeFacebookExportHtml(htmlString, sourceFile);
     const items = [];
     
-    // Likes are usually simple lists
-    doc.querySelectorAll('li, div[data-like]').forEach(el => {
+    // Likes are usually simple lists or table rows
+    let elements = doc.querySelectorAll('li, div[data-like]');
+    if (elements.length === 0) {
+      elements = doc.querySelectorAll('tr');
+    }
+    if (elements.length === 0) {
+      elements = doc.querySelectorAll('.contents > div, .contents > section');
+    }
+    
+    elements.forEach(el => {
       const text = getText(el);
       if (text && text.length > 0) {
         items.push({
-          text,
+          text: text.slice(0, 300),
           sourceFile
         });
       }
     });
     
     console.log(`[parseLikesFromHtml] Extracted ${items.length} likes from ${sourceFile}`);
-    return { items, sourceFile };
+    return { items, sourceFile, probe: items.length === 0 ? probe : undefined };
   } catch (err) {
     console.error(`[parseLikesFromHtml] Error:`, err);
-    return { items: [], sourceFile, error: err.message };
+    return { items: [], sourceFile, error: err.message, probe: probeFacebookExportHtml(htmlString, sourceFile) };
   }
 }
 
