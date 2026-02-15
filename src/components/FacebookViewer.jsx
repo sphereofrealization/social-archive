@@ -142,28 +142,12 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           throw new Error('No posts files found in index');
         }
 
-        // PHASE 1: Probe first file to understand structure
-        const probeFilePath = selectedFiles[0];
-        const probeResponseType = probeFilePath.endsWith('.json') ? 'json' : 'text';
-        addLog(sectionName, 'PROBE', `Probing structure of: ${probeFilePath}`);
-
-        const probeResponse = await base44.functions.invoke('getArchiveEntry', {
-          zipUrl: archiveUrl,
-          entryPath: probeFilePath,
-          responseType: probeResponseType
-        });
-
-        if (probeResponseType === 'text' && probeResponse.data?.content) {
-          const probeResult = probeFacebookHtmlStructure(probeResponse.data.content, probeFilePath);
-          addLog(sectionName, 'STRUCTURE', JSON.stringify(probeResult, null, 2), 'info');
-        }
-
-        // PHASE 3: Load all HTML files with concurrency=2
+        // Load all HTML files with concurrency=2 + collect probes
         const htmlFiles = selectedFiles.filter(f => f.endsWith('.html'));
         const jsonFiles = selectedFiles.filter(f => f.endsWith('.json'));
+        const debugRawFiles = [];
 
         if (jsonFiles.length > 0) {
-          // Prefer JSON if available
           const filePath = jsonFiles[0];
           const response = await base44.functions.invoke('getArchiveEntry', {
             zipUrl: archiveUrl,
@@ -174,8 +158,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           parsedData = result.items.slice(0, 50);
           addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
         } else if (htmlFiles.length > 0) {
-          // Load HTML files with concurrency=2
-          addLog(sectionName, 'LOAD_HTML', `Loading ${htmlFiles.length} HTML files...`);
+          addLog(sectionName, 'LOAD_HTML', `Loading ${htmlFiles.length} HTML files with concurrency=2...`);
           const allPosts = [];
           const concurrency = 2;
 
@@ -190,9 +173,23 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                     responseType: 'text'
                   });
                   const result = await parsePostsFromHtml(resp.data.content, filePath);
+
+                  // Capture probe if parse yielded 0
+                  if (result.items.length === 0 && result.probe) {
+                    debugRawFiles.push({
+                      filePath,
+                      probe: result.probe,
+                      debug: result.debug
+                    });
+                    addLog(sectionName, 'MISMATCH', `File: ${filePath} | Structure: ${JSON.stringify(result.probe.counts)}`, 'warn');
+                  } else {
+                    addLog(sectionName, 'FILE_OK', `${filePath} → ${result.items.length} items`, 'success');
+                  }
+
                   return result.items || [];
                 } catch (err) {
                   console.error(`Failed to load ${filePath}:`, err);
+                  addLog(sectionName, 'FILE_ERROR', `${filePath} → ${err.message}`, 'error');
                   return [];
                 }
               })
@@ -203,6 +200,18 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
           parsedData = allPosts.slice(0, 50);
           addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from ${htmlFiles.length} HTML files`, 'success', parsedData.length);
+
+          // Store raw files for fallback rendering
+          if (parsedData.length === 0 && htmlFiles.length > 0) {
+            setLoadedSections(prev => ({ 
+              ...prev, 
+              [sectionName]: { 
+                items: [],
+                rawFiles: htmlFiles,
+                debugRawFiles
+              }
+            }));
+          }
         }
       } else if (sectionName === 'friends') {
         selectedFiles = normalized.friendFiles.json.length > 0 ? normalized.friendFiles.json : normalized.friendFiles.html;
