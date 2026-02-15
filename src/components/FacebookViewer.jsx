@@ -206,65 +206,201 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           messages: [],
           totalMessages: thread.messageFiles.length
         }));
+        addLog(sectionName, 'PARSE', `Found ${parsedData.length} message threads`, 'success', parsedData.length);
       } else if (sectionName === 'comments') {
-        const files = normalized.commentFiles.json.length > 0 ? normalized.commentFiles.json : normalized.commentFiles.html;
-        if (files.length === 0) {
+        selectedFiles = normalized.commentFiles.json.length > 0 ? normalized.commentFiles.json : normalized.commentFiles.html;
+        if (selectedFiles.length === 0) {
           throw new Error('No comments files found');
         }
-        parsedData = [{ text: `Found ${files.length} comment files` }];
+        const filePath = selectedFiles[0];
+        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+
+        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
+
+        const response = await base44.functions.invoke('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: filePath,
+          responseType
+        });
+
+        if (responseType === 'json' && response.data?.content) {
+          const result = parseJsonGeneric(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
+        } else if (responseType === 'text' && response.data?.content) {
+          const result = await parseCommentsFromHtml(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+        }
       } else if (sectionName === 'likes') {
-        const files = normalized.likeFiles.json.length > 0 ? normalized.likeFiles.json : normalized.likeFiles.html;
-        if (files.length === 0) {
+        selectedFiles = normalized.likeFiles.json.length > 0 ? normalized.likeFiles.json : normalized.likeFiles.html;
+        if (selectedFiles.length === 0) {
           throw new Error('No likes files found');
         }
-        parsedData = [{ text: `Found ${files.length} like/reaction files` }];
+        const filePath = selectedFiles[0];
+        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+
+        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
+
+        const response = await base44.functions.invoke('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: filePath,
+          responseType
+        });
+
+        if (responseType === 'json' && response.data?.content) {
+          const result = parseJsonGeneric(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
+        } else if (responseType === 'text' && response.data?.content) {
+          const result = await parseLikesFromHtml(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+        }
       } else if (sectionName === 'groups') {
-        const files = normalized.groupFiles.json.length > 0 ? normalized.groupFiles.json : normalized.groupFiles.html;
-        if (files.length === 0) {
+        selectedFiles = normalized.groupFiles.json.length > 0 ? normalized.groupFiles.json : normalized.groupFiles.html;
+        if (selectedFiles.length === 0) {
           throw new Error('No group files found');
         }
-        parsedData = [{ text: `Found ${files.length} group files` }];
+        const filePath = selectedFiles[0];
+        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+
+        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
+
+        const response = await base44.functions.invoke('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: filePath,
+          responseType
+        });
+
+        if (responseType === 'json' && response.data?.content) {
+          const result = parseJsonGeneric(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
+        } else if (responseType === 'text' && response.data?.content) {
+          const result = await parseGroupsFromHtml(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+        }
       } else if (sectionName === 'reviews') {
-        const files = normalized.reviewFiles.json.length > 0 ? normalized.reviewFiles.json : normalized.reviewFiles.html;
-        if (files.length === 0) {
+        selectedFiles = normalized.reviewFiles.json.length > 0 ? normalized.reviewFiles.json : normalized.reviewFiles.html;
+        if (selectedFiles.length === 0) {
           throw new Error('No review files found');
         }
-        parsedData = [{ text: `Found ${files.length} review files` }];
+        parsedData = [{ text: `Found ${selectedFiles.length} review files` }];
+        addLog(sectionName, 'PARSE', `Found ${selectedFiles.length} review files`, 'info', selectedFiles.length);
       } else if (sectionName === 'marketplace') {
-        const files = normalized.marketplaceFiles.json.length > 0 ? normalized.marketplaceFiles.json : normalized.marketplaceFiles.html;
-        if (files.length === 0) {
+        selectedFiles = normalized.marketplaceFiles.json.length > 0 ? normalized.marketplaceFiles.json : normalized.marketplaceFiles.html;
+        if (selectedFiles.length === 0) {
           throw new Error('No marketplace files found');
         }
-        parsedData = [{ text: `Found ${files.length} marketplace files` }];
+        const filePath = selectedFiles[0];
+        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+
+        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
+
+        const response = await base44.functions.invoke('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: filePath,
+          responseType
+        });
+
+        if (responseType === 'json' && response.data?.content) {
+          const result = parseJsonGeneric(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
+        } else if (responseType === 'text' && response.data?.content) {
+          const result = await parseMarketplaceFromHtml(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+        }
       } else if (sectionName === 'events') {
-        const files = normalized.eventFiles.json.length > 0 ? normalized.eventFiles.json : normalized.eventFiles.html;
-        if (files.length === 0) {
+        selectedFiles = normalized.eventFiles.json.length > 0 ? normalized.eventFiles.json : normalized.eventFiles.html;
+        if (selectedFiles.length === 0) {
           throw new Error('No event files found');
         }
-        parsedData = [{ text: `Found ${files.length} event files` }];
+        const filePath = selectedFiles[0];
+        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+
+        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
+
+        const response = await base44.functions.invoke('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: filePath,
+          responseType
+        });
+
+        if (responseType === 'json' && response.data?.content) {
+          const result = parseJsonGeneric(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
+        } else if (responseType === 'text' && response.data?.content) {
+          const result = await parseEventsFromHtml(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+        }
       } else if (sectionName === 'reels') {
-        const files = normalized.reelFiles.json.length > 0 ? normalized.reelFiles.json : normalized.reelFiles.html;
-        if (files.length === 0) {
+        selectedFiles = normalized.reelFiles.json.length > 0 ? normalized.reelFiles.json : normalized.reelFiles.html;
+        if (selectedFiles.length === 0) {
           throw new Error('No reel files found');
         }
-        parsedData = [{ text: `Found ${files.length} reel files` }];
+        const filePath = selectedFiles[0];
+        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+
+        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
+
+        const response = await base44.functions.invoke('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: filePath,
+          responseType
+        });
+
+        if (responseType === 'json' && response.data?.content) {
+          const result = parseJsonGeneric(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
+        } else if (responseType === 'text' && response.data?.content) {
+          const result = await parseReelsFromHtml(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+        }
       } else if (sectionName === 'checkins') {
-        const files = normalized.checkinFiles.json.length > 0 ? normalized.checkinFiles.json : normalized.checkinFiles.html;
-        if (files.length === 0) {
+        selectedFiles = normalized.checkinFiles.json.length > 0 ? normalized.checkinFiles.json : normalized.checkinFiles.html;
+        if (selectedFiles.length === 0) {
           throw new Error('No check-in files found');
         }
-        parsedData = [{ text: `Found ${files.length} check-in files` }];
+        const filePath = selectedFiles[0];
+        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+
+        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
+
+        const response = await base44.functions.invoke('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: filePath,
+          responseType
+        });
+
+        if (responseType === 'json' && response.data?.content) {
+          const result = parseJsonGeneric(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
+        } else if (responseType === 'text' && response.data?.content) {
+          const result = await parseCheckinsFromHtml(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+        }
       }
 
       setLoadedSections(prev => ({ ...prev, [sectionName]: parsedData }));
       console.log(`[FacebookViewer] Loaded ${parsedData.length} ${sectionName}`);
-    } catch (err) {
+      } catch (err) {
       console.error(`[FacebookViewer] Failed to load ${sectionName}:`, err);
+      addLog(sectionName, 'ERROR', err.message, 'error');
       setLoadedSections(prev => ({ ...prev, [sectionName]: { error: err.message } }));
-    } finally {
+      } finally {
       setLoadingSection(null);
-    }
-  };
+      }
+      };
 
   // Legacy parsed data (fallback for old format)
   const profile = data?.profile || {};
