@@ -220,15 +220,17 @@ export async function parsePostsFromHtml(htmlString, sourceFile) {
       }
     });
     
+    const probe = items.length === 0 ? probeFacebookExportHtml(htmlString, sourceFile) : undefined;
     console.log(`[parsePostsFromHtml] blocks=${blocksFoundCount} posts=${items.length} withText=${postsWithTextCount} withMedia=${postsWithMediaCount}`);
     return {
       items,
       sourceFile,
-      debug: { blocksFoundCount, postsExtractedCount: items.length, postsWithTextCount, postsWithMediaCount }
+      debug: { blocksFoundCount, postsExtractedCount: items.length, postsWithTextCount, postsWithMediaCount },
+      probe
     };
   } catch (err) {
     console.error(`[parsePostsFromHtml] Error:`, err);
-    return { items: [], sourceFile, error: err.message, debug: { blocksFoundCount: 0, postsExtractedCount: 0 } };
+    return { items: [], sourceFile, error: err.message, debug: { blocksFoundCount: 0, postsExtractedCount: 0 }, probe: probeFacebookExportHtml(htmlString, sourceFile) };
   }
 }
 
