@@ -974,36 +974,60 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
         <TabsContent value="likes" className="space-y-4 mt-4">
           {isStreamingIndex && !loadedSections.likes ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-600 mb-4">
-                  Found {normalized.likeFiles.html.length + normalized.likeFiles.json.length} like/reaction files
-                </p>
-                <Button 
-                  onClick={() => loadSection('likes')}
-                  disabled={loadingSection === 'likes'}
-                  className="bg-indigo-600 hover:bg-indigo-700"
-                >
-                  {loadingSection === 'likes' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading Likes...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Load Likes
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Files Detected ({normalized.likeFiles.html.length + normalized.likeFiles.json.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {normalized.likeFiles.json.map((file, i) => (
+                    <div key={`json-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                  {normalized.likeFiles.html.map((file, i) => (
+                    <div key={`html-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Button 
+                onClick={() => loadSection('likes')}
+                disabled={loadingSection === 'likes'}
+                className="w-full bg-indigo-600 hover:bg-indigo-700"
+              >
+                {loadingSection === 'likes' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading Likes...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Load & Parse Likes
+                  </>
+                )}
+              </Button>
+            </div>
           ) : (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                {likes.length === 0 ? 'No likes found' : `${likes.length} likes`}
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              {likes.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-gray-500">
+                    No likes found
+                  </CardContent>
+                </Card>
+              ) : (
+                likes.map((like, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <p className="text-sm">{like.text || like.name || JSON.stringify(like).slice(0, 200)}</p>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
           )}
         </TabsContent>
 
