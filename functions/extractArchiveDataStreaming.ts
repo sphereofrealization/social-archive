@@ -1,8 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import JSZip from 'npm:jszip@3.10.1';
 
 const TIME_LIMIT_MS = 25000;
-const MAX_FILES_TO_SAMPLE = 5; // Sample fewer files for large archives
+const LARGE_ZIP_THRESHOLD = 50 * 1024 * 1024; // 50MB - only use index-only mode above this
 
 Deno.serve(async (req) => {
   const startTime = Date.now();
@@ -16,7 +15,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { fileUrl } = body;
+    const { fileUrl, debugMode } = body;
     
     if (!fileUrl) {
       return Response.json({ error: 'Missing fileUrl' }, { status: 400 });
@@ -27,28 +26,44 @@ Deno.serve(async (req) => {
     const debug = {
       url: fileUrl,
       headStatus: null,
-      fileSize: null,
+      contentLength: null,
+      contentType: null,
+      acceptRanges: null,
+      etag: null,
       rangeProbeStatus: null,
       rangeProbeContentRange: null,
+      firstBytesHex: null,
       tailStatus: null,
+      tailContentRange: null,
       tailBytesRead: null,
+      tailLast128Hex: null,
       eocdFound: false,
+      eocdOffsetInTail: -1,
       zip64Detected: false,
       cdOffset: null,
       cdSize: null,
+      cdEntriesExpected: null,
+      cdStatus: null,
+      cdContentRange: null,
+      cdBytesRead: null,
       entriesParsed: 0,
+      samplePaths: [],
       redirected: false,
       finalUrl: null,
-      samplePaths: []
+      parsingError: null
     };
 
-    // Step 1: Check file accessibility and size
+    // Step 1: HEAD request - file accessibility and metadata
     let headResponse;
     try {
       headResponse = await fetch(fileUrl, { method: 'HEAD', redirect: 'follow' });
       debug.headStatus = headResponse.status;
       debug.finalUrl = headResponse.url;
       debug.redirected = headResponse.url !== fileUrl;
+      debug.contentLength = parseInt(headResponse.headers.get('content-length') || '0');
+      debug.contentType = headResponse.headers.get('content-type');
+      debug.acceptRanges = headResponse.headers.get('accept-ranges');
+      debug.etag = headResponse.headers.get('etag');
       
       if (!headResponse.ok) {
         return Response.json({ 
@@ -65,10 +80,7 @@ Deno.serve(async (req) => {
       }, { status: 500 });
     }
 
-    const contentLength = parseInt(headResponse.headers.get('content-length') || '0');
-    const acceptRangesHeader = headResponse.headers.get('accept-ranges');
-    debug.fileSize = contentLength;
-    
+    const contentLength = debug.contentLength;
     if (contentLength === 0) {
       return Response.json({
         ok: false,
@@ -77,9 +89,9 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
     
-    console.log('[extractArchiveDataStreaming] File size:', contentLength, 'Accept-Ranges:', acceptRangesHeader);
+    console.log('[extractArchiveDataStreaming] File size:', contentLength, 'Accept-Ranges:', debug.acceptRanges);
 
-    // Step 2: Actively verify range support with probe (CRITICAL: use finalUrl if redirected)
+    // Step 2: Range probe - verify HTTP 206 support
     const targetUrl = debug.finalUrl || fileUrl;
     let rangeTestResponse;
     try {
@@ -100,14 +112,41 @@ Deno.serve(async (req) => {
       return Response.json({ 
         ok: false,
         error: `Range requests not supported (got HTTP ${rangeTestResponse.status}, expected 206)`,
-        details: 'Server must support HTTP Range requests for large file extraction. Configure CORS properly.',
+        details: 'Server must support HTTP Range requests for streaming extraction.',
         debug
       }, { status: 400 });
     }
     
     console.log('[extractArchiveDataStreaming] Range requests verified (HTTP 206)');
 
-    // Step 3: Read ZIP end-of-central-directory (last 128KB to find EOCD)
+    // Step 3: Read first 64 bytes - verify ZIP signature
+    let firstBytesResponse;
+    try {
+      firstBytesResponse = await fetch(targetUrl, {
+        headers: { 'Range': 'bytes=0-63' }
+      });
+      const firstBuffer = await firstBytesResponse.arrayBuffer();
+      const firstBytes = new Uint8Array(firstBuffer);
+      debug.firstBytesHex = Array.from(firstBytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      
+      // ZIP must start with local file header: 0x504b0304
+      if (firstBytes[0] !== 0x50 || firstBytes[1] !== 0x4b || 
+          firstBytes[2] !== 0x03 || firstBytes[3] !== 0x04) {
+        return Response.json({
+          ok: false,
+          error: 'Not a valid ZIP file (missing local file header signature)',
+          debug
+        }, { status: 400 });
+      }
+    } catch (err) {
+      return Response.json({
+        ok: false,
+        error: `Failed to read ZIP header: ${err.message}`,
+        debug
+      }, { status: 500 });
+    }
+
+    // Step 4: Read tail (last 128KB) - locate EOCD
     const tailSize = Math.min(131072, contentLength);  // 128KB
     const tailStart = contentLength - tailSize;
     
@@ -117,6 +156,7 @@ Deno.serve(async (req) => {
         headers: { 'Range': `bytes=${tailStart}-${contentLength - 1}` }
       });
       debug.tailStatus = tailResponse.status;
+      debug.tailContentRange = tailResponse.headers.get('content-range');
       debug.tailBytesRead = tailSize;
     } catch (err) {
       return Response.json({
@@ -136,76 +176,70 @@ Deno.serve(async (req) => {
 
     const tailBuffer = await tailResponse.arrayBuffer();
     const tailBytes = new Uint8Array(tailBuffer);
+    debug.tailLast128Hex = Array.from(tailBytes.slice(-128)).map(b => b.toString(16).padStart(2, '0')).join(' ');
 
-    // Parse ZIP end-of-central-directory record (signature: 0x06054b50)
+    // Search for EOCD signature: 0x06054b50 (little-endian: 50 4b 05 06)
     let eocdOffset = -1;
     for (let i = tailBytes.length - 22; i >= 0; i--) {
       if (tailBytes[i] === 0x50 && tailBytes[i+1] === 0x4b && 
           tailBytes[i+2] === 0x05 && tailBytes[i+3] === 0x06) {
         eocdOffset = i;
         debug.eocdFound = true;
+        debug.eocdOffsetInTail = i;
         break;
       }
     }
 
     if (eocdOffset === -1) {
-      // Include tail hex snippet for debugging
-      const lastBytes = Array.from(tailBytes.slice(-50)).map(b => b.toString(16).padStart(2, '0')).join(' ');
       return Response.json({ 
         ok: false,
         error: 'Invalid ZIP file: End-of-central-directory signature not found',
-        debug: { ...debug, lastBytesHex: lastBytes }
+        debug
       }, { status: 400 });
     }
 
-    // Read central directory metadata
-    const readU16LE = (offset) => tailBytes[offset] | (tailBytes[offset + 1] << 8);
-    const readU32LE = (offset) => tailBytes[offset] | (tailBytes[offset + 1] << 8) | 
-                                   (tailBytes[offset + 2] << 16) | (tailBytes[offset + 3] << 24);
-
-    let totalEntries = readU16LE(eocdOffset + 10);
-    let cdSize = readU32LE(eocdOffset + 12);
-    let cdOffset = readU32LE(eocdOffset + 16);
+    // Step 5: Parse EOCD using DataView for proper little-endian
+    const eocdView = new DataView(tailBuffer, eocdOffset);
+    let totalEntries = eocdView.getUint16(10, true); // entry count (little-endian)
+    let cdSize = eocdView.getUint32(12, true);      // central directory size
+    let cdOffset = eocdView.getUint32(16, true);    // central directory offset
 
     debug.cdOffset = cdOffset;
     debug.cdSize = cdSize;
+    debug.cdEntriesExpected = totalEntries;
 
-    // Check for ZIP64 format (fields are 0xFFFF or 0xFFFFFFFF)
+    // Check for ZIP64 format
     if (totalEntries === 0xFFFF || cdSize === 0xFFFFFFFF || cdOffset === 0xFFFFFFFF) {
       debug.zip64Detected = true;
-      console.log('[extractArchiveDataStreaming] ZIP64 detected, attempting to parse ZIP64 EOCD');
+      console.log('[extractArchiveDataStreaming] ZIP64 detected');
       
       // ZIP64 end-of-central-directory locator is 20 bytes before EOCD
       const zip64LocatorOffset = eocdOffset - 20;
       if (zip64LocatorOffset >= 0) {
+        const locatorView = new DataView(tailBuffer, zip64LocatorOffset);
         // Verify ZIP64 locator signature: 0x07064b50
-        if (tailBytes[zip64LocatorOffset] === 0x50 && tailBytes[zip64LocatorOffset+1] === 0x4b &&
-            tailBytes[zip64LocatorOffset+2] === 0x06 && tailBytes[zip64LocatorOffset+3] === 0x07) {
+        if (locatorView.getUint32(0, true) === 0x07064b50) {
+          const zip64EOCDOffset = locatorView.getUint32(8, true); // Use lower 32 bits
           
-          // Read ZIP64 EOCD offset (use lower 32 bits)
-          const zip64EOCDOffset = readU32LE(zip64LocatorOffset + 8);
-          
-          // Fetch ZIP64 EOCD record
+          // Fetch ZIP64 EOCD record (56 bytes minimum)
           try {
             const zip64Response = await fetch(targetUrl, {
-              headers: { 'Range': `bytes=${zip64EOCDOffset}-${zip64EOCDOffset + 56 - 1}` }
+              headers: { 'Range': `bytes=${zip64EOCDOffset}-${zip64EOCDOffset + 55}` }
             });
             
             if (zip64Response.ok && zip64Response.status === 206) {
               const zip64Buffer = await zip64Response.arrayBuffer();
-              const zip64Bytes = new Uint8Array(zip64Buffer);
+              const zip64View = new DataView(zip64Buffer);
               
               // Verify ZIP64 EOCD signature: 0x06064b50
-              if (zip64Bytes[0] === 0x50 && zip64Bytes[1] === 0x4b && 
-                  zip64Bytes[2] === 0x06 && zip64Bytes[3] === 0x06) {
-                
-                // Read 64-bit values (use lower 32 bits for JS safety)
-                totalEntries = readU32LE.call({ tailBytes: zip64Bytes }, 32);
-                cdSize = readU32LE.call({ tailBytes: zip64Bytes }, 40);
-                cdOffset = readU32LE.call({ tailBytes: zip64Bytes }, 48);
+              if (zip64View.getUint32(0, true) === 0x06064b50) {
+                totalEntries = zip64View.getUint32(32, true); // Use lower 32 bits
+                cdSize = zip64View.getUint32(40, true);
+                cdOffset = zip64View.getUint32(48, true);
                 
                 debug.cdOffset = cdOffset;
                 debug.cdSize = cdSize;
+                debug.cdEntriesExpected = totalEntries;
                 
                 console.log('[extractArchiveDataStreaming] ZIP64 parsed:', { totalEntries, cdSize, cdOffset });
               }
@@ -231,7 +265,7 @@ Deno.serve(async (req) => {
 
     console.log('[extractArchiveDataStreaming] ZIP metadata:', { totalEntries, cdSize, cdOffset });
 
-    // Step 4: Read central directory
+    // Step 6: Fetch central directory
     if (cdSize > 10 * 1024 * 1024) {
       console.log('[extractArchiveDataStreaming] Warning: Large central directory:', cdSize, 'bytes');
     }
@@ -241,6 +275,8 @@ Deno.serve(async (req) => {
       cdResponse = await fetch(targetUrl, {
         headers: { 'Range': `bytes=${cdOffset}-${cdOffset + cdSize - 1}` }
       });
+      debug.cdStatus = cdResponse.status;
+      debug.cdContentRange = cdResponse.headers.get('content-range');
     } catch (err) {
       return Response.json({
         ok: false,
@@ -258,18 +294,11 @@ Deno.serve(async (req) => {
     }
 
     const cdBuffer = await cdResponse.arrayBuffer();
+    debug.cdBytesRead = cdBuffer.byteLength;
     
-    // Use JSZip to parse the central directory properly
-    console.log('[extractArchiveDataStreaming] Using JSZip to parse central directory');
-    
-    // Fetch entire ZIP file for JSZip (we'll optimize later)
-    const fullZipResponse = await fetch(targetUrl);
-    const fullZipBuffer = await fullZipResponse.arrayBuffer();
-    const zip = await JSZip.loadAsync(fullZipBuffer);
-    
-    console.log('[extractArchiveDataStreaming] JSZip loaded, file count:', Object.keys(zip.files).length);
+    console.log('[extractArchiveDataStreaming] Central directory fetched:', cdBuffer.byteLength, 'bytes');
 
-    // Step 5: Parse file entries with robust categorization
+    // Step 7: Parse central directory with robust error handling
     const fileIndex = {
       postsHtml: [], postsJson: [],
       friendsHtml: [], friendsJson: [], 
@@ -287,109 +316,157 @@ Deno.serve(async (req) => {
       allPaths: []
     };
 
+    let offset = 0;
     let entriesProcessed = 0;
     const messagesByThread = {};
     const pathSegments = new Map();
 
-    // Iterate through all files using JSZip
-    for (const [fileName, zipEntry] of Object.entries(zip.files)) {
-      // Skip directories
-      if (zipEntry.dir) continue;
-      
-      if (!fileName.endsWith('/')) {
-        const pathLower = fileName.toLowerCase();
-        const ext = fileName.split('.').pop()?.toLowerCase() || '';
-        const entry = { path: fileName, size: zipEntry._data?.uncompressedSize || 0, name: fileName.split('/').pop(), ext };
+    try {
+      while (offset < cdBuffer.byteLength - 46 && entriesProcessed < totalEntries) {
+        const entryView = new DataView(cdBuffer, offset);
         
-        fileIndex.allPaths.push(fileName);
-        
-        // Track root prefix
-        const firstSegment = fileName.split('/')[0];
-        pathSegments.set(firstSegment, (pathSegments.get(firstSegment) || 0) + 1);
+        // Central directory file header signature: 0x02014b50 (little-endian: 50 4b 01 02)
+        const signature = entryView.getUint32(0, true);
+        if (signature !== 0x02014b50) {
+          console.log(`[extractArchiveDataStreaming] Bad signature at offset ${offset}: 0x${signature.toString(16)}`);
+          debug.parsingError = {
+            badOffset: offset,
+            signatureHex: signature.toString(16).padStart(8, '0'),
+            entriesParsedSoFar: entriesProcessed,
+            next64BytesHex: Array.from(new Uint8Array(cdBuffer, offset, Math.min(64, cdBuffer.byteLength - offset)))
+              .map(b => b.toString(16).padStart(2, '0')).join(' ')
+          };
+          break;
+        }
 
-        // Categorize with flexible patterns (work anywhere in path)
-        // Posts: /(^|\/)posts\/.*\.(json|html)$/i or your_activity
-        if (/(^|\/)posts\/.*\.(json|html)$/i.test(pathLower) || 
-            /(^|\/)your_posts.*\.(json|html)$/i.test(pathLower) ||
-            /your_activity.*posts.*\.(json|html)$/i.test(pathLower)) {
-          if (ext === 'json') fileIndex.postsJson.push(entry);
-          else if (ext === 'html') fileIndex.postsHtml.push(entry);
+        const fileNameLength = entryView.getUint16(28, true);
+        const extraFieldLength = entryView.getUint16(30, true);
+        const fileCommentLength = entryView.getUint16(32, true);
+        const uncompressedSize = entryView.getUint32(24, true);
+
+        // Validate lengths to prevent buffer overflow
+        const headerSize = 46;
+        const totalEntrySize = headerSize + fileNameLength + extraFieldLength + fileCommentLength;
+        
+        if (offset + totalEntrySize > cdBuffer.byteLength) {
+          console.log(`[extractArchiveDataStreaming] Entry extends beyond buffer at offset ${offset}`);
+          debug.parsingError = {
+            badOffset: offset,
+            reason: 'Entry extends beyond buffer',
+            entriesParsedSoFar: entriesProcessed,
+            fileNameLength,
+            extraFieldLength,
+            fileCommentLength,
+            computedNextOffset: offset + totalEntrySize,
+            bufferSize: cdBuffer.byteLength
+          };
+          break;
         }
-        // Friends
-        else if (/(^|\/)(friend|connection).*\.(json|html)$/i.test(pathLower)) {
-          if (ext === 'json') fileIndex.friendsJson.push(entry);
-          else if (ext === 'html') fileIndex.friendsHtml.push(entry);
+
+        // Extract filename from ONLY the filename section
+        const fileNameBytes = new Uint8Array(cdBuffer, offset + headerSize, fileNameLength);
+        let fileName;
+        try {
+          fileName = new TextDecoder('utf-8', { fatal: false }).decode(fileNameBytes);
+        } catch (err) {
+          console.error(`[extractArchiveDataStreaming] Failed to decode filename at offset ${offset}:`, err);
+          offset += totalEntrySize;
+          entriesProcessed++;
+          continue;
         }
-        // Messages: /messages/inbox/threadname/message_N.json
-        else if (/(^|\/)messages\/inbox\/[^/]+\/message_\d+\.(json|html)$/i.test(pathLower)) {
-          const threadMatch = fileName.match(/messages\/inbox\/([^/]+)\//i);
-          const threadName = threadMatch ? threadMatch[1] : 'unknown';
-          if (!messagesByThread[threadName]) {
-            messagesByThread[threadName] = { threadPath: threadName, messageFiles: [] };
+        
+        // Skip directories
+        if (!fileName.endsWith('/')) {
+          const pathLower = fileName.toLowerCase();
+          const ext = fileName.split('.').pop()?.toLowerCase() || '';
+          const entry = { path: fileName, size: uncompressedSize, name: fileName.split('/').pop(), ext };
+          
+          fileIndex.allPaths.push(fileName);
+          
+          // Track root prefix
+          const firstSegment = fileName.split('/')[0];
+          pathSegments.set(firstSegment, (pathSegments.get(firstSegment) || 0) + 1);
+
+          // Categorize files (flexible patterns - work anywhere in path)
+          if (/(^|\/)posts\/.*\.(json|html)$/i.test(pathLower) || 
+              /(^|\/)your_posts.*\.(json|html)$/i.test(pathLower) ||
+              /your_activity.*posts.*\.(json|html)$/i.test(pathLower)) {
+            if (ext === 'json') fileIndex.postsJson.push(entry);
+            else if (ext === 'html') fileIndex.postsHtml.push(entry);
           }
-          messagesByThread[threadName].messageFiles.push({ path: fileName, type: ext });
+          else if (/(^|\/)(friend|connection).*\.(json|html)$/i.test(pathLower)) {
+            if (ext === 'json') fileIndex.friendsJson.push(entry);
+            else if (ext === 'html') fileIndex.friendsHtml.push(entry);
+          }
+          else if (/(^|\/)messages\/inbox\/[^/]+\/message_\d+\.(json|html)$/i.test(pathLower)) {
+            const threadMatch = fileName.match(/messages\/inbox\/([^/]+)\//i);
+            const threadName = threadMatch ? threadMatch[1] : 'unknown';
+            if (!messagesByThread[threadName]) {
+              messagesByThread[threadName] = { threadPath: threadName, messageFiles: [] };
+            }
+            messagesByThread[threadName].messageFiles.push({ path: fileName, type: ext });
+          }
+          else if (/(comment|reaction)/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+            if (ext === 'json') fileIndex.commentsJson.push(entry);
+            else if (ext === 'html') fileIndex.commentsHtml.push(entry);
+          }
+          else if (/(like|reaction)/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+            if (ext === 'json') fileIndex.likesJson.push(entry);
+            else if (ext === 'html') fileIndex.likesHtml.push(entry);
+          }
+          else if (/group/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+            if (ext === 'json') fileIndex.groupsJson.push(entry);
+            else if (ext === 'html') fileIndex.groupsHtml.push(entry);
+          }
+          else if (/review/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+            if (ext === 'json') fileIndex.reviewsJson.push(entry);
+            else if (ext === 'html') fileIndex.reviewsHtml.push(entry);
+          }
+          else if (/(marketplace|market)/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+            if (ext === 'json') fileIndex.marketplaceJson.push(entry);
+            else if (ext === 'html') fileIndex.marketplaceHtml.push(entry);
+          }
+          else if (/event/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+            if (ext === 'json') fileIndex.eventsJson.push(entry);
+            else if (ext === 'html') fileIndex.eventsHtml.push(entry);
+          }
+          else if (/reel/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+            if (ext === 'json') fileIndex.reelsJson.push(entry);
+            else if (ext === 'html') fileIndex.reelsHtml.push(entry);
+          }
+          else if (/(checkin|check.in)/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+            if (ext === 'json') fileIndex.checkinsJson.push(entry);
+            else if (ext === 'html') fileIndex.checkinsHtml.push(entry);
+          }
+          else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(ext)) {
+            fileIndex.photos.push(entry);
+          }
+          else if (['mp4', 'mov', 'm4v', 'webm', 'avi', '3gp'].includes(ext)) {
+            fileIndex.videos.push(entry);
+          }
+          else if (ext === 'html') {
+            fileIndex.otherHtml.push(entry);
+          }
         }
-        // Comments
-        else if (/(comment|reaction)/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
-          if (ext === 'json') fileIndex.commentsJson.push(entry);
-          else if (ext === 'html') fileIndex.commentsHtml.push(entry);
-        }
-        // Likes
-        else if (/(like|reaction)/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
-          if (ext === 'json') fileIndex.likesJson.push(entry);
-          else if (ext === 'html') fileIndex.likesHtml.push(entry);
-        }
-        // Groups
-        else if (/group/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
-          if (ext === 'json') fileIndex.groupsJson.push(entry);
-          else if (ext === 'html') fileIndex.groupsHtml.push(entry);
-        }
-        // Reviews
-        else if (/review/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
-          if (ext === 'json') fileIndex.reviewsJson.push(entry);
-          else if (ext === 'html') fileIndex.reviewsHtml.push(entry);
-        }
-        // Marketplace
-        else if (/(marketplace|market)/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
-          if (ext === 'json') fileIndex.marketplaceJson.push(entry);
-          else if (ext === 'html') fileIndex.marketplaceHtml.push(entry);
-        }
-        // Events
-        else if (/event/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
-          if (ext === 'json') fileIndex.eventsJson.push(entry);
-          else if (ext === 'html') fileIndex.eventsHtml.push(entry);
-        }
-        // Reels
-        else if (/reel/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
-          if (ext === 'json') fileIndex.reelsJson.push(entry);
-          else if (ext === 'html') fileIndex.reelsHtml.push(entry);
-        }
-        // Check-ins
-        else if /(checkin|check.in)/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
-          if (ext === 'json') fileIndex.checkinsJson.push(entry);
-          else if (ext === 'html') fileIndex.checkinsHtml.push(entry);
-        }
-        // Photos (all images anywhere)
-        else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(ext)) {
-          fileIndex.photos.push(entry);
-        }
-        // Videos (all videos anywhere)
-        else if (['mp4', 'mov', 'm4v', 'webm', 'avi', '3gp'].includes(ext)) {
-          fileIndex.videos.push(entry);
-        }
-        // Other HTML
-        else if (ext === 'html') {
-          fileIndex.otherHtml.push(entry);
-        }
+
+        // Advance offset by EXACT entry size
+        offset += totalEntrySize;
+        entriesProcessed++;
       }
-      
-      entriesProcessed++;
+    } catch (err) {
+      console.error('[extractArchiveDataStreaming] Parsing error:', err);
+      debug.parsingError = {
+        error: err.message,
+        stack: err.stack,
+        entriesParsedSoFar: entriesProcessed,
+        lastOffset: offset
+      };
     }
 
     debug.entriesParsed = entriesProcessed;
     fileIndex.messageThreads = Object.values(messagesByThread);
     
-    // Detect root prefix (most common first segment)
+    // Detect root prefix
     let rootPrefix = '';
     let maxCount = 0;
     for (const [segment, count] of pathSegments.entries()) {
@@ -399,9 +476,7 @@ Deno.serve(async (req) => {
       }
     }
     debug.rootPrefix = rootPrefix;
-
-    // Sample first 50 paths for debugging
-    debug.samplePaths = fileIndex.allPaths.slice(0, 50);
+    debug.samplePaths = fileIndex.allPaths.slice(0, 200);
 
     console.log('[extractArchiveDataStreaming] Indexed files:', {
       entriesParsed,
@@ -411,14 +486,22 @@ Deno.serve(async (req) => {
       friendsHtml: fileIndex.friendsHtml.length,
       messageThreads: fileIndex.messageThreads.length,
       photos: fileIndex.photos.length,
-      videos: fileIndex.videos.length,
-      rootPrefix
+      videos: fileIndex.videos.length
     });
 
-    // Step 6: Return index structure
+    // CRITICAL: If entriesParsed is 0, return error
+    if (entriesProcessed === 0) {
+      return Response.json({
+        ok: false,
+        error: 'Failed to parse any ZIP entries from central directory',
+        debug
+      }, { status: 400 });
+    }
+
+    // Return full index with all categories
     const result = {
       ok: true,
-      isStreaming: true,
+      isStreaming: contentLength > LARGE_ZIP_THRESHOLD,
       archive: {
         fileSize: contentLength,
         entryCount: totalEntries
@@ -496,7 +579,9 @@ Deno.serve(async (req) => {
         checkinsHtmlFiles: fileIndex.checkinsHtml.length,
         checkinsJsonFiles: fileIndex.checkinsJson.length
       },
-      warnings: [`Large archive (${(contentLength/1024/1024).toFixed(0)}MB) - showing index only. Click "Load" buttons to view content.`],
+      warnings: contentLength > LARGE_ZIP_THRESHOLD 
+        ? [`Large archive (${(contentLength/1024/1024).toFixed(0)}MB) - showing index only. Click "Load" buttons to view content.`]
+        : [],
       debug
     };
 
@@ -507,10 +592,7 @@ Deno.serve(async (req) => {
     return Response.json({ 
       ok: false,
       error: error.message || 'Unexpected error during extraction',
-      stack: error.stack,
-      debug: {
-        error: error.toString()
-      }
+      stack: error.stack
     }, { status: 500 });
   }
 });
