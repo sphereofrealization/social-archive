@@ -135,6 +135,9 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
           }
         }
 
+        // Log analysis data for debugging
+        console.log("[ArchiveDataViewer] ANALYSIS RAW:", response.data);
+        
         setExtractedData(response.data);
 
         // Mark archive as organized after successful extraction
