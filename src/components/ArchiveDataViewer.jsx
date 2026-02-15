@@ -60,14 +60,15 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
     setError(null);
 
     try {
-      console.log("Invoking backend extraction for:", fileUrl);
-      const response = await base44.functions.invoke('extractArchiveData', { fileUrl });
+        console.log("Invoking backend extraction for:", fileUrl);
+        // Try streaming version first for large files
+        const response = await base44.functions.invoke('extractArchiveDataStreaming', { fileUrl });
 
-      if (!response.data) {
-        throw new Error('No data returned from server');
-      }
+        if (!response.data) {
+            throw new Error('No data returned from server');
+        }
 
-      setExtractedData(response.data);
+        setExtractedData(response.data);
 
       // Mark archive as organized after successful extraction
       if (onExtractionComplete) {
