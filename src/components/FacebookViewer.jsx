@@ -500,7 +500,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             <Card>
               <CardContent className="p-8 text-center">
                 <p className="text-gray-600 mb-4">
-                  Found {safeCounts.messageThreads} message threads
+                  Found {normalized.messageThreads.length} message threads
                 </p>
                 <Button 
                   onClick={() => loadSection('messages')}
