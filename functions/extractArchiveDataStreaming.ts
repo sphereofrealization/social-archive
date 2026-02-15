@@ -287,54 +287,15 @@ Deno.serve(async (req) => {
       allPaths: []
     };
 
-    // Create read functions for central directory (cdBytes)
-    const readU16CD = (offset) => cdBytes[offset] | (cdBytes[offset + 1] << 8);
-    const readU32CD = (offset) => cdBytes[offset] | (cdBytes[offset + 1] << 8) | 
-                                   (cdBytes[offset + 2] << 16) | (cdBytes[offset + 3] << 24);
-
-    let offset = 0;
     let entriesProcessed = 0;
     const messagesByThread = {};
-    const pathSegments = new Map(); // Track first path segment for rootPrefix detection
+    const pathSegments = new Map();
 
-    console.log('[extractArchiveDataStreaming] Starting to parse central directory:', {
-      cdBytesLength: cdBytes.length,
-      totalEntries,
-      cdOffset,
-      cdSize
-    });
-
-    while (offset < cdBytes.length - 46 && entriesProcessed < totalEntries) {
-      // Central directory file header signature: 0x02014b50
-      if (cdBytes[offset] !== 0x50 || cdBytes[offset+1] !== 0x4b || 
-          cdBytes[offset+2] !== 0x01 || cdBytes[offset+3] !== 0x02) {
-        console.log(`[extractArchiveDataStreaming] Bad signature at offset ${offset}, processed ${entriesProcessed} entries`);
-        break;
-      }
-
-      const fileNameLength = readU16CD(offset + 28);
-      const extraFieldLength = readU16CD(offset + 30);
-      const fileCommentLength = readU16CD(offset + 32);
-      const uncompressedSize = readU32CD(offset + 24);
-
-      // Validate lengths to prevent buffer overflow
-      if (offset + 46 + fileNameLength > cdBytes.length) {
-        console.log(`[extractArchiveDataStreaming] Filename extends beyond buffer at offset ${offset}`);
-        break;
-      }
-
-      const fileNameBytes = cdBytes.slice(offset + 46, offset + 46 + fileNameLength);
-      let fileName;
-      try {
-        fileName = new TextDecoder('utf-8', { fatal: false }).decode(fileNameBytes);
-      } catch (err) {
-        console.error(`[extractArchiveDataStreaming] Failed to decode filename at offset ${offset}:`, err);
-        offset += 46 + fileNameLength + extraFieldLength + fileCommentLength;
-        entriesProcessed++;
-        continue;
-      }
-      
+    // Iterate through all files using JSZip
+    for (const [fileName, zipEntry] of Object.entries(zip.files)) {
       // Skip directories
+      if (zipEntry.dir) continue;
+      
       if (!fileName.endsWith('/')) {
         const pathLower = fileName.toLowerCase();
         const ext = fileName.split('.').pop()?.toLowerCase() || '';
