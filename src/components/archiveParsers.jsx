@@ -319,13 +319,22 @@ export async function parseGroupsFromHtml(htmlString, sourceFile) {
     const doc = parseHtml(htmlString);
     if (!doc) throw new Error('Failed to parse HTML');
     
+    const probe = probeFacebookExportHtml(htmlString, sourceFile);
     const items = [];
     
     // Groups usually have specific names
-    doc.querySelectorAll('li, div[data-group]').forEach(el => {
+    let elements = doc.querySelectorAll('li, div[data-group]');
+    if (elements.length === 0) {
+      elements = doc.querySelectorAll('tr');
+    }
+    if (elements.length === 0) {
+      elements = doc.querySelectorAll('a');
+    }
+    
+    elements.forEach(el => {
       const a = el.querySelector('a');
       const text = a ? getText(a) : getText(el);
-      if (text && text.length > 0) {
+      if (text && text.length > 0 && text.length < 200) {
         items.push({
           groupName: text,
           sourceFile
@@ -334,10 +343,10 @@ export async function parseGroupsFromHtml(htmlString, sourceFile) {
     });
     
     console.log(`[parseGroupsFromHtml] Extracted ${items.length} groups from ${sourceFile}`);
-    return { items, sourceFile };
+    return { items, sourceFile, probe: items.length === 0 ? probe : undefined };
   } catch (err) {
     console.error(`[parseGroupsFromHtml] Error:`, err);
-    return { items: [], sourceFile, error: err.message };
+    return { items: [], sourceFile, error: err.message, probe: probeFacebookExportHtml(htmlString, sourceFile) };
   }
 }
 
