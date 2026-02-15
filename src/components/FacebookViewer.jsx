@@ -634,30 +634,42 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
         <TabsContent value="friends" className="space-y-4 mt-4">
           {isStreamingIndex && !loadedSections.friends ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-600 mb-4">
-                  Found {normalized.friendFiles.html.length + normalized.friendFiles.json.length} friend files
-                </p>
-                <Button 
-                  onClick={() => loadSection('friends')}
-                  disabled={loadingSection === 'friends'}
-                  className="bg-orange-600 hover:bg-orange-700"
-                >
-                  {loadingSection === 'friends' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading Friends...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Load Friends
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Files Detected ({normalized.friendFiles.html.length + normalized.friendFiles.json.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {normalized.friendFiles.json.map((file, i) => (
+                    <div key={`json-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                  {normalized.friendFiles.html.map((file, i) => (
+                    <div key={`html-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Button 
+                onClick={() => loadSection('friends')}
+                disabled={loadingSection === 'friends'}
+                className="w-full bg-orange-600 hover:bg-orange-700"
+              >
+                {loadingSection === 'friends' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading Friends...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Load & Parse Friends
+                  </>
+                )}
+              </Button>
+            </div>
           ) : (
             <Card>
               <CardContent className="p-4">
