@@ -76,16 +76,36 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
           const debug = response.data.debug || {};
           let errorDetail = `${response.data.error || 'Extraction failed'}`;
           
-          if (debug.samplePaths && debug.samplePaths.length > 0) {
-            errorDetail += `\n\nSample file paths found:\n${debug.samplePaths.slice(0, 10).join('\n')}`;
-          }
-          
-          if (debug.entriesParsed > 0) {
-            errorDetail += `\n\nIndexed ${debug.entriesParsed} files but categorization may have failed.`;
-          }
-          
+          // Show comprehensive debug information
           if (debug.headStatus) {
-            errorDetail += `\n\nDebug: HEAD=${debug.headStatus}, Range=${debug.rangeProbeStatus}, EOCD=${debug.eocdFound}, ZIP64=${debug.zip64Detected}`;
+            errorDetail += `\n\n📊 DIAGNOSTICS:\n`;
+            errorDetail += `HEAD Status: ${debug.headStatus} | Content-Length: ${debug.contentLength} bytes\n`;
+            errorDetail += `Content-Type: ${debug.contentType} | Accept-Ranges: ${debug.acceptRanges}\n`;
+            errorDetail += `Range Probe: HTTP ${debug.rangeProbeStatus} (${debug.rangeProbeContentRange || 'N/A'})\n`;
+            errorDetail += `EOCD Found: ${debug.eocdFound ? '✓ Yes' : '✗ No'} (offset in tail: ${debug.eocdOffsetInTail})\n`;
+            
+            if (debug.eocdFound) {
+              errorDetail += `ZIP64: ${debug.zip64Detected ? 'Yes' : 'No'}\n`;
+              errorDetail += `Central Directory: Offset=${debug.cdOffset}, Size=${debug.cdSize}, Expected=${debug.cdEntriesExpected} entries\n`;
+              errorDetail += `CD Fetch: HTTP ${debug.cdStatus} (${debug.cdContentRange || 'N/A'}), Read=${debug.cdBytesRead} bytes\n`;
+              errorDetail += `Entries Parsed: ${debug.entriesParsed}/${debug.cdEntriesExpected}\n`;
+            }
+            
+            if (debug.parsingError) {
+              errorDetail += `\n⚠️ PARSING ERROR:\n`;
+              errorDetail += `Bad Offset: ${debug.parsingError.badOffset}\n`;
+              if (debug.parsingError.signatureHex) {
+                errorDetail += `Signature: 0x${debug.parsingError.signatureHex} (expected: 02014b50)\n`;
+              }
+              if (debug.parsingError.reason) {
+                errorDetail += `Reason: ${debug.parsingError.reason}\n`;
+              }
+              errorDetail += `Entries Parsed Before Error: ${debug.parsingError.entriesParsedSoFar}\n`;
+            }
+          }
+          
+          if (debug.samplePaths && debug.samplePaths.length > 0) {
+            errorDetail += `\n📁 Sample Paths (first 15):\n${debug.samplePaths.slice(0, 15).join('\n')}`;
           }
           
           setError(errorDetail);
