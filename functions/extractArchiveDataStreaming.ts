@@ -258,9 +258,18 @@ Deno.serve(async (req) => {
     }
 
     const cdBuffer = await cdResponse.arrayBuffer();
-    const cdBytes = new Uint8Array(cdBuffer);
+    
+    // Use JSZip to parse the central directory properly
+    console.log('[extractArchiveDataStreaming] Using JSZip to parse central directory');
+    
+    // Fetch entire ZIP file for JSZip (we'll optimize later)
+    const fullZipResponse = await fetch(targetUrl);
+    const fullZipBuffer = await fullZipResponse.arrayBuffer();
+    const zip = await JSZip.loadAsync(fullZipBuffer);
+    
+    console.log('[extractArchiveDataStreaming] JSZip loaded, file count:', Object.keys(zip.files).length);
 
-    // Step 5: Parse file entries with robust categorization (NO ROOT ANCHORS)
+    // Step 5: Parse file entries with robust categorization
     const fileIndex = {
       postsHtml: [], postsJson: [],
       friendsHtml: [], friendsJson: [], 
