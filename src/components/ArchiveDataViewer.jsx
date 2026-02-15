@@ -238,5 +238,46 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
     );
   }
 
-  return <FacebookViewer data={extractedData} archiveUrl={archive.file_url} />;
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <button
+          onClick={() => setShowDebug(!showDebug)}
+          className="text-xs text-gray-600 hover:text-gray-900 underline"
+        >
+          {showDebug ? 'Hide' : 'Show'} Raw JSON
+        </button>
+      </div>
+      {showDebug && (
+        <Card className="mb-4 bg-gray-50 border-gray-300">
+          <CardHeader>
+            <CardTitle className="text-sm">Debug: Raw Response</CardTitle>
+          </CardHeader>
+          <CardContent className="max-h-96 overflow-auto">
+            <div className="flex gap-2 mb-2">
+              <button
+                onClick={() => navigator.clipboard.writeText(JSON.stringify(extractedData, null, 2))}
+                className="text-xs bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700"
+              >
+                Copy JSON
+              </button>
+            </div>
+            <pre className="text-xs bg-white p-2 rounded border border-gray-300 overflow-x-auto">
+              {JSON.stringify({
+                buildId: extractedData.buildId,
+                mode: extractedData.mode,
+                entriesParsed: extractedData.entriesParsed,
+                eocdFound: extractedData.eocdFound,
+                rootPrefix: extractedData.rootPrefix,
+                indexKeys: extractedData.indexKeys,
+                countsKeys: extractedData.countsKeys,
+                lengths: extractedData.lengths
+              }, null, 2)}
+            </pre>
+          </CardContent>
+        </Card>
+      )}
+      <FacebookViewer data={extractedData} archiveUrl={archive.file_url} />
+    </div>
+  );
 }
