@@ -59,8 +59,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   const [activeTab, setActiveTab] = useState("posts");
   const [loadedMedia, setLoadedMedia] = useState({});
   const [loadedSections, setLoadedSections] = useState({});
-   const [loadingSection, setLoadingSection] = useState(null);
-   const [showDebug, setShowDebug] = useState(false);
+  const [loadingSection, setLoadingSection] = useState(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugLogs, setDebugLogs] = useState({});
+  const [viewRawContent, setViewRawContent] = useState({});
 
    const isStreamingIndex = normalized.isStreaming;
 
