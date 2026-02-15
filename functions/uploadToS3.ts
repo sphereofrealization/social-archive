@@ -109,7 +109,11 @@ Deno.serve(async (req) => {
 
             await s3Client.send(command);
             
-            const fileUrl = `https://${Deno.env.get('DREAMHOST_ENDPOINT')}/${bucket}/${fileKey}`;
+            // Generate a publicly accessible URL (DreamHost format)
+            const endpoint = Deno.env.get('DREAMHOST_ENDPOINT');
+            const fileUrl = `https://${bucket}.${endpoint}/${fileKey}`;
+            
+            console.log('Upload complete, file URL:', fileUrl);
             
             return Response.json({ 
                 success: true,
