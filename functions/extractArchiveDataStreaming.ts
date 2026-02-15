@@ -312,6 +312,7 @@ Deno.serve(async (req) => {
       reelsHtml: [], reelsJson: [],
       checkinsHtml: [], checkinsJson: [],
       photos: [], videos: [],
+      mediaEntriesAll: [], // PHASE 4: ALL media entries (not just gallery)
       otherHtml: [],
       allPaths: []
     };
