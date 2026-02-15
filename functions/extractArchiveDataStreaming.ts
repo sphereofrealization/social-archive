@@ -325,9 +325,9 @@ Deno.serve(async (req) => {
       while (offset < cdBuffer.byteLength - 46 && entriesProcessed < totalEntries) {
         const entryView = new DataView(cdBuffer, offset);
         
-        // Central directory file header signature: 0x02014b50 (little-endian: 50 4b 01 02)
+        // Central directory file header signature: 0x504b0102 (little-endian)
         const signature = entryView.getUint32(0, true);
-        if (signature !== 0x02014b50) {
+        if (signature !== 0x504b0102) {
           console.log(`[extractArchiveDataStreaming] Bad signature at offset ${offset}: 0x${signature.toString(16)}`);
           debug.parsingError = {
             badOffset: offset,
