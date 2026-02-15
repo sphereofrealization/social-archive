@@ -46,9 +46,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   const [activeTab, setActiveTab] = useState("posts");
   const [loadedMedia, setLoadedMedia] = useState({});
   const [loadedSections, setLoadedSections] = useState({});
-  const [loadingSection, setLoadingSection] = useState(null);
+   const [loadingSection, setLoadingSection] = useState(null);
+   const [showDebug, setShowDebug] = useState(false);
 
-  const isStreamingIndex = normalized.isStreaming;
+   const isStreamingIndex = normalized.isStreaming;
 
   // Load media on demand
   const loadMedia = async (mediaPath, type) => {
