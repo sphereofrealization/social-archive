@@ -443,7 +443,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             <Card>
               <CardContent className="p-8 text-center">
                 <p className="text-gray-600 mb-4">
-                  Found {safeCounts.friendsJsonFiles + safeCounts.friendsHtmlFiles} friend files
+                  Found {normalized.friendFiles.html.length + normalized.friendFiles.json.length} friend files
                 </p>
                 <Button 
                   onClick={() => loadSection('friends')}
