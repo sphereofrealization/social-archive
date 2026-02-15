@@ -271,15 +271,21 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
       )}
 
       {/* Debug Info Display */}
-      {data?.debug && (
+      {(data?.debug || debugMode) && (
         <Alert className="bg-gray-50 border-gray-300">
           <AlertDescription className="text-gray-700 text-xs font-mono">
             <div className="space-y-1">
-              <div><strong>Debug Info:</strong></div>
-              <div>• Entries Parsed: {data.debug.entriesParsed || 0}</div>
-              <div>• Root Prefix: {data.debug.rootPrefix || 'none'}</div>
-              <div>• EOCD Found: {data.debug.eocdFound ? 'Yes' : 'No'}</div>
-              {data.debug.samplePaths && data.debug.samplePaths.length > 0 && (
+              <div><strong>Debug Info (buildId: {data?.buildId || 'N/A'}):</strong></div>
+              <div>• Mode: {normalized.mode || 'unknown'}</div>
+              <div>• Entries Parsed: {data?.entriesParsed || data?.debug?.entriesParsed || 0}</div>
+              <div>• EOCD Found: {data?.eocdFound || data?.debug?.eocdFound ? 'Yes' : 'No'}</div>
+              <div>• Root Prefix: {data?.rootPrefix || data?.debug?.rootPrefix || 'none'}</div>
+              <div className="mt-2"><strong>Data Sources:</strong></div>
+              <div>• Photos Source: {normalized.photos.length > 0 ? 'index.photos' : 'data.photos'} → {normalized.photos.length} items</div>
+              <div>• Videos Source: {normalized.videos.length > 0 ? 'index.videos' : 'data.videos'} → {normalized.videos.length} items</div>
+              <div>• Posts Files: {normalized.postFiles.html.length + normalized.postFiles.json.length} files</div>
+              <div>• Friends Files: {normalized.friendFiles.html.length + normalized.friendFiles.json.length} files</div>
+              {data?.debug?.samplePaths && data.debug.samplePaths.length > 0 && (
                 <details className="mt-2">
                   <summary className="cursor-pointer hover:text-blue-600">Sample Paths ({data.debug.samplePaths.length})</summary>
                   <div className="mt-2 pl-4 max-h-48 overflow-y-auto">
