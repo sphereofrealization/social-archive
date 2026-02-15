@@ -155,15 +155,15 @@ export async function parsePostsFromHtml(htmlString, sourceFile) {
       tableRows.forEach((row) => {
         const cells = Array.from(row.querySelectorAll('td, th'));
         const rowText = cells.map(cell => getText(cell).trim()).filter(t => t.length > 0).join(' ');
-        const rowImages = Array.from(row.querySelectorAll('img[src]')).map(img => img.src);
-        const rowLinks = Array.from(row.querySelectorAll('a[href]')).map(a => a.href);
         
-        // Keep item if it has text OR media (don't discard empty-text rows with media)
-        if (rowText.length > 0 || rowImages.length > 0 || rowLinks.length > 0) {
+        // Extract media refs from this row
+        const mediaRefs = extractMediaRefsFromHtml(row.outerHTML, sourceFile);
+        
+        // Keep item if it has text OR media
+        if (rowText.length > 0 || mediaRefs.length > 0) {
           items.push({
             text: rowText.slice(0, 500) || '(media post)',
-            mediaPaths: rowImages.length > 0 ? rowImages : undefined,
-            links: rowLinks.length > 0 ? rowLinks : undefined,
+            mediaRefs: mediaRefs.length > 0 ? mediaRefs : undefined,
             sourceFile
           });
         }
