@@ -48,68 +48,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   const [loadedSections, setLoadedSections] = useState({});
   const [loadingSection, setLoadingSection] = useState(null);
 
-  // Check if this is streaming index data
-  const isStreamingIndex = data?.isStreaming === true;
-  const index = data?.index || {};
-  const counts = data?.counts || {};
-  
-  // Default all count values to 0 if undefined
-  const safeCounts = {
-    photos: counts.photos || 0,
-    videos: counts.videos || 0,
-    postsJsonFiles: counts.postsJsonFiles || 0,
-    postsHtmlFiles: counts.postsHtmlFiles || 0,
-    friendsJsonFiles: counts.friendsJsonFiles || 0,
-    friendsHtmlFiles: counts.friendsHtmlFiles || 0,
-    messageThreads: counts.messageThreads || 0,
-    commentsJsonFiles: counts.commentsJsonFiles || 0,
-    commentsHtmlFiles: counts.commentsHtmlFiles || 0,
-    likesJsonFiles: counts.likesJsonFiles || 0,
-    likesHtmlFiles: counts.likesHtmlFiles || 0,
-    groupsJsonFiles: counts.groupsJsonFiles || 0,
-    groupsHtmlFiles: counts.groupsHtmlFiles || 0,
-    reviewsJsonFiles: counts.reviewsJsonFiles || 0,
-    reviewsHtmlFiles: counts.reviewsHtmlFiles || 0,
-    marketplaceJsonFiles: counts.marketplaceJsonFiles || 0,
-    marketplaceHtmlFiles: counts.marketplaceHtmlFiles || 0,
-    eventsJsonFiles: counts.eventsJsonFiles || 0,
-    eventsHtmlFiles: counts.eventsHtmlFiles || 0,
-    reelsJsonFiles: counts.reelsJsonFiles || 0,
-    reelsHtmlFiles: counts.reelsHtmlFiles || 0,
-    checkinsJsonFiles: counts.checkinsJsonFiles || 0,
-    checkinsHtmlFiles: counts.checkinsHtmlFiles || 0
-  };
-
-  console.log('[FacebookViewer] Data received:', {
-    isStreamingIndex,
-    hasIndex: !!index,
-    counts: safeCounts,
-    indexKeys: Object.keys(index),
-    debug: data?.debug,
-    samplePaths: data?.debug?.samplePaths?.slice(0, 10)
-  });
-
-  // Legacy parsed data (for non-streaming extractions)
-  const profile = data?.profile || {};
-  const posts = isStreamingIndex ? (Array.isArray(loadedSections.posts) ? loadedSections.posts : []) : (Array.isArray(data?.posts) ? data.posts : []);
-  const friends = isStreamingIndex ? (Array.isArray(loadedSections.friends) ? loadedSections.friends : []) : (Array.isArray(data?.friends) ? data.friends : []);
-  const messages = isStreamingIndex ? (Array.isArray(loadedSections.messages) ? loadedSections.messages : []) : (Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.messages) ? data.messages : []);
-  const comments = isStreamingIndex ? (Array.isArray(loadedSections.comments) ? loadedSections.comments : []) : (Array.isArray(data?.comments) ? data.comments : []);
-  const likes = isStreamingIndex ? (Array.isArray(loadedSections.likes) ? loadedSections.likes : []) : (Array.isArray(data?.likes) ? data.likes : []);
-  const groups = isStreamingIndex ? (Array.isArray(loadedSections.groups) ? loadedSections.groups : []) : (Array.isArray(data?.groups) ? data.groups : []);
-  const reviews = isStreamingIndex ? (Array.isArray(loadedSections.reviews) ? loadedSections.reviews : []) : (Array.isArray(data?.reviews) ? data.reviews : []);
-  const marketplace = isStreamingIndex ? (Array.isArray(loadedSections.marketplace) ? loadedSections.marketplace : []) : (Array.isArray(data?.marketplace) ? data.marketplace : []);
-  const events = isStreamingIndex ? (Array.isArray(loadedSections.events) ? loadedSections.events : []) : (Array.isArray(data?.events) ? data.events : []);
-  const reels = isStreamingIndex ? (Array.isArray(loadedSections.reels) ? loadedSections.reels : []) : (Array.isArray(data?.reels) ? data.reels : []);
-  const checkins = isStreamingIndex ? (Array.isArray(loadedSections.checkins) ? loadedSections.checkins : []) : (Array.isArray(data?.checkins) ? data.checkins : []);
-  
-  const photosList = isStreamingIndex 
-    ? (index.photos && Array.isArray(index.photos) ? index.photos : [])
-    : (Array.isArray(data?.photos) ? data.photos : []);
-    
-  const videosList = isStreamingIndex 
-    ? (index.videos && Array.isArray(index.videos) ? index.videos : [])
-    : (Array.isArray(data?.videos) ? data.videos : []);
+  const isStreamingIndex = normalized.isStreaming;
 
   // Load media on demand
   const loadMedia = async (mediaPath, type) => {
