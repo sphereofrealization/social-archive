@@ -385,7 +385,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             <Card>
               <CardContent className="p-8 text-center">
                 <p className="text-gray-600 mb-4">
-                  Found {safeCounts.postsJsonFiles + safeCounts.postsHtmlFiles} post files ({safeCounts.postsJsonFiles} JSON, {safeCounts.postsHtmlFiles} HTML)
+                  Found {normalized.postFiles.html.length + normalized.postFiles.json.length} post files ({normalized.postFiles.json.length} JSON, {normalized.postFiles.html.length} HTML)
                 </p>
                 <Button 
                   onClick={() => loadSection('posts')}
