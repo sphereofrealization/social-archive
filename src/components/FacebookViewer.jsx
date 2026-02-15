@@ -107,13 +107,11 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
       let parsedData = [];
 
       if (sectionName === 'posts') {
-        // Prefer JSON, fallback to HTML
-        const files = index.posts?.json?.length > 0 ? index.posts.json : index.posts?.html || [];
+        const files = normalized.postFiles.json.length > 0 ? normalized.postFiles.json : normalized.postFiles.html;
         if (files.length === 0) {
           throw new Error('No posts files found in index');
         }
 
-        // Load first file only for now
         const filePath = files[0];
         const responseType = filePath.endsWith('.json') ? 'json' : 'text';
         
@@ -124,7 +122,6 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         });
 
         if (responseType === 'json' && response.data?.content) {
-          // Parse Facebook posts JSON structure
           const jsonData = response.data.content;
           if (Array.isArray(jsonData)) {
             parsedData = jsonData.slice(0, 50).map(item => ({
@@ -135,11 +132,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             }));
           }
         } else if (responseType === 'text' && response.data?.content) {
-          // Basic HTML parsing fallback
           parsedData = [{ text: `HTML file loaded: ${files.length} post files found`, timestamp: null }];
         }
       } else if (sectionName === 'friends') {
-        const files = index.friends?.json?.length > 0 ? index.friends.json : index.friends?.html || [];
+        const files = normalized.friendFiles.json.length > 0 ? normalized.friendFiles.json : normalized.friendFiles.html;
         if (files.length === 0) {
           throw new Error('No friends files found in index');
         }
@@ -168,17 +164,64 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           }
         }
       } else if (sectionName === 'messages') {
-        const threads = index.messages?.threads || [];
+        const threads = normalized.messageThreads;
         if (threads.length === 0) {
           throw new Error('No message threads found in index');
         }
 
-        // Load first 10 threads
         parsedData = threads.slice(0, 10).map(thread => ({
           conversation_with: thread.threadPath.replace(/_/g, ' '),
           messages: [],
           totalMessages: thread.messageFiles.length
         }));
+      } else if (sectionName === 'comments') {
+        const files = normalized.commentFiles.json.length > 0 ? normalized.commentFiles.json : normalized.commentFiles.html;
+        if (files.length === 0) {
+          throw new Error('No comments files found');
+        }
+        parsedData = [{ text: `Found ${files.length} comment files` }];
+      } else if (sectionName === 'likes') {
+        const files = normalized.likeFiles.json.length > 0 ? normalized.likeFiles.json : normalized.likeFiles.html;
+        if (files.length === 0) {
+          throw new Error('No likes files found');
+        }
+        parsedData = [{ text: `Found ${files.length} like/reaction files` }];
+      } else if (sectionName === 'groups') {
+        const files = normalized.groupFiles.json.length > 0 ? normalized.groupFiles.json : normalized.groupFiles.html;
+        if (files.length === 0) {
+          throw new Error('No group files found');
+        }
+        parsedData = [{ text: `Found ${files.length} group files` }];
+      } else if (sectionName === 'reviews') {
+        const files = normalized.reviewFiles.json.length > 0 ? normalized.reviewFiles.json : normalized.reviewFiles.html;
+        if (files.length === 0) {
+          throw new Error('No review files found');
+        }
+        parsedData = [{ text: `Found ${files.length} review files` }];
+      } else if (sectionName === 'marketplace') {
+        const files = normalized.marketplaceFiles.json.length > 0 ? normalized.marketplaceFiles.json : normalized.marketplaceFiles.html;
+        if (files.length === 0) {
+          throw new Error('No marketplace files found');
+        }
+        parsedData = [{ text: `Found ${files.length} marketplace files` }];
+      } else if (sectionName === 'events') {
+        const files = normalized.eventFiles.json.length > 0 ? normalized.eventFiles.json : normalized.eventFiles.html;
+        if (files.length === 0) {
+          throw new Error('No event files found');
+        }
+        parsedData = [{ text: `Found ${files.length} event files` }];
+      } else if (sectionName === 'reels') {
+        const files = normalized.reelFiles.json.length > 0 ? normalized.reelFiles.json : normalized.reelFiles.html;
+        if (files.length === 0) {
+          throw new Error('No reel files found');
+        }
+        parsedData = [{ text: `Found ${files.length} reel files` }];
+      } else if (sectionName === 'checkins') {
+        const files = normalized.checkinFiles.json.length > 0 ? normalized.checkinFiles.json : normalized.checkinFiles.html;
+        if (files.length === 0) {
+          throw new Error('No check-in files found');
+        }
+        parsedData = [{ text: `Found ${files.length} check-in files` }];
       }
 
       setLoadedSections(prev => ({ ...prev, [sectionName]: parsedData }));
