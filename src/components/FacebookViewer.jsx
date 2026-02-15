@@ -703,7 +703,53 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                           <span className="text-xs text-gray-500">{post.timestamp}</span>
                         )}
                       </div>
-                      <p className="text-gray-700 whitespace-pre-wrap">{post.text}</p>
+                      {post.text && (
+                        <p className="text-gray-700 whitespace-pre-wrap mb-3">{post.text}</p>
+                      )}
+                      {post.mediaPaths && post.mediaPaths.length > 0 && (
+                        <div className="mt-3">
+                          <div className="text-xs text-gray-500 mb-2 font-semibold">Media ({post.mediaPaths.length})</div>
+                          <div className="grid grid-cols-3 gap-2">
+                            {post.mediaPaths.slice(0, 6).map((mediaPath, j) => {
+                              const mediaState = loadedMedia[mediaPath];
+                              const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
+                              const isLoading = mediaState === 'loading';
+                              const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
+
+                              return (
+                                <div
+                                  key={j}
+                                  className={`aspect-square rounded flex items-center justify-center text-xs cursor-pointer transition-colors ${
+                                    hasError ? 'bg-red-100' : 'bg-gray-200 hover:bg-gray-300'
+                                  }`}
+                                  onClick={() => {
+                                    if (!isLoaded && !isLoading) loadMedia(mediaPath, mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? 'video' : 'image');
+                                  }}
+                                >
+                                  {isLoaded && typeof mediaState === 'string' ? (
+                                    mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? (
+                                      <video className="w-full h-full object-cover rounded" muted>
+                                        <source src={mediaState} />
+                                      </video>
+                                    ) : (
+                                      <img src={mediaState} alt="media" className="w-full h-full object-cover rounded" />
+                                    )
+                                  ) : (
+                                    <div className="text-center">
+                                      {isLoading && <p className="text-gray-600">⟳</p>}
+                                      {hasError && <p className="text-red-600 text-xs">✕</p>}
+                                      {!isLoading && !hasError && <p className="text-gray-600">📷</p>}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {post.mediaRefsEmptyReason && (
+                        <p className="text-xs text-amber-600 mt-2">⚠ {post.mediaRefsEmptyReason}</p>
+                      )}
                     </div>
                   </div>
                 </CardContent>
