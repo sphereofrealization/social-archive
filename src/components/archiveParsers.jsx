@@ -69,6 +69,7 @@ export async function parseFriendsFromHtml(htmlString, sourceFile) {
     const doc = parseHtml(htmlString);
     if (!doc) throw new Error('Failed to parse HTML');
     
+    const probe = probeFacebookExportHtml(htmlString, sourceFile);
     const items = [];
     
     // Try <li> elements (common in friend lists)
@@ -77,7 +78,7 @@ export async function parseFriendsFromHtml(htmlString, sourceFile) {
       if (text && text.length > 0) {
         const a = li.querySelector('a');
         const name = a ? getText(a) : text;
-        if (name && name.length > 0) {
+        if (name && name.length > 0 && name.length < 200) {
           items.push({
             name,
             profileUrl: a ? getAttr(a, 'href') : null,
@@ -87,21 +88,37 @@ export async function parseFriendsFromHtml(htmlString, sourceFile) {
       }
     });
     
-    // If no <li> found, try divs/divs with aria-label or data attributes
+    // If no <li> found, try table rows
+    if (items.length === 0) {
+      doc.querySelectorAll('tr').forEach(tr => {
+        const cells = Array.from(tr.querySelectorAll('td, th'));
+        if (cells.length >= 1) {
+          const name = getText(cells[0]);
+          if (name && name.length > 0 && name.length < 200) {
+            items.push({
+              name,
+              sourceFile
+            });
+          }
+        }
+      });
+    }
+    
+    // If still nothing, try divs/divs with aria-label or data attributes
     if (items.length === 0) {
       doc.querySelectorAll('div[aria-label], div[data-name]').forEach(div => {
         const name = getAttr(div, 'aria-label') || getAttr(div, 'data-name');
-        if (name) {
+        if (name && name.length < 200) {
           items.push({ name, sourceFile });
         }
       });
     }
     
     console.log(`[parseFriendsFromHtml] Extracted ${items.length} friends from ${sourceFile}`);
-    return { items, sourceFile };
+    return { items, sourceFile, probe: items.length === 0 ? probe : undefined };
   } catch (err) {
     console.error(`[parseFriendsFromHtml] Error:`, err);
-    return { items: [], sourceFile, error: err.message };
+    return { items: [], sourceFile, error: err.message, probe: probeFacebookExportHtml(htmlString, sourceFile) };
   }
 }
 
