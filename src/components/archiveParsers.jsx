@@ -500,6 +500,112 @@ export async function parseCheckinsFromHtml(htmlString, sourceFile) {
   }
 }
 
+// PHASE 2: Media reference extraction + path resolution
+export function extractMediaRefsFromHtml(htmlString, sourceFile) {
+  try {
+    const doc = parseHtml(htmlString);
+    if (!doc) return [];
+    
+    const refs = [];
+    const mediaExtensions = /\.(jpg|jpeg|png|gif|webp|heic|mp4|mov|m4v|webm)$/i;
+    
+    // Extract img[src], img[data-src]
+    doc.querySelectorAll('img[src], img[data-src]').forEach(img => {
+      const src = img.src || img.getAttribute('data-src');
+      if (src && isLocalMediaRef(src, mediaExtensions)) {
+        refs.push(src);
+      }
+    });
+    
+    // Extract video[src], source[src]
+    doc.querySelectorAll('video[src], source[src]').forEach(el => {
+      const src = el.src;
+      if (src && isLocalMediaRef(src, mediaExtensions)) {
+        refs.push(src);
+      }
+    });
+    
+    // Extract a[href] (only media-like links)
+    doc.querySelectorAll('a[href]').forEach(a => {
+      const href = a.href;
+      if (href && (mediaExtensions.test(href) || href.includes('/media/'))) {
+        if (isLocalMediaRef(href, mediaExtensions)) {
+          refs.push(href);
+        }
+      }
+    });
+    
+    return refs;
+  } catch (err) {
+    console.error(`[extractMediaRefsFromHtml] Error:`, err);
+    return [];
+  }
+}
+
+function isLocalMediaRef(ref, mediaExtensions) {
+  // Ignore absolute URLs
+  if (ref.startsWith('http://') || ref.startsWith('https://')) return false;
+  if (ref.startsWith('data:') || ref.startsWith('blob:') || ref.startsWith('mailto:')) return false;
+  if (ref.startsWith('#')) return false;
+  
+  // Must look like local media
+  return mediaExtensions.test(ref) || ref.includes('/media/');
+}
+
+export function resolveZipEntryPath(sourceFile, ref, rootPrefix, knownMediaPathSet) {
+  if (!ref || !knownMediaPathSet || knownMediaPathSet.size === 0) return null;
+  
+  try {
+    // Compute baseDir
+    const baseDir = sourceFile.substring(0, sourceFile.lastIndexOf('/'));
+    
+    // Resolve relative ref against baseDir
+    let candidate1 = normalizeZipPath(baseDir, ref);
+    
+    // Try candidate1
+    if (knownMediaPathSet.has(candidate1)) return candidate1;
+    
+    // Try with rootPrefix prepended (if not already in candidate1)
+    if (rootPrefix) {
+      let candidate2 = rootPrefix + '/' + candidate1;
+      candidate2 = normalizeZipPath('', candidate2);
+      if (knownMediaPathSet.has(candidate2)) return candidate2;
+      
+      // Try stripping rootPrefix if it's in candidate1
+      if (candidate1.startsWith(rootPrefix + '/')) {
+        let candidate3 = candidate1.substring((rootPrefix + '/').length);
+        if (knownMediaPathSet.has(candidate3)) return candidate3;
+      }
+    }
+    
+    return null;
+  } catch (err) {
+    console.error(`[resolveZipEntryPath] Error resolving ${ref}:`, err);
+    return null;
+  }
+}
+
+function normalizeZipPath(baseDir, ref) {
+  let parts = [];
+  
+  if (baseDir) {
+    parts = baseDir.split('/').filter(p => p);
+  }
+  
+  const refParts = ref.split('/').filter(p => p);
+  
+  for (const part of refParts) {
+    if (part === '..') {
+      parts.pop();
+    } else if (part !== '.') {
+      parts.push(part);
+    }
+  }
+  
+  const result = parts.join('/').replace(/^\/+/, '');
+  return decodeURIComponent(result);
+}
+
 // PHASE 1: Detailed HTML structure probe
 export function probeFacebookExportHtml(htmlString, sourceFile) {
   try {
