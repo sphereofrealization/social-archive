@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing zipUrl' }, { status: 400 });
     }
 
-    console.log('[remoteZipForensics] Starting forensic analysis for:', zipUrl);
+    console.log('[remoteZipForensics] Starting comprehensive forensic analysis for:', zipUrl);
 
     const report = {
       url: zipUrl,
