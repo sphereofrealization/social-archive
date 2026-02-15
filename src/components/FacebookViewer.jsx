@@ -1306,36 +1306,60 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
         <TabsContent value="checkins" className="space-y-4 mt-4">
           {isStreamingIndex && !loadedSections.checkins ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-600 mb-4">
-                  Found {normalized.checkinFiles.html.length + normalized.checkinFiles.json.length} check-in files
-                </p>
-                <Button 
-                  onClick={() => loadSection('checkins')}
-                  disabled={loadingSection === 'checkins'}
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                >
-                  {loadingSection === 'checkins' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading Check-ins...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Load Check-ins
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Files Detected ({normalized.checkinFiles.html.length + normalized.checkinFiles.json.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {normalized.checkinFiles.json.map((file, i) => (
+                    <div key={`json-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                  {normalized.checkinFiles.html.map((file, i) => (
+                    <div key={`html-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Button 
+                onClick={() => loadSection('checkins')}
+                disabled={loadingSection === 'checkins'}
+                className="w-full bg-emerald-600 hover:bg-emerald-700"
+              >
+                {loadingSection === 'checkins' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading Check-ins...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Load & Parse Check-ins
+                  </>
+                )}
+              </Button>
+            </div>
           ) : (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                {checkins.length === 0 ? 'No check-ins found' : `${checkins.length} check-ins`}
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              {checkins.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-gray-500">
+                    No check-ins found
+                  </CardContent>
+                </Card>
+              ) : (
+                checkins.map((checkin, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <p className="text-sm">{checkin.location || checkin.name || JSON.stringify(checkin).slice(0, 200)}</p>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
           )}
         </TabsContent>
       </Tabs>
