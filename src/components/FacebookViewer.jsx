@@ -174,16 +174,21 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   });
                   const result = await parsePostsFromHtml(resp.data.content, filePath);
 
-                  // Capture probe if parse yielded 0
-                  if (result.items.length === 0 && result.probe) {
+                  // Capture debug info (ALWAYS collect it)
+                  if (result.debug) {
                     debugRawFiles.push({
                       filePath,
-                      probe: result.probe,
                       debug: result.debug
                     });
-                    addLog(sectionName, 'MISMATCH', `File: ${filePath} | Structure: ${JSON.stringify(result.probe.counts)}`, 'warn');
-                  } else {
-                    addLog(sectionName, 'FILE_OK', `${filePath} → ${result.items.length} items`, 'success');
+
+                    // Log structured debug info
+                    const dbg = result.debug;
+                    addLog(
+                      sectionName, 
+                      'FILE_DEBUG', 
+                      `${filePath} | root=${dbg.rootSelectorUsed} strategy=${dbg.strategyUsed} tables=${dbg.rootCounts.tablesInRoot} images=${dbg.rootCounts.imagesInRoot} extracted=${dbg.itemsAfterFilter}`,
+                      dbg.itemsAfterFilter > 0 ? 'success' : 'warn'
+                    );
                   }
 
                   return result.items || [];
@@ -195,7 +200,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               })
             );
             allPosts.push(...batchResults.flat());
-            addLog(sectionName, 'PROGRESS', `Loaded ${i + batch.length}/${htmlFiles.length} files → ${allPosts.length} posts so far`);
+            addLog(sectionName, 'PROGRESS', `Loaded ${i + batch.length}/${htmlFiles.length} files → ${allPosts.length} total posts extracted`);
           }
 
           parsedData = allPosts.slice(0, 50);
