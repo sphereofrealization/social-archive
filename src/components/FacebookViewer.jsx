@@ -73,17 +73,17 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
 
   // Legacy parsed data (for non-streaming extractions)
   const profile = data?.profile || {};
-  const posts = isStreamingIndex ? (loadedSections.posts || []) : (Array.isArray(data?.posts) ? data.posts : []);
-  const friends = isStreamingIndex ? (loadedSections.friends || []) : (Array.isArray(data?.friends) ? data.friends : []);
-  const messages = isStreamingIndex ? (loadedSections.messages || []) : (Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.messages) ? data.messages : []);
-  const comments = isStreamingIndex ? (loadedSections.comments || []) : (Array.isArray(data?.comments) ? data.comments : []);
-  const likes = isStreamingIndex ? (loadedSections.likes || []) : (Array.isArray(data?.likes) ? data.likes : []);
-  const groups = isStreamingIndex ? (loadedSections.groups || []) : (Array.isArray(data?.groups) ? data.groups : []);
-  const reviews = isStreamingIndex ? (loadedSections.reviews || []) : (Array.isArray(data?.reviews) ? data.reviews : []);
-  const marketplace = isStreamingIndex ? (loadedSections.marketplace || []) : (Array.isArray(data?.marketplace) ? data.marketplace : []);
-  const events = isStreamingIndex ? (loadedSections.events || []) : (Array.isArray(data?.events) ? data.events : []);
-  const reels = isStreamingIndex ? (loadedSections.reels || []) : (Array.isArray(data?.reels) ? data.reels : []);
-  const checkins = isStreamingIndex ? (loadedSections.checkins || []) : (Array.isArray(data?.checkins) ? data.checkins : []);
+  const posts = isStreamingIndex ? (Array.isArray(loadedSections.posts) ? loadedSections.posts : []) : (Array.isArray(data?.posts) ? data.posts : []);
+  const friends = isStreamingIndex ? (Array.isArray(loadedSections.friends) ? loadedSections.friends : []) : (Array.isArray(data?.friends) ? data.friends : []);
+  const messages = isStreamingIndex ? (Array.isArray(loadedSections.messages) ? loadedSections.messages : []) : (Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.messages) ? data.messages : []);
+  const comments = isStreamingIndex ? (Array.isArray(loadedSections.comments) ? loadedSections.comments : []) : (Array.isArray(data?.comments) ? data.comments : []);
+  const likes = isStreamingIndex ? (Array.isArray(loadedSections.likes) ? loadedSections.likes : []) : (Array.isArray(data?.likes) ? data.likes : []);
+  const groups = isStreamingIndex ? (Array.isArray(loadedSections.groups) ? loadedSections.groups : []) : (Array.isArray(data?.groups) ? data.groups : []);
+  const reviews = isStreamingIndex ? (Array.isArray(loadedSections.reviews) ? loadedSections.reviews : []) : (Array.isArray(data?.reviews) ? data.reviews : []);
+  const marketplace = isStreamingIndex ? (Array.isArray(loadedSections.marketplace) ? loadedSections.marketplace : []) : (Array.isArray(data?.marketplace) ? data.marketplace : []);
+  const events = isStreamingIndex ? (Array.isArray(loadedSections.events) ? loadedSections.events : []) : (Array.isArray(data?.events) ? data.events : []);
+  const reels = isStreamingIndex ? (Array.isArray(loadedSections.reels) ? loadedSections.reels : []) : (Array.isArray(data?.reels) ? data.reels : []);
+  const checkins = isStreamingIndex ? (Array.isArray(loadedSections.checkins) ? loadedSections.checkins : []) : (Array.isArray(data?.checkins) ? data.checkins : []);
   
   const photosList = isStreamingIndex ? (index.photos || []) : (Array.isArray(data?.photos) ? data.photos : []);
   const videosList = isStreamingIndex ? (index.videos || []) : (Array.isArray(data?.videos) ? data.videos : []);
