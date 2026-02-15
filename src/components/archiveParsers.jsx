@@ -355,17 +355,26 @@ export async function parseMarketplaceFromHtml(htmlString, sourceFile) {
     const doc = parseHtml(htmlString);
     if (!doc) throw new Error('Failed to parse HTML');
     
+    const probe = probeFacebookExportHtml(htmlString, sourceFile);
     const items = [];
     
     // Marketplace items have titles and sometimes prices
-    doc.querySelectorAll('[data-testid*="listing"], .listing, div[data-listing]').forEach(el => {
+    let elements = doc.querySelectorAll('[data-testid*="listing"], .listing, div[data-listing]');
+    if (elements.length === 0) {
+      elements = doc.querySelectorAll('tr');
+    }
+    if (elements.length === 0) {
+      elements = doc.querySelectorAll('.contents > div, .contents > section');
+    }
+    
+    elements.forEach(el => {
       const titleEl = el.querySelector('h1, h2, h3, [data-title]');
       const priceEl = el.querySelector('[data-price], .price');
       const title = titleEl ? getText(titleEl) : getText(el);
       
       if (title && title.length > 0) {
         items.push({
-          title,
+          title: title.slice(0, 300),
           price: priceEl ? getText(priceEl) : null,
           sourceFile
         });
@@ -373,10 +382,10 @@ export async function parseMarketplaceFromHtml(htmlString, sourceFile) {
     });
     
     console.log(`[parseMarketplaceFromHtml] Extracted ${items.length} items from ${sourceFile}`);
-    return { items, sourceFile };
+    return { items, sourceFile, probe: items.length === 0 ? probe : undefined };
   } catch (err) {
     console.error(`[parseMarketplaceFromHtml] Error:`, err);
-    return { items: [], sourceFile, error: err.message };
+    return { items: [], sourceFile, error: err.message, probe: probeFacebookExportHtml(htmlString, sourceFile) };
   }
 }
 
