@@ -287,6 +287,13 @@ Deno.serve(async (req) => {
     const messagesByThread = {};
     const pathSegments = new Map(); // Track first path segment for rootPrefix detection
 
+    console.log('[extractArchiveDataStreaming] Starting to parse central directory:', {
+      cdBytesLength: cdBytes.length,
+      totalEntries,
+      cdOffset,
+      cdSize
+    });
+
     while (offset < cdBytes.length - 46 && entriesProcessed < totalEntries) {
       // Central directory file header signature: 0x02014b50
       if (cdBytes[offset] !== 0x50 || cdBytes[offset+1] !== 0x4b || 
