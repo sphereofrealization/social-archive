@@ -155,17 +155,25 @@ export async function parsePostsFromHtml(htmlString, sourceFile) {
       tableRows.forEach((row) => {
         const cells = Array.from(row.querySelectorAll('td, th'));
         const rowText = cells.map(cell => getText(cell).trim()).filter(t => t.length > 0).join(' ');
-        
+
         // Extract media refs from this row
         const mediaRefs = extractMediaRefsFromHtml(row.outerHTML, sourceFile);
-        
+
         // Keep item if it has text OR media
         if (rowText.length > 0 || mediaRefs.length > 0) {
-          items.push({
+          const item = {
             text: rowText.slice(0, 500) || '(media post)',
             mediaRefs: mediaRefs.length > 0 ? mediaRefs : undefined,
             sourceFile
-          });
+          };
+
+          // Add debug fields if this has media refs
+          if (mediaRefs.length > 0) {
+            item._mediaRefsRaw = mediaRefs.slice(0, 5);
+            item._mediaRefsNormalized = mediaRefs.slice(0, 5).map(ref => normalizeZipPath('', ref));
+          }
+
+          items.push(item);
         }
       });
       itemsBeforeFilter = items.length;
