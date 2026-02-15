@@ -234,6 +234,20 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
     }
   };
 
+  // Legacy parsed data (fallback for old format)
+  const profile = data?.profile || {};
+  const posts = isStreamingIndex ? (Array.isArray(loadedSections.posts) ? loadedSections.posts : []) : (Array.isArray(data?.posts) ? data.posts : []);
+  const friends = isStreamingIndex ? (Array.isArray(loadedSections.friends) ? loadedSections.friends : []) : (Array.isArray(data?.friends) ? data.friends : []);
+  const messages = isStreamingIndex ? (Array.isArray(loadedSections.messages) ? loadedSections.messages : []) : (Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.messages) ? data.messages : []);
+  const comments = isStreamingIndex ? (Array.isArray(loadedSections.comments) ? loadedSections.comments : []) : (Array.isArray(data?.comments) ? data.comments : []);
+  const likes = isStreamingIndex ? (Array.isArray(loadedSections.likes) ? loadedSections.likes : []) : (Array.isArray(data?.likes) ? data.likes : []);
+  const groups = isStreamingIndex ? (Array.isArray(loadedSections.groups) ? loadedSections.groups : []) : (Array.isArray(data?.groups) ? data.groups : []);
+  const reviews = isStreamingIndex ? (Array.isArray(loadedSections.reviews) ? loadedSections.reviews : []) : (Array.isArray(data?.reviews) ? data.reviews : []);
+  const marketplace = isStreamingIndex ? (Array.isArray(loadedSections.marketplace) ? loadedSections.marketplace : []) : (Array.isArray(data?.marketplace) ? data.marketplace : []);
+  const events = isStreamingIndex ? (Array.isArray(loadedSections.events) ? loadedSections.events : []) : (Array.isArray(data?.events) ? data.events : []);
+  const reels = isStreamingIndex ? (Array.isArray(loadedSections.reels) ? loadedSections.reels : []) : (Array.isArray(data?.reels) ? data.reels : []);
+  const checkins = isStreamingIndex ? (Array.isArray(loadedSections.checkins) ? loadedSections.checkins : []) : (Array.isArray(data?.checkins) ? data.checkins : []);
+
   const filteredPosts = posts.filter(post => 
     post?.text?.toLowerCase().includes(searchTerm.toLowerCase())
   );
