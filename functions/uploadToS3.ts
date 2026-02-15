@@ -21,10 +21,19 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Invalid session' }, { status: 401 });
         }
 
-        const userId = validateResponse.data.userId;
+        // Get accountId (or fallback to userId for backward compatibility)
+        const { accountId, userId } = validateResponse.data;
+        const folder = accountId || userId;
+        
+        if (!folder) {
+            return Response.json({ 
+                error: 'Missing accountId from passwordlessAuth.validate' 
+            }, { status: 500 });
+        }
+
         const { action, fileName, uploadId, fileKey, partNumber, chunkBase64, parts } = body;
         
-        console.log('Upload action:', action);
+        console.log('Upload action:', action, 'folder:', folder);
 
         const s3Client = new S3Client({
             region: 'us-east-1',
@@ -39,7 +48,9 @@ Deno.serve(async (req) => {
         const bucket = Deno.env.get('DREAMHOST_BUCKET');
 
         if (action === 'start') {
-            const fileKey = `${userId}/${Date.now()}_${fileName}`;
+            // Sanitize filename to avoid slashes or weird characters
+            const safeName = fileName.replace(/[^\w.\-]+/g, "_");
+            const fileKey = `${folder}/${Date.now()}_${safeName}`;
 
             const command = new CreateMultipartUploadCommand({
                 Bucket: bucket,

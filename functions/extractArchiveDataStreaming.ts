@@ -30,20 +30,27 @@ Deno.serve(async (req) => {
     }
 
     const contentLength = parseInt(headResponse.headers.get('content-length') || '0');
-    const supportsRanges = headResponse.headers.get('accept-ranges') === 'bytes';
+    const acceptRangesHeader = headResponse.headers.get('accept-ranges');
     
-    console.log('[extractArchiveDataStreaming] File size:', contentLength, 'Range support:', supportsRanges);
+    console.log('[extractArchiveDataStreaming] File size:', contentLength, 'Accept-Ranges header:', acceptRangesHeader);
 
-    if (!supportsRanges) {
+    // Step 2: Actively verify range support with a tiny GET request
+    const rangeTestResponse = await fetch(fileUrl, {
+      headers: { 'Range': 'bytes=0-0' }
+    });
+    
+    if (rangeTestResponse.status !== 206) {
       return Response.json({ 
-        error: 'Remote storage does not support range requests. Please contact support to configure CORS properly.',
-        details: 'Range requests are required for large files'
+        error: 'Remote storage does not support HTTP Range requests (required for large files).',
+        details: `Server returned status ${rangeTestResponse.status} instead of 206 Partial Content. Please ensure CORS is configured with Accept-Ranges support.`
       }, { status: 400 });
     }
+    
+    console.log('[extractArchiveDataStreaming] Range requests verified (HTTP 206)');
 
-    // Step 2: Read ZIP end-of-central-directory (last 22 bytes minimum)
-    // For large files, we read the last 64KB to capture the central directory
-    const tailSize = Math.min(65536, contentLength);
+    // Step 3: Read ZIP end-of-central-directory (last 22 bytes minimum)
+    // For large files with comments, we read the last 128KB to ensure we find EOCD
+    const tailSize = Math.min(131072, contentLength);  // 128KB
     const tailStart = contentLength - tailSize;
     
     const tailResponse = await fetch(fileUrl, {
@@ -80,19 +87,51 @@ Deno.serve(async (req) => {
     const readU32LE = (offset) => tailBytes[offset] | (tailBytes[offset + 1] << 8) | 
                                    (tailBytes[offset + 2] << 16) | (tailBytes[offset + 3] << 24);
 
-    const totalEntries = readU16LE(eocdOffset + 10);
-    const cdSize = readU32LE(eocdOffset + 12);
-    const cdOffset = readU32LE(eocdOffset + 16);
+    let totalEntries = readU16LE(eocdOffset + 10);
+    let cdSize = readU32LE(eocdOffset + 12);
+    let cdOffset = readU32LE(eocdOffset + 16);
+
+    // Check for ZIP64 format (fields are 0xFFFF or 0xFFFFFFFF)
+    if (totalEntries === 0xFFFF || cdSize === 0xFFFFFFFF || cdOffset === 0xFFFFFFFF) {
+      console.log('[extractArchiveDataStreaming] ZIP64 detected, attempting to parse ZIP64 EOCD');
+      
+      // ZIP64 end-of-central-directory locator is 20 bytes before EOCD
+      const zip64LocatorOffset = eocdOffset - 20;
+      if (zip64LocatorOffset >= 0) {
+        // Verify ZIP64 locator signature: 0x07064b50
+        if (tailBytes[zip64LocatorOffset] === 0x50 && tailBytes[zip64LocatorOffset+1] === 0x4b &&
+            tailBytes[zip64LocatorOffset+2] === 0x06 && tailBytes[zip64LocatorOffset+3] === 0x07) {
+          
+          // Read ZIP64 EOCD offset (64-bit, but we'll use lower 32 bits for now)
+          const zip64EOCDOffset = readU32LE(zip64LocatorOffset + 8);
+          
+          // Would need to fetch and parse ZIP64 EOCD here
+          // For now, return error asking user to use smaller archive or different method
+          return Response.json({ 
+            error: 'ZIP64 format detected. Large archives over 4GB require additional support.',
+            details: 'Please contact support or try a different extraction method.'
+          }, { status: 400 });
+        }
+      }
+    }
 
     console.log('[extractArchiveDataStreaming] ZIP metadata:', { totalEntries, cdSize, cdOffset });
 
-    // Step 3: Read central directory
+    // Step 4: Read central directory (single range request when possible)
+    // For very large central directories (>10MB), we might need chunking, but typically CD is small
+    if (cdSize > 10 * 1024 * 1024) {
+      console.log('[extractArchiveDataStreaming] Warning: Large central directory:', cdSize, 'bytes');
+    }
+    
     const cdResponse = await fetch(fileUrl, {
       headers: { 'Range': `bytes=${cdOffset}-${cdOffset + cdSize - 1}` }
     });
 
     if (!cdResponse.ok || cdResponse.status !== 206) {
-      return Response.json({ error: 'Failed to read ZIP central directory' }, { status: 400 });
+      return Response.json({ 
+        error: 'Failed to read ZIP central directory',
+        details: `Range request failed with status ${cdResponse.status}`
+      }, { status: 400 });
     }
 
     const cdBuffer = await cdResponse.arrayBuffer();

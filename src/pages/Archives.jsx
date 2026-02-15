@@ -69,7 +69,17 @@ export default function Archives() {
     queryFn: async () => {
       const sessionToken = localStorage.getItem('session_token');
       if (!sessionToken) return [];
-      return base44.entities.Archive.filter({ account_id: sessionToken }, '-updated_date');
+      
+      // Derive accountId from sessionToken (same as backend)
+      const validateResponse = await base44.functions.invoke('passwordlessAuth', {
+        action: 'validate',
+        sessionToken
+      });
+      
+      if (!validateResponse.data?.valid) return [];
+      
+      const accountId = validateResponse.data.accountId;
+      return base44.entities.Archive.filter({ account_id: accountId }, '-updated_date');
     },
     initialData: [],
   });
@@ -152,8 +162,16 @@ export default function Archives() {
           fileKey,
           parts: uploadedParts
         });
+        
+        // Derive accountId from sessionToken for DB storage
+        const validateResponse = await base44.functions.invoke('passwordlessAuth', {
+          action: 'validate',
+          sessionToken
+        });
+        const accountId = validateResponse.data?.accountId || sessionToken;
+        
         await base44.entities.Archive.create({
-          account_id: sessionToken,
+          account_id: accountId,
           platform: uploadData.platform,
           status: "downloaded",
           file_url: completeData.fileUrl,

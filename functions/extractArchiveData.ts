@@ -7,6 +7,16 @@ const MAX_FILES_PER_CATEGORY = 15;
 const CONCURRENCY_LIMIT = 4;
 
 Deno.serve(async (req) => {
+  // THIS FUNCTION IS DEPRECATED - USE extractArchiveDataStreaming INSTEAD
+  // This old version downloads the entire ZIP into memory and will timeout on large files (>100MB)
+  
+  return Response.json({ 
+    error: 'This extraction method is deprecated.',
+    details: 'Please use extractArchiveDataStreaming which supports large files via range requests.',
+    suggestion: 'Update your client code to call extractArchiveDataStreaming instead.'
+  }, { status: 410 });  // 410 Gone
+  
+  /* ORIGINAL CODE DISABLED
   const startTime = Date.now();
   
   try {
