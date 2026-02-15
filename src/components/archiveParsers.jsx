@@ -394,17 +394,26 @@ export async function parseEventsFromHtml(htmlString, sourceFile) {
     const doc = parseHtml(htmlString);
     if (!doc) throw new Error('Failed to parse HTML');
     
+    const probe = probeFacebookExportHtml(htmlString, sourceFile);
     const items = [];
     
     // Events have names and dates
-    doc.querySelectorAll('[data-testid*="event"], .event, li').forEach(el => {
+    let elements = doc.querySelectorAll('[data-testid*="event"], .event, li');
+    if (elements.length === 0) {
+      elements = doc.querySelectorAll('tr');
+    }
+    if (elements.length === 0) {
+      elements = doc.querySelectorAll('.contents > div, .contents > section');
+    }
+    
+    elements.forEach(el => {
       const nameEl = el.querySelector('a, h2, h3');
       const dateEl = el.querySelector('[data-date], time');
       const name = nameEl ? getText(nameEl) : getText(el);
       
       if (name && name.length > 0) {
         items.push({
-          name,
+          name: name.slice(0, 300),
           date: dateEl ? getText(dateEl) : null,
           sourceFile
         });
@@ -412,10 +421,10 @@ export async function parseEventsFromHtml(htmlString, sourceFile) {
     });
     
     console.log(`[parseEventsFromHtml] Extracted ${items.length} events from ${sourceFile}`);
-    return { items, sourceFile };
+    return { items, sourceFile, probe: items.length === 0 ? probe : undefined };
   } catch (err) {
     console.error(`[parseEventsFromHtml] Error:`, err);
-    return { items: [], sourceFile, error: err.message };
+    return { items: [], sourceFile, error: err.message, probe: probeFacebookExportHtml(htmlString, sourceFile) };
   }
 }
 
