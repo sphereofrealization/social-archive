@@ -61,8 +61,8 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
     try {
         console.log("Invoking backend extraction for:", fileUrl);
-        // Try streaming version first for large files
-        const response = await base44.functions.invoke('extractArchiveDataStreaming', { fileUrl });
+        // Use full parsing extraction
+        const response = await base44.functions.invoke('getArchiveFile', { fileUrl });
 
         if (!response.data) {
             throw new Error('No data returned from server');
