@@ -479,7 +479,7 @@ Deno.serve(async (req) => {
     debug.samplePaths = fileIndex.allPaths.slice(0, 200);
 
     console.log('[extractArchiveDataStreaming] Indexed files:', {
-      entriesParsed,
+      entriesParsed: entriesProcessed,
       postsJson: fileIndex.postsJson.length,
       postsHtml: fileIndex.postsHtml.length,
       friendsJson: fileIndex.friendsJson.length,
