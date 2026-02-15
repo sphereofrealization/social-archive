@@ -412,9 +412,21 @@ Deno.serve(async (req) => {
         }
       }
 
-      offset += 46 + fileNameLength + extraFieldLength + fileCommentLength;
+      const entrySize = 46 + fileNameLength + extraFieldLength + fileCommentLength;
+      offset += entrySize;
       entriesProcessed++;
+      
+      if (entriesProcessed <= 3 || entriesProcessed >= totalEntries - 3) {
+        console.log(`[extractArchiveDataStreaming] Entry ${entriesProcessed}: ${fileName} (offset: ${offset}, entrySize: ${entrySize})`);
+      }
     }
+
+    console.log('[extractArchiveDataStreaming] Finished parsing:', {
+      entriesProcessed,
+      totalEntries,
+      finalOffset: offset,
+      cdBytesLength: cdBytes.length
+    });
 
     debug.entriesParsed = entriesProcessed;
     fileIndex.messageThreads = Object.values(messagesByThread);
