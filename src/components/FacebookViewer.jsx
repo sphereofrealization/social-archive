@@ -112,43 +112,58 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
     }
   };
 
+  // Add log entry
+  const addLog = (sectionName, category, message, level = 'info', itemsCount = 0) => {
+    setDebugLogs(prev => ({
+      ...prev,
+      [sectionName]: [
+        ...(prev[sectionName] || []),
+        { category, message, level, itemsCount, timestamp: new Date().toLocaleTimeString() }
+      ]
+    }));
+  };
+
   // Load section data on demand
   const loadSection = async (sectionName) => {
     if (loadedSections[sectionName]) return;
     setLoadingSection(sectionName);
+    addLog(sectionName, 'INIT', `Starting load for ${sectionName}`);
 
     try {
       console.log(`[FacebookViewer] Loading ${sectionName} section`);
-      
+
       let parsedData = [];
+      let selectedFiles = [];
 
       if (sectionName === 'posts') {
-        const files = normalized.postFiles.json.length > 0 ? normalized.postFiles.json : normalized.postFiles.html;
-        if (files.length === 0) {
+        selectedFiles = normalized.postFiles.json.length > 0 ? normalized.postFiles.json : normalized.postFiles.html;
+        if (selectedFiles.length === 0) {
           throw new Error('No posts files found in index');
         }
 
-        const filePath = files[0];
+        const filePath = selectedFiles[0];
         const responseType = filePath.endsWith('.json') ? 'json' : 'text';
-        
+
+        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
+
         const response = await base44.functions.invoke('getArchiveEntry', {
           zipUrl: archiveUrl,
           entryPath: filePath,
           responseType
         });
 
+        addLog(sectionName, 'RESPONSE', `Status: ${response.status}, Size: ${response.data?.content?.length || 0} bytes`);
+
         if (responseType === 'json' && response.data?.content) {
           const jsonData = response.data.content;
-          if (Array.isArray(jsonData)) {
-            parsedData = jsonData.slice(0, 50).map(item => ({
-              text: item.post || item.data?.[0]?.post || item.title || 'No text',
-              timestamp: item.timestamp ? new Date(item.timestamp * 1000).toLocaleDateString() : null,
-              likes_count: 0,
-              comments_count: 0
-            }));
-          }
+          const result = parseJsonGeneric(jsonData, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
         } else if (responseType === 'text' && response.data?.content) {
-          parsedData = [{ text: `HTML file loaded: ${files.length} post files found`, timestamp: null }];
+          const result = await parsePostsFromHtml(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+          if (result.error) addLog(sectionName, 'PARSE_ERROR', result.error, 'error');
         }
       } else if (sectionName === 'friends') {
         const files = normalized.friendFiles.json.length > 0 ? normalized.friendFiles.json : normalized.friendFiles.html;
