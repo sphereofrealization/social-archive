@@ -47,14 +47,14 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
   const posts = isStreamingIndex ? (loadedSections.posts || []) : (Array.isArray(data?.posts) ? data.posts : []);
   const friends = isStreamingIndex ? (loadedSections.friends || []) : (Array.isArray(data?.friends) ? data.friends : []);
   const messages = isStreamingIndex ? (loadedSections.messages || []) : (Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.messages) ? data.messages : []);
-  const comments = Array.isArray(data?.comments) ? data.comments : [];
-  const reels = Array.isArray(data?.reels) ? data.reels : [];
-  const checkins = Array.isArray(data?.checkins) ? data.checkins : [];
-  const likes = Array.isArray(data?.likes) ? data.likes : [];
-  const events = Array.isArray(data?.events) ? data.events : [];
-  const reviews = Array.isArray(data?.reviews) ? data.reviews : [];
-  const groups = Array.isArray(data?.groups) ? data.groups : [];
-  const marketplace = Array.isArray(data?.marketplace) ? data.marketplace : [];
+  const comments = isStreamingIndex ? (loadedSections.comments || []) : (Array.isArray(data?.comments) ? data.comments : []);
+  const likes = isStreamingIndex ? (loadedSections.likes || []) : (Array.isArray(data?.likes) ? data.likes : []);
+  const groups = isStreamingIndex ? (loadedSections.groups || []) : (Array.isArray(data?.groups) ? data.groups : []);
+  const reviews = isStreamingIndex ? (loadedSections.reviews || []) : (Array.isArray(data?.reviews) ? data.reviews : []);
+  const marketplace = isStreamingIndex ? (loadedSections.marketplace || []) : (Array.isArray(data?.marketplace) ? data.marketplace : []);
+  const events = isStreamingIndex ? (loadedSections.events || []) : (Array.isArray(data?.events) ? data.events : []);
+  const reels = isStreamingIndex ? (loadedSections.reels || []) : (Array.isArray(data?.reels) ? data.reels : []);
+  const checkins = isStreamingIndex ? (loadedSections.checkins || []) : (Array.isArray(data?.checkins) ? data.checkins : []);
   
   const photosList = isStreamingIndex ? (index.photos || []) : (Array.isArray(data?.photos) ? data.photos : []);
   const videosList = isStreamingIndex ? (index.videos || []) : (Array.isArray(data?.videos) ? data.videos : []);
@@ -277,7 +277,28 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
             Videos ({counts.videos || videosList.length})
           </TabsTrigger>
           <TabsTrigger value="comments" className="bg-blue-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-blue-600 text-sm">
-            Comments ({comments.length})
+            Comments ({isStreamingIndex ? (counts.commentsJsonFiles + counts.commentsHtmlFiles) : comments.length})
+          </TabsTrigger>
+          <TabsTrigger value="likes" className="bg-indigo-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-indigo-600 text-sm">
+            Likes ({isStreamingIndex ? (counts.likesJsonFiles + counts.likesHtmlFiles) : likes.length})
+          </TabsTrigger>
+          <TabsTrigger value="groups" className="bg-purple-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-purple-600 text-sm">
+            Groups ({isStreamingIndex ? (counts.groupsJsonFiles + counts.groupsHtmlFiles) : groups.length})
+          </TabsTrigger>
+          <TabsTrigger value="reviews" className="bg-pink-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-pink-600 text-sm">
+            Reviews ({isStreamingIndex ? (counts.reviewsJsonFiles + counts.reviewsHtmlFiles) : reviews.length})
+          </TabsTrigger>
+          <TabsTrigger value="marketplace" className="bg-rose-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-rose-600 text-sm">
+            Marketplace ({isStreamingIndex ? (counts.marketplaceJsonFiles + counts.marketplaceHtmlFiles) : marketplace.length})
+          </TabsTrigger>
+          <TabsTrigger value="events" className="bg-amber-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-amber-600 text-sm">
+            Events ({isStreamingIndex ? (counts.eventsJsonFiles + counts.eventsHtmlFiles) : events.length})
+          </TabsTrigger>
+          <TabsTrigger value="reels" className="bg-cyan-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-cyan-600 text-sm">
+            Reels ({isStreamingIndex ? (counts.reelsJsonFiles + counts.reelsHtmlFiles) : reels.length})
+          </TabsTrigger>
+          <TabsTrigger value="checkins" className="bg-emerald-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-emerald-600 text-sm">
+            Check-ins ({isStreamingIndex ? (counts.checkinsJsonFiles + counts.checkinsHtmlFiles) : checkins.length})
           </TabsTrigger>
         </TabsList>
 
@@ -612,9 +633,93 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "" 
           <Card>
             <CardContent className="p-8 text-center text-gray-500">
               {isStreamingIndex ? (
-                `Found ${counts.commentsJsonFiles + counts.commentsHtmlFiles} comment files - Loading not yet implemented`
+                `Found ${counts.commentsJsonFiles + counts.commentsHtmlFiles} comment files`
               ) : (
                 comments.length === 0 ? 'No comments found' : `${comments.length} comments`
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="likes" className="space-y-4 mt-4">
+          <Card>
+            <CardContent className="p-8 text-center text-gray-500">
+              {isStreamingIndex ? (
+                `Found ${counts.likesJsonFiles + counts.likesHtmlFiles} like/reaction files`
+              ) : (
+                likes.length === 0 ? 'No likes found' : `${likes.length} likes`
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="groups" className="space-y-4 mt-4">
+          <Card>
+            <CardContent className="p-8 text-center text-gray-500">
+              {isStreamingIndex ? (
+                `Found ${counts.groupsJsonFiles + counts.groupsHtmlFiles} group files`
+              ) : (
+                groups.length === 0 ? 'No groups found' : `${groups.length} groups`
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="reviews" className="space-y-4 mt-4">
+          <Card>
+            <CardContent className="p-8 text-center text-gray-500">
+              {isStreamingIndex ? (
+                `Found ${counts.reviewsJsonFiles + counts.reviewsHtmlFiles} review files`
+              ) : (
+                reviews.length === 0 ? 'No reviews found' : `${reviews.length} reviews`
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="marketplace" className="space-y-4 mt-4">
+          <Card>
+            <CardContent className="p-8 text-center text-gray-500">
+              {isStreamingIndex ? (
+                `Found ${counts.marketplaceJsonFiles + counts.marketplaceHtmlFiles} marketplace files`
+              ) : (
+                marketplace.length === 0 ? 'No marketplace items found' : `${marketplace.length} items`
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="events" className="space-y-4 mt-4">
+          <Card>
+            <CardContent className="p-8 text-center text-gray-500">
+              {isStreamingIndex ? (
+                `Found ${counts.eventsJsonFiles + counts.eventsHtmlFiles} event files`
+              ) : (
+                events.length === 0 ? 'No events found' : `${events.length} events`
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="reels" className="space-y-4 mt-4">
+          <Card>
+            <CardContent className="p-8 text-center text-gray-500">
+              {isStreamingIndex ? (
+                `Found ${counts.reelsJsonFiles + counts.reelsHtmlFiles} reels files`
+              ) : (
+                reels.length === 0 ? 'No reels found' : `${reels.length} reels`
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="checkins" className="space-y-4 mt-4">
+          <Card>
+            <CardContent className="p-8 text-center text-gray-500">
+              {isStreamingIndex ? (
+                `Found ${counts.checkinsJsonFiles + counts.checkinsHtmlFiles} check-in files`
+              ) : (
+                checkins.length === 0 ? 'No check-ins found' : `${checkins.length} check-ins`
               )}
             </CardContent>
           </Card>
