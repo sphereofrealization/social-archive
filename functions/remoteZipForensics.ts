@@ -406,6 +406,10 @@ Deno.serve(async (req) => {
     console.log('[remoteZipForensics] Forensic analysis complete');
 
     return Response.json({ 
+      buildId: "forensics-2026-02-15-a",
+      zipUrlRequested: zipUrl,
+      finalUrlUsed: targetUrl,
+      fileSizeFromHead: contentLength,
       ok: true, 
       report,
       summary: {
