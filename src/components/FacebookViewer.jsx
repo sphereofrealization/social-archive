@@ -564,30 +564,42 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
         <TabsContent value="posts" className="space-y-4 mt-4">
           {isStreamingIndex && !loadedSections.posts ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-600 mb-4">
-                  Found {normalized.postFiles.html.length + normalized.postFiles.json.length} post files ({normalized.postFiles.json.length} JSON, {normalized.postFiles.html.length} HTML)
-                </p>
-                <Button 
-                  onClick={() => loadSection('posts')}
-                  disabled={loadingSection === 'posts'}
-                  className="bg-red-600 hover:bg-red-700"
-                >
-                  {loadingSection === 'posts' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading Posts...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Load Posts
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Files Detected ({normalized.postFiles.html.length + normalized.postFiles.json.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {normalized.postFiles.json.map((file, i) => (
+                    <div key={`json-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                  {normalized.postFiles.html.map((file, i) => (
+                    <div key={`html-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs flex-1 truncate">{file}</code>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Button 
+                onClick={() => loadSection('posts')}
+                disabled={loadingSection === 'posts'}
+                className="w-full bg-red-600 hover:bg-red-700"
+              >
+                {loadingSection === 'posts' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading Posts...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Load & Parse Posts
+                  </>
+                )}
+              </Button>
+            </div>
           ) : filteredPosts.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">
