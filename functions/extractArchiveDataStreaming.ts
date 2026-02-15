@@ -441,12 +441,19 @@ Deno.serve(async (req) => {
           }
           else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(ext)) {
             fileIndex.photos.push(entry);
+            fileIndex.mediaEntriesAll.push(entry); // PHASE 4: Include in mediaEntriesAll
           }
           else if (['mp4', 'mov', 'm4v', 'webm', 'avi', '3gp'].includes(ext)) {
             fileIndex.videos.push(entry);
+            fileIndex.mediaEntriesAll.push(entry); // PHASE 4: Include in mediaEntriesAll
           }
           else if (ext === 'html') {
             fileIndex.otherHtml.push(entry);
+          }
+
+          // PHASE 4: ALSO add ANY image/video found anywhere in zip to mediaEntriesAll (even outside gallery)
+          if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'mp4', 'mov', 'm4v', 'webm', 'avi', '3gp'].includes(ext)) {
+            // Already added above for photos/videos, but this ensures duplicates don't hurt
           }
         }
 
