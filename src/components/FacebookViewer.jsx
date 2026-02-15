@@ -272,7 +272,15 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
       )}
 
       {/* Debug Info Display */}
-      {(data?.debug || debugMode) && (
+      <div className="mb-4 flex justify-between items-center">
+        <button
+          onClick={() => setShowDebug(!showDebug)}
+          className="text-xs text-gray-600 hover:text-gray-900 underline"
+        >
+          {showDebug ? 'Hide' : 'Show'} Debug
+        </button>
+      </div>
+      {showDebug && (
         <Alert className="bg-gray-50 border-gray-300">
           <AlertDescription className="text-gray-700 text-xs font-mono">
             <div className="space-y-1">
@@ -286,6 +294,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               <div>• Videos Source: {normalized.videos.length > 0 ? 'index.videos' : 'data.videos'} → {normalized.videos.length} items</div>
               <div>• Posts Files: {normalized.postFiles.html.length + normalized.postFiles.json.length} files</div>
               <div>• Friends Files: {normalized.friendFiles.html.length + normalized.friendFiles.json.length} files</div>
+              <div>• Comments Files: {normalized.commentFiles.html.length + normalized.commentFiles.json.length} files</div>
+              <div>• Likes Files: {normalized.likeFiles.html.length + normalized.likeFiles.json.length} files</div>
+              <div className="mt-2"><strong>Normalized Counts:</strong></div>
+              <div>• photos: {normalized.counts.photos}, videos: {normalized.counts.videos}, posts: {normalized.counts.posts}, friends: {normalized.counts.friends}</div>
               {data?.debug?.samplePaths && data.debug.samplePaths.length > 0 && (
                 <details className="mt-2">
                   <summary className="cursor-pointer hover:text-blue-600">Sample Paths ({data.debug.samplePaths.length})</summary>
