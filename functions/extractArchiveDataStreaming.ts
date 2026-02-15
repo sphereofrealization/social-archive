@@ -499,6 +499,32 @@ Deno.serve(async (req) => {
     }
 
     // Return full index with all categories
+    const lengths = {
+      photos: fileIndex.photos.length,
+      videos: fileIndex.videos.length,
+      postsHtml: fileIndex.postsHtml.length,
+      postsJson: fileIndex.postsJson.length,
+      friendsHtml: fileIndex.friendsHtml.length,
+      friendsJson: fileIndex.friendsJson.length,
+      messageThreads: fileIndex.messageThreads.length,
+      commentsHtml: fileIndex.commentsHtml.length,
+      commentsJson: fileIndex.commentsJson.length,
+      likesHtml: fileIndex.likesHtml.length,
+      likesJson: fileIndex.likesJson.length,
+      groupsHtml: fileIndex.groupsHtml.length,
+      groupsJson: fileIndex.groupsJson.length,
+      reviewsHtml: fileIndex.reviewsHtml.length,
+      reviewsJson: fileIndex.reviewsJson.length,
+      marketplaceHtml: fileIndex.marketplaceHtml.length,
+      marketplaceJson: fileIndex.marketplaceJson.length,
+      eventsHtml: fileIndex.eventsHtml.length,
+      eventsJson: fileIndex.eventsJson.length,
+      reelsHtml: fileIndex.reelsHtml.length,
+      reelsJson: fileIndex.reelsJson.length,
+      checkinsHtml: fileIndex.checkinsHtml.length,
+      checkinsJson: fileIndex.checkinsJson.length
+    };
+
     const result = {
       buildId: "streaming-2026-02-15-ui-contract-a",
       ok: true,
@@ -511,7 +537,7 @@ Deno.serve(async (req) => {
       entriesParsed: entriesProcessed,
       eocdFound: debug.eocdFound,
       rootPrefix: rootPrefix,
-      indexKeys: ["photos", "videos", "posts", "friends", "messages", "comments", "likes", "groups", "reviews", "marketplace", "events", "reels", "checkins", "otherHtml"],
+      indexKeys: Object.keys(fileIndex).filter(k => !k.startsWith('_') && k !== 'allPaths' && k !== 'messageThreads'),
       countsKeys: Object.keys({
         photos: fileIndex.photos.length,
         videos: fileIndex.videos.length,
