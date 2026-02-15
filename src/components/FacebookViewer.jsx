@@ -743,87 +743,248 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         </TabsContent>
 
         <TabsContent value="likes" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-8 text-center text-gray-500">
-              {isStreamingIndex ? (
-                `Found ${safeCounts.likesJsonFiles + safeCounts.likesHtmlFiles} like/reaction files`
-              ) : (
-                likes.length === 0 ? 'No likes found' : `${likes.length} likes`
-              )}
-            </CardContent>
-          </Card>
+          {isStreamingIndex && !loadedSections.likes ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {normalized.likeFiles.html.length + normalized.likeFiles.json.length} like/reaction files
+                </p>
+                <Button 
+                  onClick={() => loadSection('likes')}
+                  disabled={loadingSection === 'likes'}
+                  className="bg-indigo-600 hover:bg-indigo-700"
+                >
+                  {loadingSection === 'likes' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Likes...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Likes
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                {likes.length === 0 ? 'No likes found' : `${likes.length} likes`}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="groups" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-8 text-center text-gray-500">
-              {isStreamingIndex ? (
-                `Found ${safeCounts.groupsJsonFiles + safeCounts.groupsHtmlFiles} group files`
-              ) : (
-                groups.length === 0 ? 'No groups found' : `${groups.length} groups`
-              )}
-            </CardContent>
-          </Card>
+          {isStreamingIndex && !loadedSections.groups ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {normalized.groupFiles.html.length + normalized.groupFiles.json.length} group files
+                </p>
+                <Button 
+                  onClick={() => loadSection('groups')}
+                  disabled={loadingSection === 'groups'}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  {loadingSection === 'groups' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Groups...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Groups
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                {groups.length === 0 ? 'No groups found' : `${groups.length} groups`}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="reviews" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-8 text-center text-gray-500">
-              {isStreamingIndex ? (
-                `Found ${safeCounts.reviewsJsonFiles + safeCounts.reviewsHtmlFiles} review files`
-              ) : (
-                reviews.length === 0 ? 'No reviews found' : `${reviews.length} reviews`
-              )}
-            </CardContent>
-          </Card>
+          {isStreamingIndex && !loadedSections.reviews ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {normalized.reviewFiles.html.length + normalized.reviewFiles.json.length} review files
+                </p>
+                <Button 
+                  onClick={() => loadSection('reviews')}
+                  disabled={loadingSection === 'reviews'}
+                  className="bg-pink-600 hover:bg-pink-700"
+                >
+                  {loadingSection === 'reviews' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Reviews...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Reviews
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                {reviews.length === 0 ? 'No reviews found' : `${reviews.length} reviews`}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="marketplace" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-8 text-center text-gray-500">
-              {isStreamingIndex ? (
-                `Found ${safeCounts.marketplaceJsonFiles + safeCounts.marketplaceHtmlFiles} marketplace files`
-              ) : (
-                marketplace.length === 0 ? 'No marketplace items found' : `${marketplace.length} items`
-              )}
-            </CardContent>
-          </Card>
+          {isStreamingIndex && !loadedSections.marketplace ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {normalized.marketplaceFiles.html.length + normalized.marketplaceFiles.json.length} marketplace files
+                </p>
+                <Button 
+                  onClick={() => loadSection('marketplace')}
+                  disabled={loadingSection === 'marketplace'}
+                  className="bg-rose-600 hover:bg-rose-700"
+                >
+                  {loadingSection === 'marketplace' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Marketplace...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Marketplace
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                {marketplace.length === 0 ? 'No marketplace items found' : `${marketplace.length} items`}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="events" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-8 text-center text-gray-500">
-              {isStreamingIndex ? (
-                `Found ${safeCounts.eventsJsonFiles + safeCounts.eventsHtmlFiles} event files`
-              ) : (
-                events.length === 0 ? 'No events found' : `${events.length} events`
-              )}
-            </CardContent>
-          </Card>
+          {isStreamingIndex && !loadedSections.events ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {normalized.eventFiles.html.length + normalized.eventFiles.json.length} event files
+                </p>
+                <Button 
+                  onClick={() => loadSection('events')}
+                  disabled={loadingSection === 'events'}
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
+                  {loadingSection === 'events' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Events...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Events
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                {events.length === 0 ? 'No events found' : `${events.length} events`}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="reels" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-8 text-center text-gray-500">
-              {isStreamingIndex ? (
-                `Found ${safeCounts.reelsJsonFiles + safeCounts.reelsHtmlFiles} reels files`
-              ) : (
-                reels.length === 0 ? 'No reels found' : `${reels.length} reels`
-              )}
-            </CardContent>
-          </Card>
+          {isStreamingIndex && !loadedSections.reels ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {normalized.reelFiles.html.length + normalized.reelFiles.json.length} reel files
+                </p>
+                <Button 
+                  onClick={() => loadSection('reels')}
+                  disabled={loadingSection === 'reels'}
+                  className="bg-cyan-600 hover:bg-cyan-700"
+                >
+                  {loadingSection === 'reels' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Reels...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Reels
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                {reels.length === 0 ? 'No reels found' : `${reels.length} reels`}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="checkins" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-8 text-center text-gray-500">
-              {isStreamingIndex ? (
-                `Found ${safeCounts.checkinsJsonFiles + safeCounts.checkinsHtmlFiles} check-in files`
-              ) : (
-                checkins.length === 0 ? 'No check-ins found' : `${checkins.length} check-ins`
-              )}
-            </CardContent>
-          </Card>
+          {isStreamingIndex && !loadedSections.checkins ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <p className="text-gray-600 mb-4">
+                  Found {normalized.checkinFiles.html.length + normalized.checkinFiles.json.length} check-in files
+                </p>
+                <Button 
+                  onClick={() => loadSection('checkins')}
+                  disabled={loadingSection === 'checkins'}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {loadingSection === 'checkins' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Loading Check-ins...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Load Check-ins
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                {checkins.length === 0 ? 'No check-ins found' : `${checkins.length} check-ins`}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>
