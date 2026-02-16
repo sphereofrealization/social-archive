@@ -99,11 +99,18 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   };
 
   // Load media on demand with comprehensive debugging
-  const loadMedia = async (mediaPath, type, postSourceFile = null, originalRef = null) => {
-    if (loadedMedia[mediaPath] !== undefined) return;
+  const loadMedia = async (mediaItem, type, postSourceFile = null, originalRef = null) => {
+    const entryPath = getEntryPath(mediaItem);
     
-    addMediaLog(`[MEDIA_CLICK] entryPath=${mediaPath} postSourceFile=${postSourceFile || 'N/A'} type=${type} resolvedFromRef=${originalRef || 'N/A'}`);
-    setLoadedMedia(prev => ({ ...prev, [mediaPath]: 'loading' }));
+    if (!entryPath) {
+      addMediaLog(`[MEDIA_CLICK_ERROR] Invalid media item - no path found. type=${typeof mediaItem} value=${JSON.stringify(mediaItem).slice(0, 100)}`);
+      return;
+    }
+    
+    if (loadedMedia[entryPath] !== undefined) return;
+    
+    addMediaLog(`[MEDIA_CLICK] entryPath=${entryPath} postSourceFile=${postSourceFile || 'N/A'} type=${type} resolvedFromRef=${originalRef || 'N/A'}`);
+    setLoadedMedia(prev => ({ ...prev, [entryPath]: 'loading' }));
     
     try {
       const response = await base44.functions.invoke('getArchiveEntry', {
