@@ -568,7 +568,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
               // Fetch the full archive index (same as what File Tree uses)
               const response = await base44.functions.invoke('extractArchiveDataStreaming', {
-                zipUrl: archiveUrl
+                fileUrl: archiveUrl
               });
 
               addLog(
