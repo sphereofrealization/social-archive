@@ -552,6 +552,14 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         >
           {showDebug ? 'Hide' : 'Show'} Debug
         </button>
+        {mediaDebugLogs.length > 0 && (
+          <button
+            onClick={() => setMediaDebugLogs([])}
+            className="text-xs text-red-600 hover:text-red-900 underline ml-4"
+          >
+            Clear Media Logs ({mediaDebugLogs.length})
+          </button>
+        )}
       </div>
       {showDebug && (
         <Alert className="bg-gray-50 border-gray-300">
