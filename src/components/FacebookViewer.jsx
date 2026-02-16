@@ -887,15 +887,50 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
         }
       } else if (sectionName === 'groups') {
-        // PHASE 0: Get archive index (same as comments)
+        // PHASE 0: Ensure manifest is loaded
+        addLog(sectionName, 'MANIFEST_ENSURE', 'Checking if manifest is loaded...');
+
         let archiveIndex = data?.index || {};
-        const manifestSource = archiveIndex.all?.length ? 'index.all' : 
-                               archiveIndex.allPaths?.length ? 'index.allPaths' : 
-                               archiveIndex.fileTree?.allPaths?.length ? 'fileTree.allPaths' : 
-                               'none';
-        
-        addLog(sectionName, 'GROUPS_INDEX_CHECK', `manifestSource=${manifestSource} count=${archiveIndex.all?.length || archiveIndex.allPaths?.length || 0}`, manifestSource !== 'none' ? 'success' : 'error');
-        
+        let manifestSource = 'existing';
+
+        // Check if we have a usable manifest
+        const hasManifest = (archiveIndex.all && Array.isArray(archiveIndex.all) && archiveIndex.all.length > 0) ||
+                            (archiveIndex.fileTree?.allPaths && archiveIndex.fileTree.allPaths.length > 0) ||
+                            (archiveIndex.allPaths && Array.isArray(archiveIndex.allPaths) && archiveIndex.allPaths.length > 0);
+
+        if (!hasManifest) {
+          addLog(sectionName, 'MANIFEST_ENSURE', 'Manifest not in memory, attempting fetch from archive...', 'warn');
+
+          try {
+            const response = await base44.functions.invoke('extractArchiveDataStreaming', {
+              fileUrl: archiveUrl
+            });
+
+            if (response.data?.index) {
+              archiveIndex = response.data.index;
+              manifestSource = 'extractArchiveDataStreaming';
+              const manifestCount = archiveIndex.all?.length || archiveIndex.allPaths?.length || 0;
+              const manifestSourceDetail = archiveIndex.all?.length ? 'index.all' :
+                                           archiveIndex.allPaths?.length ? 'index.allPaths' : 'unknown';
+
+              addLog(
+                sectionName, 
+                'MANIFEST_ENSURE', 
+                `Fetched manifest: count=${manifestCount} source=${manifestSourceDetail}`, 
+                manifestCount > 0 ? 'success' : 'error'
+              );
+            }
+          } catch (err) {
+            addLog(sectionName, 'MANIFEST_FETCH_ERROR', `Failed to fetch manifest: ${err.message}`, 'error');
+          }
+        } else {
+          const existingCount = archiveIndex.all?.length || archiveIndex.fileTree?.allPaths?.length || archiveIndex.allPaths?.length || 0;
+          const existingSource = archiveIndex.all?.length ? 'zipIndex.all' :
+                                 archiveIndex.fileTree?.allPaths?.length ? 'fileTree.allPaths' :
+                                 archiveIndex.allPaths?.length ? 'zipIndex.allPaths' : 'unknown';
+          addLog(sectionName, 'MANIFEST_ENSURE', `Manifest already in memory: count=${existingCount} source=${existingSource}`, 'success');
+        }
+
         // PHASE 1: Run Groups Presence Audit
         addLog(sectionName, 'GROUPS_AUDIT_START', 'Running Groups Presence Audit on entire ZIP...');
         
