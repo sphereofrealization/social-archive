@@ -115,7 +115,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
     try {
       const response = await base44.functions.invoke('getArchiveEntry', {
         zipUrl: archiveUrl,
-        entryPath: mediaPath,
+        entryPath: entryPath,
         responseType: 'base64'
       });
       
@@ -130,7 +130,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         const blobUrl = base64ToBlobUrl(response.data.content, response.data.mime);
         if (blobUrl) {
           addMediaLog(`[MEDIA_OBJECT_URL] created=${blobUrl} byteLength=${response.data.content.length}`);
-          setLoadedMedia(prev => ({ ...prev, [mediaPath]: { url: blobUrl, mime: response.data.mime } }));
+          setLoadedMedia(prev => ({ ...prev, [entryPath]: { url: blobUrl, mime: response.data.mime } }));
         } else {
           throw new Error('Failed to create blob URL');
         }
@@ -141,7 +141,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
       const errorMsg = `${err.message || err}`;
       addMediaLog(`[MEDIA_ERROR] ${errorMsg}`);
       console.error(`[FacebookViewer] Failed to load ${type}:`, err);
-      setLoadedMedia(prev => ({ ...prev, [mediaPath]: { error: errorMsg } }));
+      setLoadedMedia(prev => ({ ...prev, [entryPath]: { error: errorMsg } }));
     }
   };
 
