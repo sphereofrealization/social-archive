@@ -100,6 +100,13 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
     setMediaDebugLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
     console.log('[MEDIA_DEBUG]', message);
   };
+  
+  // Determine if archive is large (needs range-based access)
+  const isLargeArchive = React.useMemo(() => {
+    const sizeInMB = (data?.archive?.fileSize || 0) / 1024 / 1024;
+    const fileCount = data?.archive?.entryCount || 0;
+    return sizeInMB > 50 || fileCount > 1000;
+  }, [data?.archive]);
 
   // Load media on demand with comprehensive debugging
   const loadMedia = async (mediaItem, type, postSourceFile = null, originalRef = null) => {
@@ -116,7 +123,8 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
     setLoadedMedia(prev => ({ ...prev, [entryPath]: 'loading' }));
     
     try {
-      const response = await base44.functions.invoke('getArchiveEntry', {
+      const funcName = isLargeArchive ? 'getArchiveEntryRanged' : 'getArchiveEntry';
+      const response = await base44.functions.invoke(funcName, {
         zipUrl: archiveUrl,
         entryPath: entryPath,
         responseType: 'base64'
@@ -195,14 +203,17 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           throw new Error('No posts files found in index');
         }
 
-        // Load all HTML files with concurrency=2 + collect probes
+        // Load all HTML files with batch/range access for large archives
         const htmlFiles = selectedFiles.filter(f => f.endsWith('.html'));
         const jsonFiles = selectedFiles.filter(f => f.endsWith('.json'));
         const debugRawFiles = [];
 
         if (jsonFiles.length > 0) {
           const filePath = jsonFiles[0];
-          const response = await base44.functions.invoke('getArchiveEntry', {
+          const funcName = isLargeArchive ? 'getArchiveEntryRanged' : 'getArchiveEntry';
+          addLog(sectionName, 'FETCH_JSON', `Using ${funcName} for JSON file`, 'info');
+
+          const response = await base44.functions.invoke(funcName, {
             zipUrl: archiveUrl,
             entryPath: filePath,
             responseType: 'json'
@@ -211,21 +222,28 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           parsedData = result.items.slice(0, 50);
           addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
         } else if (htmlFiles.length > 0) {
-          addLog(sectionName, 'LOAD_HTML', `Loading ${htmlFiles.length} HTML files with concurrency=2...`);
+          addLog(sectionName, 'LOAD_HTML', `Loading ${htmlFiles.length} HTML files (largeArchive=${isLargeArchive}, strategy=${isLargeArchive ? 'range-batch' : 'legacy'})...`);
           const allPosts = [];
-          const concurrency = 2;
 
-          for (let i = 0; i < htmlFiles.length; i += concurrency) {
-            const batch = htmlFiles.slice(i, i + concurrency);
-            const batchResults = await Promise.all(
-              batch.map(async (filePath) => {
-                try {
-                  const resp = await base44.functions.invoke('getArchiveEntry', {
-                    zipUrl: archiveUrl,
-                    entryPath: filePath,
-                    responseType: 'text'
-                  });
-                  const result = await parsePostsFromHtml(resp.data.content, filePath);
+          if (isLargeArchive) {
+            // Use batch endpoint for large archives
+            const batchSize = 5;
+            for (let i = 0; i < htmlFiles.length; i += batchSize) {
+              const batch = htmlFiles.slice(i, i + batchSize);
+
+              try {
+                addLog(sectionName, 'BATCH_FETCH', `Fetching batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(htmlFiles.length/batchSize)} (${batch.length} files)...`);
+
+                const batchResp = await base44.functions.invoke('getArchiveEntriesBatch', {
+                  zipUrl: archiveUrl,
+                  paths: batch,
+                  responseType: 'text'
+                });
+
+                if (batchResp.data?.results) {
+                  for (const [filePath, content] of Object.entries(batchResp.data.results)) {
+                    try {
+                      const result = await parsePostsFromHtml(content, filePath);
 
                   // Resolve mediaRefs to actual ZIP entry paths
                   const resolvedItems = (result.items || []).map(item => {
@@ -233,10 +251,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                       const resolvedPaths = [];
                       const unresolvedRefs = [];
                       const htmlPagePaths = [];
-                      
+
                       item.mediaRefs.forEach(ref => {
                         const resolution = resolveZipEntryPath(filePath, ref, data?.rootPrefix || '', knownMediaPathSet);
-                        
+
                         if (resolution.resolved) {
                           resolvedPaths.push(resolution.resolved);
                         } else if (resolution.reason === 'REF_POINTS_TO_HTML' && resolution.htmlPath) {
@@ -252,43 +270,118 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                         mediaPaths: resolvedPaths.length > 0 ? resolvedPaths : undefined,
                         mediaUnresolvedRefs: unresolvedRefs.length > 0 ? unresolvedRefs : undefined,
                         mediaPagePaths: htmlPagePaths.length > 0 ? htmlPagePaths : undefined,
-                        _mediaRefsRaw: item.mediaRefs // Keep for debug
+                        _mediaRefsRaw: item.mediaRefs
                       };
                     }
                     return item;
                   });
 
-                  // Capture debug info (ALWAYS collect it)
                   if (result.debug) {
-                    debugRawFiles.push({
-                      filePath,
-                      debug: result.debug
-                    });
-
-                    // Log structured debug info
+                    debugRawFiles.push({ filePath, debug: result.debug });
                     const dbg = result.debug;
                     addLog(
                       sectionName, 
                       'FILE_DEBUG', 
-                      `${filePath} | root=${dbg.rootSelectorUsed} strategy=${dbg.strategyUsed} tables=${dbg.rootCounts.tablesInRoot} images=${dbg.rootCounts.imagesInRoot} extracted=${dbg.itemsAfterFilter}`,
+                      `${filePath} | root=${dbg.rootSelectorUsed} strategy=${dbg.strategyUsed} extracted=${dbg.itemsAfterFilter}`,
                       dbg.itemsAfterFilter > 0 ? 'success' : 'warn'
                     );
                   }
 
+                  allPosts.push(...resolvedItems);
+                  } catch (err) {
+                  console.error(`Failed to parse ${filePath}:`, err);
+                  addLog(sectionName, 'PARSE_ERROR', `${filePath} → ${err.message}`, 'error');
+                  }
+                  }
+                  }
+
+                  if (batchResp.data?.errors) {
+                  Object.entries(batchResp.data.errors).forEach(([path, error]) => {
+                  addLog(sectionName, 'BATCH_ERROR', `${path} → ${error}`, 'error');
+                  });
+                  }
+
+                  if (batchResp.data?.stats) {
+                  addLog(sectionName, 'BATCH_STATS', `success=${batchResp.data.stats.success} errors=${batchResp.data.stats.errors} ms=${batchResp.data.stats.elapsed}`, 'info');
+                  }
+
+                  } catch (batchErr) {
+                  addLog(sectionName, 'BATCH_FATAL', `Batch ${Math.floor(i/batchSize) + 1} failed: ${batchErr.message}`, 'error');
+                  }
+
+                  addLog(sectionName, 'PROGRESS', `Processed ${Math.min(i + batchSize, htmlFiles.length)}/${htmlFiles.length} files → ${allPosts.length} total posts`);
+                  }
+                  } else {
+                  // Legacy path for small archives
+                  const concurrency = 2;
+                  for (let i = 0; i < htmlFiles.length; i += concurrency) {
+                  const batch = htmlFiles.slice(i, i + concurrency);
+                  const batchResults = await Promise.all(
+                  batch.map(async (filePath) => {
+                  try {
+                  const resp = await base44.functions.invoke('getArchiveEntry', {
+                  zipUrl: archiveUrl,
+                  entryPath: filePath,
+                  responseType: 'text'
+                  });
+                  const result = await parsePostsFromHtml(resp.data.content, filePath);
+
+                  const resolvedItems = (result.items || []).map(item => {
+                  if (item.mediaRefs && item.mediaRefs.length > 0) {
+                    const resolvedPaths = [];
+                    const unresolvedRefs = [];
+                    const htmlPagePaths = [];
+
+                    item.mediaRefs.forEach(ref => {
+                      const resolution = resolveZipEntryPath(filePath, ref, data?.rootPrefix || '', knownMediaPathSet);
+
+                      if (resolution.resolved) {
+                        resolvedPaths.push(resolution.resolved);
+                      } else if (resolution.reason === 'REF_POINTS_TO_HTML' && resolution.htmlPath) {
+                        htmlPagePaths.push(resolution.htmlPath);
+                      } else {
+                        unresolvedRefs.push(ref);
+                      }
+                    });
+
+                    return {
+                      ...item,
+                      mediaRefs: undefined,
+                      mediaPaths: resolvedPaths.length > 0 ? resolvedPaths : undefined,
+                      mediaUnresolvedRefs: unresolvedRefs.length > 0 ? unresolvedRefs : undefined,
+                      mediaPagePaths: htmlPagePaths.length > 0 ? htmlPagePaths : undefined,
+                      _mediaRefsRaw: item.mediaRefs
+                    };
+                  }
+                  return item;
+                  });
+
+                  if (result.debug) {
+                  debugRawFiles.push({ filePath, debug: result.debug });
+                  const dbg = result.debug;
+                  addLog(
+                    sectionName, 
+                    'FILE_DEBUG', 
+                    `${filePath} | root=${dbg.rootSelectorUsed} strategy=${dbg.strategyUsed} extracted=${dbg.itemsAfterFilter}`,
+                    dbg.itemsAfterFilter > 0 ? 'success' : 'warn'
+                  );
+                  }
+
                   return resolvedItems;
-                } catch (err) {
+                  } catch (err) {
                   console.error(`Failed to load ${filePath}:`, err);
                   addLog(sectionName, 'FILE_ERROR', `${filePath} → ${err.message}`, 'error');
                   return [];
-                }
-              })
-            );
-            allPosts.push(...batchResults.flat());
-            addLog(sectionName, 'PROGRESS', `Loaded ${i + batch.length}/${htmlFiles.length} files → ${allPosts.length} total posts extracted`);
-          }
+                  }
+                  })
+                  );
+                  allPosts.push(...batchResults.flat());
+                  addLog(sectionName, 'PROGRESS', `Loaded ${i + batch.length}/${htmlFiles.length} files → ${allPosts.length} total posts`);
+                  }
+                  }
 
           parsedData = allPosts.slice(0, 50);
-          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from ${htmlFiles.length} HTML files`, 'success', parsedData.length);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from ${htmlFiles.length} HTML files (strategy=${isLargeArchive ? 'range-batch' : 'legacy'})`, 'success', parsedData.length);
 
           // Store raw files for fallback rendering
           if (parsedData.length === 0 && htmlFiles.length > 0) {
