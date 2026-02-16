@@ -566,7 +566,7 @@ function isLocalMediaRef(ref, mediaExtensions) {
   return mediaExtensions.test(ref) || ref.includes('/media/');
 }
 
-export function resolveZipEntryPath(sourceFile, ref, rootPrefix, knownMediaPathSet, allMediaEntries = null) {
+export function resolveZipEntryPath(sourceFile, ref, rootPrefix, knownMediaPathSet) {
   if (!ref || !knownMediaPathSet || knownMediaPathSet.size === 0) {
     return { resolved: null, reason: 'NO_REFS_FOUND', candidates: [] };
   }
@@ -574,8 +574,6 @@ export function resolveZipEntryPath(sourceFile, ref, rootPrefix, knownMediaPathS
   try {
     const baseDir = sourceFile.substring(0, sourceFile.lastIndexOf('/'));
     const candidates = [];
-    let bestMatch = null;
-    let bestReason = null;
     
     // Normalize the ref
     const refNormalized = normalizeZipPath('', ref);
@@ -583,9 +581,9 @@ export function resolveZipEntryPath(sourceFile, ref, rootPrefix, knownMediaPathS
       return { resolved: null, reason: 'INVALID_REF', candidates: [] };
     }
     
-    // Check if ref points to HTML
+    // Check if ref points to HTML (store separately for page-based media)
     if (refNormalized.endsWith('.html')) {
-      return { resolved: null, reason: 'REF_POINTS_TO_HTML', refTarget: refNormalized, candidates: [] };
+      return { resolved: null, reason: 'REF_POINTS_TO_HTML', htmlPath: refNormalized, candidates: [] };
     }
     
     // STEP A: Relative resolution (resolve against baseDir)
@@ -595,16 +593,16 @@ export function resolveZipEntryPath(sourceFile, ref, rootPrefix, knownMediaPathS
       return { resolved: candidate1, reason: 'MATCH_BY_RELATIVE', candidates: [candidate1] };
     }
     
-    // STEP B: Prefix variants
-    if (rootPrefix && !candidate1.startsWith(rootPrefix + '/')) {
+    // STEP B: With rootPrefix prepended
+    if (rootPrefix) {
       const candidate2 = normalizeZipPath('', rootPrefix + '/' + candidate1);
       candidates.push(candidate2);
       if (knownMediaPathSet.has(candidate2)) {
-        return { resolved: candidate2, reason: 'MATCH_BY_PREFIX', candidates: candidates.slice(0, 10) };
+        return { resolved: candidate2, reason: 'MATCH_BY_PREFIX_PREPEND', candidates: candidates.slice(0, 10) };
       }
     }
     
-    // Also try stripping rootPrefix if present
+    // STEP C: Strip rootPrefix if present
     if (rootPrefix && candidate1.startsWith(rootPrefix + '/')) {
       const candidate3 = candidate1.substring((rootPrefix + '/').length);
       candidates.push(candidate3);
@@ -613,24 +611,45 @@ export function resolveZipEntryPath(sourceFile, ref, rootPrefix, knownMediaPathS
       }
     }
     
-    // STEP C: Basename fallback (search knownMediaPathSet for matching basename)
-    const basename = ref.split('/').pop();
-    const matchesByBasename = Array.from(knownMediaPathSet).filter(p => p.endsWith('/' + basename) || p === basename);
-    
-    if (matchesByBasename.length === 1) {
-      return { resolved: matchesByBasename[0], reason: 'MATCH_BY_BASENAME', candidates: candidates.slice(0, 10) };
-    } else if (matchesByBasename.length > 1) {
-      // Find longest common prefix with baseDir
-      let bestMatch = matchesByBasename[0];
-      let bestScore = 0;
-      for (const match of matchesByBasename) {
-        const score = match.split('/').slice(0, -1).join('/').length;
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = match;
-        }
+    // STEP D: Try just the normalized ref without baseDir
+    const candidate4 = normalizeZipPath('', ref);
+    if (candidate4 !== candidate1) {
+      candidates.push(candidate4);
+      if (knownMediaPathSet.has(candidate4)) {
+        return { resolved: candidate4, reason: 'MATCH_BY_NORMALIZED_REF', candidates: candidates.slice(0, 10) };
       }
-      return { resolved: bestMatch, reason: 'MATCH_BY_BASENAME_LONGEST', candidates: candidates.slice(0, 10) };
+    }
+    
+    // STEP E: Basename fallback (search knownMediaPathSet for matching basename)
+    const basename = ref.split('/').pop();
+    if (basename) {
+      const matchesByBasename = Array.from(knownMediaPathSet).filter(p => p.endsWith('/' + basename) || p === basename);
+      
+      if (matchesByBasename.length === 1) {
+        return { resolved: matchesByBasename[0], reason: 'MATCH_BY_BASENAME_UNIQUE', candidates: candidates.slice(0, 10) };
+      } else if (matchesByBasename.length > 1) {
+        // Find best match by longest common prefix with baseDir
+        let bestMatch = matchesByBasename[0];
+        let bestScore = 0;
+        const baseDirParts = baseDir.split('/');
+        
+        for (const match of matchesByBasename) {
+          const matchParts = match.split('/').slice(0, -1);
+          let score = 0;
+          for (let i = 0; i < Math.min(baseDirParts.length, matchParts.length); i++) {
+            if (baseDirParts[i] === matchParts[i]) {
+              score++;
+            } else {
+              break;
+            }
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = match;
+          }
+        }
+        return { resolved: bestMatch, reason: 'MATCH_BY_BASENAME_BEST', candidates: candidates.slice(0, 10) };
+      }
     }
     
     return { resolved: null, reason: 'NO_MATCH_IN_KNOWN_SET', candidates: candidates.slice(0, 10) };
