@@ -909,8 +909,31 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                           </div>
                         </div>
                       )}
-                      {post.mediaRefsEmptyReason && (
-                        <p className="text-xs text-amber-600 mt-2">⚠ {post.mediaRefsEmptyReason}</p>
+                      
+                      {post.mediaUnresolvedRefs && post.mediaUnresolvedRefs.length > 0 && (
+                        <div className="mt-3">
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-amber-700 font-semibold hover:text-amber-900">
+                              ⚠ Unresolved media refs: {post.mediaUnresolvedRefs.length} (click to show)
+                            </summary>
+                            <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded font-mono text-xs space-y-1">
+                              {post.mediaUnresolvedRefs.slice(0, 10).map((ref, idx) => (
+                                <div key={idx} className="text-amber-900 break-all">• {ref}</div>
+                              ))}
+                              {post.mediaUnresolvedRefs.length > 10 && (
+                                <div className="text-amber-700">... and {post.mediaUnresolvedRefs.length - 10} more</div>
+                              )}
+                            </div>
+                          </details>
+                        </div>
+                      )}
+                      
+                      {post.mediaPagePaths && post.mediaPagePaths.length > 0 && (
+                        <div className="mt-3">
+                          <button className="text-xs text-blue-700 font-semibold hover:text-blue-900 flex items-center gap-1">
+                            🔗 Open media page ({post.mediaPagePaths.length} {post.mediaPagePaths.length === 1 ? 'link' : 'links'})
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
