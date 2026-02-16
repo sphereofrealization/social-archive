@@ -78,33 +78,49 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
    const isStreamingIndex = normalized.isStreaming;
 
-  // Load media on demand
-  const loadMedia = async (mediaPath, type) => {
+  // Add media debug log
+  const addMediaLog = (message) => {
+    setMediaDebugLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
+    console.log('[MEDIA_DEBUG]', message);
+  };
+
+  // Load media on demand with comprehensive debugging
+  const loadMedia = async (mediaPath, type, postSourceFile = null, originalRef = null) => {
     if (loadedMedia[mediaPath] !== undefined) return;
+    
+    addMediaLog(`[MEDIA_CLICK] entryPath=${mediaPath} postSourceFile=${postSourceFile || 'N/A'} type=${type} resolvedFromRef=${originalRef || 'N/A'}`);
     setLoadedMedia(prev => ({ ...prev, [mediaPath]: 'loading' }));
     
     try {
-      console.log(`[FacebookViewer] Loading ${type} from ${mediaPath}`);
       const response = await base44.functions.invoke('getArchiveEntry', {
         zipUrl: archiveUrl,
         entryPath: mediaPath,
         responseType: 'base64'
       });
       
+      addMediaLog(`[MEDIA_RESPONSE] ok=${response.status === 200} status=${response.status} mimeType=${response.data?.mime || 'N/A'} base64Len=${response.data?.content?.length || 0} error=${response.data?.error || 'none'}`);
+      
       if (response.data?.content && response.data?.mime) {
+        // Decode base64 to check magic bytes
+        const binary = atob(response.data.content.substring(0, 100)); // First ~75 bytes
+        const magicHex = Array.from(binary.slice(0, 16)).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ');
+        addMediaLog(`[MEDIA_MAGIC] first16Hex=${magicHex}`);
+        
         const blobUrl = base64ToBlobUrl(response.data.content, response.data.mime);
         if (blobUrl) {
-          console.log(`[FacebookViewer] Successfully created blob URL for ${mediaPath}`);
-          setLoadedMedia(prev => ({ ...prev, [mediaPath]: blobUrl }));
+          addMediaLog(`[MEDIA_OBJECT_URL] created=${blobUrl} byteLength=${response.data.content.length}`);
+          setLoadedMedia(prev => ({ ...prev, [mediaPath]: { url: blobUrl, mime: response.data.mime } }));
         } else {
           throw new Error('Failed to create blob URL');
         }
       } else {
-        throw new Error(`Invalid response: ${JSON.stringify(response.data)}`);
+        throw new Error(`Invalid response: status=${response.status} hasContent=${!!response.data?.content} hasMime=${!!response.data?.mime}`);
       }
     } catch (err) {
+      const errorMsg = `${err.message || err}`;
+      addMediaLog(`[MEDIA_ERROR] ${errorMsg}`);
       console.error(`[FacebookViewer] Failed to load ${type}:`, err);
-      setLoadedMedia(prev => ({ ...prev, [mediaPath]: { error: err.message } }));
+      setLoadedMedia(prev => ({ ...prev, [mediaPath]: { error: errorMsg } }));
     }
   };
 
