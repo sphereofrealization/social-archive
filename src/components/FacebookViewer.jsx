@@ -887,30 +887,128 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
         }
       } else if (sectionName === 'groups') {
-        selectedFiles = normalized.groupFiles.json.length > 0 ? normalized.groupFiles.json : normalized.groupFiles.html;
-        if (selectedFiles.length === 0) {
-          throw new Error('No group files found');
+        // PHASE 1: Run Groups Presence Audit
+        addLog(sectionName, 'GROUPS_AUDIT_START', 'Running Groups Presence Audit on entire ZIP...');
+        
+        const expectedEntryCount = data?.archive?.entryCount || archiveIndex.all?.length || null;
+        
+        const audit = await auditGroupsPresence(
+          archiveIndex,
+          archiveUrl,
+          (funcName, params) => base44.functions.invoke(funcName, params),
+          expectedEntryCount
+        );
+        
+        const manifestComplete = audit.manifestComplete !== false;
+        const scanStatus = audit.manifestMissing ? 'error' :
+                           !manifestComplete ? 'warn' : 
+                           audit.manifestCount > 0 ? 'success' : 'error';
+        
+        addLog(
+          sectionName,
+          'GROUPS_AUDIT_MANIFEST',
+          `count=${audit.manifestCount || 0} expectedTotal=${audit.expectedTotal || 'unknown'} source=${audit.entriesSource || 'unknown'}`,
+          scanStatus
+        );
+        
+        if (audit.excludedPaths && audit.excludedPaths.length > 0) {
+          addLog(
+            sectionName,
+            'GROUPS_EXCLUDED',
+            `${audit.excludedPaths.length} files excluded (sample): ${audit.excludedPaths.slice(0, 5).map(e => `${e.path} (${e.reason})`).join(', ')}`,
+            'info'
+          );
         }
-        const filePath = selectedFiles[0];
-        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
-
-        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
-
-        const response = await base44.functions.invoke('getArchiveEntry', {
-          zipUrl: archiveUrl,
-          entryPath: filePath,
-          responseType
-        });
-
-        if (responseType === 'json' && response.data?.content) {
-          const result = parseJsonGeneric(response.data.content, filePath);
-          parsedData = result.items.slice(0, 50);
-          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
-        } else if (responseType === 'text' && response.data?.content) {
-          const result = await parseGroupsFromHtml(response.data.content, filePath);
-          parsedData = result.items.slice(0, 50);
-          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+        
+        if (audit.candidatesSummary && audit.candidatesSummary.length > 0) {
+          addLog(
+            sectionName,
+            'GROUPS_CANDIDATES',
+            `${audit.candidatesSummary.length} files matched allowlist:\n${audit.candidatesSummary.map(c => `- ${c.path} (pattern=${c.matchedPattern}, score=${c.qualityScore})`).join('\n')}`,
+            'info'
+          );
         }
+        
+        if (audit.validCandidates && audit.validCandidates.length > 0) {
+          addLog(
+            sectionName,
+            'GROUPS_SELECTED_SOURCES',
+            `Selected ${audit.validCandidates.length} valid sources:\n${audit.validCandidates.map(c => `- ${c.path} (score=${c.qualityScore})`).join('\n')}`,
+            'success'
+          );
+        }
+        
+        if (audit.error) {
+          addLog(sectionName, 'GROUPS_AUDIT_ERROR', audit.error, 'error');
+        }
+        
+        addLog(
+          sectionName,
+          'GROUPS_AUDIT_RESULT',
+          `Groups detected: ${audit.groupsDetected ? 'YES' : 'NO'} | Valid sources: ${audit.validCandidates?.length || 0}`,
+          audit.groupsDetected ? 'success' : 'warn'
+        );
+        
+        // PHASE 2: Parse valid candidates
+        const allGroups = [];
+        
+        for (const candidate of (audit.validCandidates || []).slice(0, 5)) {
+          try {
+            addLog(sectionName, 'GROUPS_FETCH', `Fetching: ${candidate.path}...`);
+            
+            const response = await base44.functions.invoke('getArchiveEntry', {
+              zipUrl: archiveUrl,
+              entryPath: candidate.path,
+              responseType: 'text'
+            });
+            
+            if (!response.data?.content) continue;
+            
+            let result;
+            if (candidate.path.endsWith('.json')) {
+              try {
+                const jsonData = JSON.parse(response.data.content);
+                result = parseJsonGeneric(jsonData, candidate.path);
+              } catch (err) {
+                addLog(sectionName, 'GROUPS_PARSE_ERROR', `JSON parse failed for ${candidate.path}: ${err.message}`, 'error');
+                continue;
+              }
+            } else {
+              result = await parseGroupsFromHtml(response.data.content, candidate.path);
+            }
+            
+            if (result.items.length > 0) {
+              allGroups.push(...result.items);
+              addLog(sectionName, 'GROUPS_PARSE', `Parsed ${result.items.length} groups from ${candidate.path}`, 'success', result.items.length);
+            } else {
+              addLog(sectionName, 'GROUPS_PARSE', `0 groups from ${candidate.path}`, 'warn');
+            }
+          } catch (err) {
+            addLog(sectionName, 'GROUPS_ERROR', `Failed to parse ${candidate.path}: ${err.message}`, 'error');
+          }
+        }
+        
+        // Dedupe by group name
+        const seen = new Set();
+        parsedData = allGroups.filter(group => {
+          const key = group.groupName || group.name || JSON.stringify(group);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        }).slice(0, 50);
+        
+        addLog(sectionName, 'GROUPS_RESULT', `Total: ${parsedData.length} unique groups from ${audit.validCandidates?.length || 0} sources`, 'success', parsedData.length);
+        
+        // Store with metadata for UI
+        setLoadedSections(prev => ({
+          ...prev,
+          [sectionName]: {
+            items: parsedData,
+            audit,
+            noGroupFilesInExport: audit.noGroupFilesInExport || false,
+            scanFailed: audit.manifestCount === 0 || audit.manifestMissing
+          }
+        }));
       } else if (sectionName === 'reviews') {
         selectedFiles = normalized.reviewFiles.json.length > 0 ? normalized.reviewFiles.json : normalized.reviewFiles.html;
         if (selectedFiles.length === 0) {
