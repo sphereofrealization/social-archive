@@ -43,13 +43,19 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   // Normalize data on mount
   const normalized = normalizeArchiveAnalysis(data);
   
-  // Build knownMediaPathSet from normalized photos + videos
+  // Build knownMediaPathSet from ALL media entries (not just gallery)
   const knownMediaPathSet = React.useMemo(() => {
     const set = new Set();
-    normalized.photos.forEach(p => set.add(p.path));
-    normalized.videos.forEach(v => set.add(v.path));
+    // Use mediaEntriesAll if available (contains ALL image/video files in ZIP)
+    if (data?.index?.mediaEntriesAll && Array.isArray(data.index.mediaEntriesAll)) {
+      data.index.mediaEntriesAll.forEach(m => set.add(m.path));
+    } else {
+      // Fallback to photos + videos
+      normalized.photos.forEach(p => set.add(p.path));
+      normalized.videos.forEach(v => set.add(v.path));
+    }
     return set;
-  }, [normalized.photos, normalized.videos]);
+  }, [data?.index?.mediaEntriesAll, normalized.photos, normalized.videos]);
   
   // Log what we received and normalized
   React.useEffect(() => {
