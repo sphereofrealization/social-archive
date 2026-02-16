@@ -6,13 +6,23 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
   try {
     const allEntries = zipIndex.all || [];
     
-    // Find all comment-related files
+    console.log(`[auditCommentsPresence] SCAN: totalZipEntries=${allEntries.length}`);
+    
+    // Find all comment-related files using simple substring matching
     const commentCandidates = allEntries.filter(entry => {
       const path = entry.path.toLowerCase();
       const ext = path.split('.').pop();
       if (!['html', 'json'].includes(ext)) return false;
-      return path.includes('comment');
+      
+      // Simple substring match (no word boundaries)
+      return path.includes('comment') || 
+             path.includes('comments') || 
+             path.includes('reaction') || 
+             path.includes('reactions') || 
+             path.includes('reply');
     });
+    
+    console.log(`[auditCommentsPresence] CANDIDATES: ${commentCandidates.length} files matched comment keywords:`, commentCandidates.map(c => c.path));
     
     // Score candidates by path quality
     const scorePath = (path) => {

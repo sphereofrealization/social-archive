@@ -554,10 +554,26 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         
         addLog(
           sectionName,
+          'COMMENTS_AUDIT_SCAN',
+          `Scanned ${data?.index?.all?.length || 0} ZIP entries`,
+          'info'
+        );
+        
+        addLog(
+          sectionName,
           'COMMENTS_AUDIT_RESULT',
           `Comments detected: ${audit.commentsDetected ? 'YES' : 'NO'} | Valid sources: ${audit.validCandidates.length} | Total candidates: ${audit.candidatesSummary.length}`,
           audit.commentsDetected ? 'success' : 'warn'
         );
+        
+        if (audit.candidatesSummary.length > 0) {
+          addLog(
+            sectionName,
+            'COMMENTS_CANDIDATES',
+            `${audit.candidatesSummary.length} files:\n${audit.candidatesSummary.map(c => `- ${c.path}`).join('\n')}`,
+            'info'
+          );
+        }
         
         if (audit.validCandidates.length > 0) {
           const topCandidates = audit.validCandidates.slice(0, 5);
@@ -623,6 +639,16 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         if (parsedData.length > 0) {
           addLog(sectionName, 'COMMENTS_SAMPLE', `Sample (first 3): ${JSON.stringify(parsedData.slice(0, 3).map(c => ({ text: c.text?.slice(0, 50), timestamp: c.timestamp })))}`, 'info');
         }
+        
+        // Store with metadata for UI
+        setLoadedSections(prev => ({
+          ...prev,
+          [sectionName]: {
+            items: parsedData,
+            audit,
+            noFilesInExport: audit.candidatesSummary.length === 0
+          }
+        }));
       } else if (sectionName === 'likes') {
         selectedFiles = normalized.likeFiles.json.length > 0 ? normalized.likeFiles.json : normalized.likeFiles.html;
         if (selectedFiles.length === 0) {
@@ -1658,7 +1684,14 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             </div>
           ) : (
             <div className="space-y-4">
-              {comments.length === 0 ? (
+              {loadedSections.comments?.noFilesInExport ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <p className="text-gray-600 mb-2">No comment files exist in this Facebook export.</p>
+                    <p className="text-sm text-gray-500">Re-download from Facebook including 'Comments and reactions' or 'Your Facebook Activity → Comments' categories.</p>
+                  </CardContent>
+                </Card>
+              ) : comments.length === 0 ? (
                 <Card>
                   <CardContent className="p-8 text-center text-gray-500">
                     No comments found
@@ -1669,6 +1702,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   <Card key={i}>
                     <CardContent className="p-4">
                       <p className="text-sm whitespace-pre-wrap">{comment.text || comment.comment || JSON.stringify(comment).slice(0, 200)}</p>
+                      {comment.timestamp && (
+                        <p className="text-xs text-gray-500 mt-2">{comment.timestamp}</p>
+                      )}
                     </CardContent>
                   </Card>
                 ))
