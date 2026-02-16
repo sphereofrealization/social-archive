@@ -1007,7 +1007,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               {normalized.photos.map((photo, i) => {
                 const path = photo.path;
                 const mediaState = loadedMedia[path];
-                const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
+                const isLoaded = mediaState && typeof mediaState === 'object' && mediaState.url;
                 const isLoading = mediaState === 'loading';
                 const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
 
@@ -1017,14 +1017,16 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                       <div 
                         className="aspect-square cursor-pointer hover:opacity-90 transition-opacity bg-gray-100 flex items-center justify-center rounded-lg"
                         onClick={() => {
-                          if (!isLoaded && !isLoading) loadMedia(path, 'image');
+                          if (!isLoaded && !isLoading) loadMedia(path, 'image', 'photos_tab', path);
                         }}
                       >
-                        {isLoaded && typeof mediaState === 'string' ? (
+                        {isLoaded ? (
                           <img 
-                            src={mediaState} 
+                            src={mediaState.url} 
                             alt={photo.name} 
                             className="w-full h-full object-cover rounded-lg"
+                            onLoad={() => addMediaLog(`[MEDIA_RENDER_OK] photo ${path}`)}
+                            onError={(e) => addMediaLog(`[MEDIA_RENDER_ERROR] photo ${path}`)}
                           />
                         ) : (
                           <div className={`text-xs text-center p-2 ${hasError ? 'text-red-600' : 'text-gray-400'}`}>
@@ -1045,9 +1047,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                         )}
                       </div>
                     </DialogTrigger>
-                    {isLoaded && typeof mediaState === 'string' && (
+                    {isLoaded && (
                       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-                        <img src={mediaState} alt={path} className="w-full h-auto max-h-[75vh] object-contain mx-auto" />
+                        <img src={mediaState.url} alt={path} className="w-full h-auto max-h-[75vh] object-contain mx-auto" />
                         <p className="text-sm text-gray-500 mt-2">{path}</p>
                       </DialogContent>
                     )}
