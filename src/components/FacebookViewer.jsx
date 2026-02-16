@@ -300,34 +300,101 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           }
         }
       } else if (sectionName === 'friends') {
-        selectedFiles = normalized.friendFiles.json.length > 0 ? normalized.friendFiles.json : normalized.friendFiles.html;
-        if (selectedFiles.length === 0) {
+        // Combine JSON and HTML candidates
+        const allCandidates = [
+          ...normalized.friendFiles.json.map(f => ({ path: f, type: 'json' })),
+          ...normalized.friendFiles.html.map(f => ({ path: f, type: 'html' }))
+        ];
+        
+        if (allCandidates.length === 0) {
           throw new Error('No friends files found in index');
         }
 
-        const filePath = selectedFiles[0];
-        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
-
-        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
-
-        const response = await base44.functions.invoke('getArchiveEntry', {
-          zipUrl: archiveUrl,
-          entryPath: filePath,
-          responseType
-        });
-
-        addLog(sectionName, 'RESPONSE', `Status: ${response.status}, Size: ${response.data?.content?.length || 0} bytes`);
-
-        if (responseType === 'json' && response.data?.content) {
-          const jsonData = response.data.content;
-          const result = parseJsonGeneric(jsonData, filePath);
-          parsedData = result.items.slice(0, 100);
-          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
-        } else if (responseType === 'text' && response.data?.content) {
-          const result = await parseFriendsFromHtml(response.data.content, filePath);
-          parsedData = result.items.slice(0, 100);
-          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
-          if (result.error) addLog(sectionName, 'PARSE_ERROR', result.error, 'error');
+        // Log all candidates
+        addLog(sectionName, 'FRIENDS_CANDIDATES', `${allCandidates.length} files: ${allCandidates.map(f => f.path).join(', ')}`);
+        
+        // Rank files: actual friends lists first, then friend requests, then following/followers last
+        const rankFile = (path) => {
+          const lower = path.toLowerCase();
+          // Highest priority: actual friends lists
+          if (lower.includes('your_friends') || lower.includes('friends_list') || lower.includes('friends.html')) return 1;
+          if (lower.includes('/friends/') || lower.includes('/connections/friends/')) return 2;
+          // Medium priority: friend requests and suggestions
+          if (lower.includes('friend_request') || lower.includes('suggested_friends') || lower.includes('people_you_may_know')) return 3;
+          // Lowest priority: following/followers
+          if (lower.includes('following') || lower.includes('followers') || lower.includes('who_you') || lower.includes('followed')) return 10;
+          return 5; // default
+        };
+        
+        const rankedCandidates = allCandidates.sort((a, b) => rankFile(a.path) - rankFile(b.path));
+        
+        // Probe each file
+        const probeResults = [];
+        for (const candidate of rankedCandidates) {
+          try {
+            const response = await base44.functions.invoke('getArchiveEntry', {
+              zipUrl: archiveUrl,
+              entryPath: candidate.path,
+              responseType: 'text'
+            });
+            
+            if (response.data?.content) {
+              const probe = probeFacebookHtmlStructure(response.data.content, candidate.path);
+              probeResults.push({ candidate, probe, content: response.data.content });
+              
+              const counts = probe.selectorCounts || {};
+              addLog(
+                sectionName, 
+                'FRIENDS_PROBE', 
+                `${candidate.path} | title="${probe.title || 'N/A'}" | tables=${counts.tables || 0} rows=${counts.tableRows || 0} li=${counts.li || 0} anchors=${counts.anchors || 0} groupLinks=${counts.groupLinks || 0} fbLinks=${counts.fbLinks || 0}`,
+                'info'
+              );
+            }
+          } catch (err) {
+            addLog(sectionName, 'FRIENDS_PROBE', `${candidate.path} | ERROR: ${err.message}`, 'error');
+          }
+        }
+        
+        // Try to parse friends from ranked files until we get results
+        for (const { candidate, content, probe } of probeResults) {
+          if (candidate.type === 'json') {
+            try {
+              const jsonData = JSON.parse(content);
+              const result = parseJsonGeneric(jsonData, candidate.path);
+              if (result.items.length > 0) {
+                parsedData = result.items.slice(0, 100);
+                addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON: ${candidate.path}`, 'success', parsedData.length);
+                break;
+              }
+            } catch (err) {
+              addLog(sectionName, 'PARSE_ERROR', `JSON parse failed for ${candidate.path}: ${err.message}`, 'error');
+            }
+          } else {
+            const result = await parseFriendsFromHtml(content, candidate.path);
+            if (result.items.length > 0) {
+              parsedData = result.items.slice(0, 100);
+              addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML: ${candidate.path}`, 'success', parsedData.length);
+              break;
+            } else {
+              addLog(sectionName, 'PARSE', `0 items extracted from ${candidate.path} (${(probe.selectorCounts?.fbLinks || 0)} fbLinks, ${(probe.selectorCounts?.anchors || 0)} anchors)`, 'warn');
+            }
+          }
+        }
+        
+        // Store probe results for UI
+        if (parsedData.length === 0) {
+          setLoadedSections(prev => ({ 
+            ...prev, 
+            [sectionName]: { 
+              items: [],
+              probeResults: probeResults.map(r => ({ 
+                path: r.candidate.path, 
+                probe: r.probe,
+                content: r.content 
+              }))
+            }
+          }));
+          addLog(sectionName, 'PARSE', `No friend names extracted from any of ${probeResults.length} files. View raw HTML to confirm structure.`, 'error');
         }
       } else if (sectionName === 'messages') {
         const threads = normalized.messageThreads;
@@ -952,13 +1019,13 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {normalized.friendFiles.json.map((file, i) => (
-                    <div key={`json-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
-                      <code className="text-xs flex-1 truncate">{file}</code>
+                    <div key={`json-${i}`} className="p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs truncate block">{file}</code>
                     </div>
                   ))}
                   {normalized.friendFiles.html.map((file, i) => (
-                    <div key={`html-${i}`} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
-                      <code className="text-xs flex-1 truncate">{file}</code>
+                    <div key={`html-${i}`} className="p-2 bg-gray-50 rounded text-sm">
+                      <code className="text-xs truncate block">{file}</code>
                     </div>
                   ))}
                 </CardContent>
@@ -981,6 +1048,41 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                 )}
               </Button>
             </div>
+          ) : loadedSections.friends && Array.isArray(loadedSections.friends.items) && loadedSections.friends.items.length === 0 && loadedSections.friends.probeResults ? (
+            <div className="space-y-4">
+              <Alert className="bg-yellow-50 border-yellow-300">
+                <AlertDescription className="text-yellow-900">
+                  No friend names extracted from {loadedSections.friends.probeResults.length} files. View raw HTML below to confirm structure.
+                </AlertDescription>
+              </Alert>
+              {loadedSections.friends.probeResults.map((probeResult, i) => (
+                <Card key={i}>
+                  <CardHeader>
+                    <CardTitle className="text-sm font-mono break-all">{probeResult.path}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="text-xs text-gray-600 space-y-1">
+                      <div>Title: {probeResult.probe.title || 'N/A'}</div>
+                      <div>Tables: {probeResult.probe.selectorCounts?.tables || 0}, Rows: {probeResult.probe.selectorCounts?.tableRows || 0}</div>
+                      <div>List items: {probeResult.probe.selectorCounts?.li || 0}</div>
+                      <div>Anchors: {probeResult.probe.selectorCounts?.anchors || 0}</div>
+                      <div>FB Profile Links: {probeResult.probe.selectorCounts?.fbLinks || 0}</div>
+                      <div>Group Links: {probeResult.probe.selectorCounts?.groupLinks || 0}</div>
+                    </div>
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-sm text-blue-700 hover:text-blue-900 font-semibold">View Raw HTML</summary>
+                      <div className="mt-2 border rounded overflow-hidden" style={{ maxHeight: '400px' }}>
+                        <iframe 
+                          srcDoc={probeResult.content} 
+                          className="w-full h-96 border-0"
+                          sandbox="allow-same-origin"
+                        />
+                      </div>
+                    </details>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           ) : (
             <Card>
               <CardContent className="p-4">
@@ -999,6 +1101,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                         </Avatar>
                         <div>
                           <p className="font-medium">{friend.name}</p>
+                          {friend.profileUrl && (
+                            <p className="text-xs text-gray-500 truncate max-w-xs">{friend.profileUrl}</p>
+                          )}
                           {friend.date_added && (
                             <p className="text-xs text-gray-500">Friends since {friend.date_added}</p>
                           )}
