@@ -887,17 +887,40 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
         }
       } else if (sectionName === 'groups') {
+        // PHASE 0: Get archive index (same as comments)
+        let archiveIndex = data?.index || {};
+        const manifestSource = archiveIndex.all?.length ? 'index.all' : 
+                               archiveIndex.allPaths?.length ? 'index.allPaths' : 
+                               archiveIndex.fileTree?.allPaths?.length ? 'fileTree.allPaths' : 
+                               'none';
+        
+        addLog(sectionName, 'GROUPS_INDEX_CHECK', `manifestSource=${manifestSource} count=${archiveIndex.all?.length || archiveIndex.allPaths?.length || 0}`, manifestSource !== 'none' ? 'success' : 'error');
+        
         // PHASE 1: Run Groups Presence Audit
         addLog(sectionName, 'GROUPS_AUDIT_START', 'Running Groups Presence Audit on entire ZIP...');
         
         const expectedEntryCount = data?.archive?.entryCount || archiveIndex.all?.length || null;
         
-        const audit = await auditGroupsPresence(
-          archiveIndex,
-          archiveUrl,
-          (funcName, params) => base44.functions.invoke(funcName, params),
-          expectedEntryCount
-        );
+        let audit;
+        try {
+          audit = await auditGroupsPresence(
+            archiveIndex,
+            archiveUrl,
+            (funcName, params) => base44.functions.invoke(funcName, params),
+            expectedEntryCount
+          );
+        } catch (err) {
+          addLog(sectionName, 'GROUPS_AUDIT_ERROR', `Audit failed: ${err.message}`, 'error');
+          audit = {
+            groupsDetected: false,
+            validCandidates: [],
+            candidatesSummary: [],
+            excludedPaths: [],
+            error: err.message,
+            manifestCount: 0,
+            manifestMissing: true
+          };
+        }
         
         const manifestComplete = audit.manifestComplete !== false;
         const scanStatus = audit.manifestMissing ? 'error' :
