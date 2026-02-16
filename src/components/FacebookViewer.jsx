@@ -2154,7 +2154,23 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             </div>
           ) : (
             <div className="space-y-4">
-              {groups.length === 0 ? (
+              {loadedSections.groups?.scanFailed ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <p className="text-red-600 font-semibold mb-2">Cannot scan archive</p>
+                    <p className="text-xs text-gray-500">
+                      {loadedSections.groups?.audit?.error || 'Unknown error'}
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : loadedSections.groups?.noGroupFilesInExport ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <p className="text-gray-600 mb-2">No group membership files exported in this archive.</p>
+                    <p className="text-sm text-gray-500">Re-download from Facebook including 'Groups' category to see your group memberships and activity.</p>
+                  </CardContent>
+                </Card>
+              ) : groups.length === 0 ? (
                 <Card>
                   <CardContent className="p-8 text-center text-gray-500">
                     No groups found
