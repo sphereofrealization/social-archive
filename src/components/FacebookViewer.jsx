@@ -38,6 +38,7 @@ import {
   probeFacebookHtmlStructure,
   resolveZipEntryPath
 } from "./archiveParsers";
+import { loadZipMediaAsObjectUrl } from "./loadZipMedia";
 
 export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "", debugMode = false }) {
   // Normalize data on mount
@@ -74,52 +75,65 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   const [showDebug, setShowDebug] = useState(false);
   const [debugLogs, setDebugLogs] = useState({});
   const [viewRawContent, setViewRawContent] = useState({});
+  const [mediaDebugLogs, setMediaDebugLogs] = useState({});
 
    const isStreamingIndex = normalized.isStreaming;
 
-  // Load media on demand
-  const loadMedia = async (mediaPath, type) => {
+  // Load media on demand using unified helper
+  const loadMedia = async (mediaPath, type, sourceFile = null, originalRef = null) => {
     if (loadedMedia[mediaPath] !== undefined) return;
     setLoadedMedia(prev => ({ ...prev, [mediaPath]: 'loading' }));
     
+    // Log initial click
+    const clickLog = {
+      step: 'MEDIA_CLICK',
+      entryPath: mediaPath,
+      postSourceFile: sourceFile,
+      ext: mediaPath.split('.').pop(),
+      resolvedFromRef: originalRef,
+      timestamp: new Date().toISOString()
+    };
+    console.log('[MEDIA_CLICK]', clickLog);
+    setMediaDebugLogs(prev => ({
+      ...prev,
+      [mediaPath]: [clickLog]
+    }));
+    
     try {
-      console.log(`[FacebookViewer] Loading ${type} from ${mediaPath}`);
-      const response = await base44.functions.invoke('getArchiveEntry', {
+      const result = await loadZipMediaAsObjectUrl({
         zipUrl: archiveUrl,
         entryPath: mediaPath,
-        responseType: 'base64'
+        onProgress: (logs) => {
+          setMediaDebugLogs(prev => ({
+            ...prev,
+            [mediaPath]: logs
+          }));
+        }
       });
       
-      if (response.data?.content && response.data?.mime) {
-        const blobUrl = base64ToBlobUrl(response.data.content, response.data.mime);
-        if (blobUrl) {
-          console.log(`[FacebookViewer] Successfully created blob URL for ${mediaPath}`);
-          setLoadedMedia(prev => ({ ...prev, [mediaPath]: blobUrl }));
-        } else {
-          throw new Error('Failed to create blob URL');
-        }
-      } else {
-        throw new Error(`Invalid response: ${JSON.stringify(response.data)}`);
-      }
+      console.log(`[MEDIA_SUCCESS] ${mediaPath}:`, result.debugLog);
+      setLoadedMedia(prev => ({ ...prev, [mediaPath]: result.objectUrl }));
+      
+      // Log render success after image/video loads
+      setTimeout(() => {
+        setMediaDebugLogs(prev => ({
+          ...prev,
+          [mediaPath]: [...(prev[mediaPath] || []), { step: 'MEDIA_RENDER_OK', timestamp: new Date().toISOString() }]
+        }));
+      }, 100);
+      
     } catch (err) {
-      console.error(`[FacebookViewer] Failed to load ${type}:`, err);
+      console.error(`[MEDIA_ERROR] Failed to load ${type}:`, err);
+      const errorLog = {
+        step: 'MEDIA_RENDER_ERROR',
+        error: err.message,
+        entryPath: mediaPath
+      };
+      setMediaDebugLogs(prev => ({
+        ...prev,
+        [mediaPath]: [...(prev[mediaPath] || []), errorLog]
+      }));
       setLoadedMedia(prev => ({ ...prev, [mediaPath]: { error: err.message } }));
-    }
-  };
-
-  // Convert base64 to blob URL
-  const base64ToBlobUrl = (base64, mimeType) => {
-    try {
-      const binary = atob(base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: mimeType });
-      return URL.createObjectURL(blob);
-    } catch (err) {
-      console.error('[FacebookViewer] base64ToBlobUrl error:', err);
-      return null;
     }
   };
 
@@ -187,15 +201,27 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   // Resolve mediaRefs to actual ZIP entry paths
                   const resolvedItems = (result.items || []).map(item => {
                     if (item.mediaRefs && item.mediaRefs.length > 0) {
-                      const resolvedPaths = item.mediaRefs
-                        .map(ref => resolveZipEntryPath(filePath, ref, data?.rootPrefix || '', knownMediaPathSet))
-                        .filter(Boolean);
+                      const resolutionResults = item.mediaRefs.map(ref => 
+                        resolveZipEntryPath(filePath, ref, data?.rootPrefix || '', knownMediaPathSet)
+                      );
+
+                      const resolvedPaths = resolutionResults
+                        .filter(r => r.resolved)
+                        .map(r => r.resolved);
+
+                      const resolutionDebug = resolutionResults.map((r, i) => ({
+                        ref: item.mediaRefs[i],
+                        resolved: r.resolved,
+                        reason: r.reason,
+                        candidates: r.candidates?.slice(0, 3)
+                      }));
 
                       return {
                         ...item,
                         mediaRefs: undefined,
                         mediaPaths: resolvedPaths.length > 0 ? resolvedPaths : undefined,
-                        mediaRefsEmptyReason: resolvedPaths.length === 0 && item.mediaRefs.length > 0 ? 'Refs not found in media index' : undefined
+                        mediaRefsEmptyReason: resolvedPaths.length === 0 && item.mediaRefs.length > 0 ? 'Refs not found in media index' : undefined,
+                        _resolutionDebug: resolutionDebug
                       };
                     }
                     return item;
@@ -715,31 +741,74 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                               const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
                               const isLoading = mediaState === 'loading';
                               const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
+                              const mediaLogs = mediaDebugLogs[mediaPath] || [];
+                              const resDebug = post._resolutionDebug?.[j];
 
                               return (
-                                <div
-                                  key={j}
-                                  className={`aspect-square rounded flex items-center justify-center text-xs cursor-pointer transition-colors ${
-                                    hasError ? 'bg-red-100' : 'bg-gray-200 hover:bg-gray-300'
-                                  }`}
-                                  onClick={() => {
-                                    if (!isLoaded && !isLoading) loadMedia(mediaPath, mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? 'video' : 'image');
-                                  }}
-                                >
-                                  {isLoaded && typeof mediaState === 'string' ? (
-                                    mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? (
-                                      <video className="w-full h-full object-cover rounded" muted>
-                                        <source src={mediaState} />
-                                      </video>
+                                <div key={j} className="space-y-1">
+                                  <div
+                                    className={`aspect-square rounded flex items-center justify-center text-xs cursor-pointer transition-colors ${
+                                      hasError ? 'bg-red-100' : 'bg-gray-200 hover:bg-gray-300'
+                                    }`}
+                                    onClick={() => {
+                                      if (!isLoaded && !isLoading) {
+                                        loadMedia(
+                                          mediaPath, 
+                                          mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? 'video' : 'image',
+                                          post.sourceFile,
+                                          resDebug?.ref
+                                        );
+                                      }
+                                    }}
+                                  >
+                                    {isLoaded && typeof mediaState === 'string' ? (
+                                      mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? (
+                                        <video className="w-full h-full object-cover rounded" muted>
+                                          <source src={mediaState} />
+                                        </video>
+                                      ) : (
+                                        <img 
+                                          src={mediaState} 
+                                          alt="media" 
+                                          className="w-full h-full object-cover rounded"
+                                          onLoad={() => console.log('[MEDIA_RENDER_OK]', mediaPath)}
+                                          onError={(e) => console.log('[MEDIA_RENDER_ERROR]', mediaPath, e)}
+                                        />
+                                      )
                                     ) : (
-                                      <img src={mediaState} alt="media" className="w-full h-full object-cover rounded" />
-                                    )
-                                  ) : (
-                                    <div className="text-center">
-                                      {isLoading && <p className="text-gray-600">⟳</p>}
-                                      {hasError && <p className="text-red-600 text-xs">✕</p>}
-                                      {!isLoading && !hasError && <p className="text-gray-600">📷</p>}
-                                    </div>
+                                      <div className="text-center p-1">
+                                        {isLoading && <p className="text-gray-600">⟳</p>}
+                                        {hasError && (
+                                          <div>
+                                            <p className="text-red-600 text-xs">✕</p>
+                                            <p className="text-red-500 text-[9px] break-all">{mediaState.error}</p>
+                                          </div>
+                                        )}
+                                        {!isLoading && !hasError && <p className="text-gray-600">📷</p>}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {(hasError || mediaLogs.length > 0) && (
+                                    <details className="text-[9px] bg-gray-100 p-1 rounded">
+                                      <summary className="cursor-pointer text-gray-600">Debug ({mediaLogs.length})</summary>
+                                      <div className="mt-1 space-y-1 max-h-32 overflow-y-auto">
+                                        {resDebug && (
+                                          <div className="bg-blue-50 p-1 rounded">
+                                            <div><strong>Ref:</strong> {resDebug.ref}</div>
+                                            <div><strong>Resolved:</strong> {resDebug.resolved || 'null'}</div>
+                                            <div><strong>Reason:</strong> {resDebug.reason}</div>
+                                            {resDebug.candidates?.length > 0 && (
+                                              <div><strong>Candidates:</strong> {resDebug.candidates.join(', ')}</div>
+                                            )}
+                                          </div>
+                                        )}
+                                        {mediaLogs.map((log, idx) => (
+                                          <div key={idx} className={`p-1 rounded ${log.step.includes('ERROR') ? 'bg-red-50' : 'bg-gray-50'}`}>
+                                            <strong>{log.step}:</strong> {JSON.stringify(log, null, 2).slice(0, 200)}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </details>
                                   )}
                                 </div>
                               );
@@ -936,7 +1005,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                       <div 
                         className="aspect-square cursor-pointer hover:opacity-90 transition-opacity bg-gray-100 flex items-center justify-center rounded-lg"
                         onClick={() => {
-                          if (!isLoaded && !isLoading) loadMedia(path, 'image');
+                          if (!isLoaded && !isLoading) loadMedia(path, 'image', null, null);
                         }}
                       >
                         {isLoaded && typeof mediaState === 'string' ? (
@@ -1000,7 +1069,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                           className={`w-full rounded-lg flex items-center justify-center cursor-pointer transition-colors ${hasError ? 'bg-red-100' : 'bg-gray-200 hover:bg-gray-300'}`}
                           style={{ height: '200px' }}
                           onClick={() => {
-                            if (!isLoading && !hasError) loadMedia(video.path, 'video');
+                            if (!isLoading && !hasError) loadMedia(video.path, 'video', null, null);
                           }}
                         >
                           <div className="text-center">
