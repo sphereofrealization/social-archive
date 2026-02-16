@@ -39,6 +39,13 @@ import {
   resolveZipEntryPath
 } from "./archiveParsers";
 
+// Helper to extract entry path from media item (string or object)
+function getEntryPath(mediaItem) {
+  if (typeof mediaItem === "string") return mediaItem;
+  if (mediaItem && typeof mediaItem === "object" && typeof mediaItem.path === "string") return mediaItem.path;
+  return null;
+}
+
 export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "", debugMode = false }) {
   // Normalize data on mount
   const normalized = normalizeArchiveAnalysis(data);
