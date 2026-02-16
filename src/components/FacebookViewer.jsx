@@ -74,6 +74,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   const [showDebug, setShowDebug] = useState(false);
   const [debugLogs, setDebugLogs] = useState({});
   const [viewRawContent, setViewRawContent] = useState({});
+  const [mediaDebugLogs, setMediaDebugLogs] = useState([]);
 
    const isStreamingIndex = normalized.isStreaming;
 
