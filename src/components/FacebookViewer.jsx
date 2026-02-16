@@ -311,26 +311,43 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         }
 
         // Log all candidates
-        addLog(sectionName, 'FRIENDS_CANDIDATES', `${allCandidates.length} files: ${allCandidates.map(f => f.path).join(', ')}`);
+        addLog(sectionName, 'FRIENDS_CANDIDATES', `${allCandidates.length} files:\n${allCandidates.map(f => `- ${f.path}`).join('\n')}`);
         
-        // Rank files: actual friends lists first, then friend requests, then following/followers last
-        const rankFile = (path) => {
+        // Categorize files
+        const categorize = (path) => {
           const lower = path.toLowerCase();
-          // Highest priority: actual friends lists
-          if (lower.includes('your_friends') || lower.includes('friends_list') || lower.includes('friends.html')) return 1;
-          if (lower.includes('/friends/') || lower.includes('/connections/friends/')) return 2;
-          // Medium priority: friend requests and suggestions
-          if (lower.includes('friend_request') || lower.includes('suggested_friends') || lower.includes('people_you_may_know')) return 3;
-          // Lowest priority: following/followers
-          if (lower.includes('following') || lower.includes('followers') || lower.includes('who_you') || lower.includes('followed')) return 10;
-          return 5; // default
+          if (lower.includes('your_friends') || lower.includes('friends_list')) return 'actual_friends';
+          if (lower.includes('suggested_friends') || lower.includes('people_you_may_know')) return 'suggestions';
+          if (lower.includes('friend_request') || lower.includes('rejected_friend')) return 'requests';
+          if (lower.includes('following') || lower.includes('followers') || lower.includes('who_you') || lower.includes('followed')) return 'following';
+          return 'other';
         };
         
-        const rankedCandidates = allCandidates.sort((a, b) => rankFile(a.path) - rankFile(b.path));
+        const categorized = {
+          actual_friends: [],
+          suggestions: [],
+          requests: [],
+          following: [],
+          other: []
+        };
+        
+        allCandidates.forEach(c => {
+          const cat = categorize(c.path);
+          categorized[cat].push(c);
+        });
+        
+        // Always try actual_friends FIRST
+        const tryOrder = [
+          ...categorized.actual_friends,
+          ...categorized.other,
+          ...categorized.suggestions,
+          ...categorized.requests,
+          ...categorized.following
+        ];
         
         // Probe each file
         const probeResults = [];
-        for (const candidate of rankedCandidates) {
+        for (const candidate of tryOrder) {
           try {
             const response = await base44.functions.invoke('getArchiveEntry', {
               zipUrl: archiveUrl,
@@ -340,13 +357,13 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             
             if (response.data?.content) {
               const probe = probeFacebookHtmlStructure(response.data.content, candidate.path);
-              probeResults.push({ candidate, probe, content: response.data.content });
+              probeResults.push({ candidate, probe, content: response.data.content, category: categorize(candidate.path) });
               
               const counts = probe.selectorCounts || {};
               addLog(
                 sectionName, 
                 'FRIENDS_PROBE', 
-                `${candidate.path} | title="${probe.title || 'N/A'}" | tables=${counts.tables || 0} rows=${counts.tableRows || 0} li=${counts.li || 0} anchors=${counts.anchors || 0} groupLinks=${counts.groupLinks || 0} fbLinks=${counts.fbLinks || 0}`,
+                `${candidate.path} | title="${probe.title || 'N/A'}" | tables=${counts.tables || 0} rows=${counts.tableRows || 0} li=${counts.li || 0} anchors=${counts.anchors || 0} fbLinks=${counts.fbLinks || 0} divLeaf=${counts.divLeafTextCount || 0} textLength=${counts.textLength || 0}`,
                 'info'
               );
             }
@@ -355,46 +372,64 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           }
         }
         
-        // Try to parse friends from ranked files until we get results
-        for (const { candidate, content, probe } of probeResults) {
+        // Parse friends by category
+        const resultsByCategory = {
+          actual_friends: [],
+          suggestions: [],
+          requests: [],
+          following: []
+        };
+        
+        for (const { candidate, content, probe, category } of probeResults) {
+          let items = [];
+          
           if (candidate.type === 'json') {
             try {
               const jsonData = JSON.parse(content);
               const result = parseJsonGeneric(jsonData, candidate.path);
-              if (result.items.length > 0) {
-                parsedData = result.items.slice(0, 100);
-                addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON: ${candidate.path}`, 'success', parsedData.length);
-                break;
-              }
+              items = result.items;
             } catch (err) {
               addLog(sectionName, 'PARSE_ERROR', `JSON parse failed for ${candidate.path}: ${err.message}`, 'error');
             }
           } else {
             const result = await parseFriendsFromHtml(content, candidate.path);
-            if (result.items.length > 0) {
-              parsedData = result.items.slice(0, 100);
-              addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML: ${candidate.path}`, 'success', parsedData.length);
-              break;
-            } else {
-              addLog(sectionName, 'PARSE', `0 items extracted from ${candidate.path} (${(probe.selectorCounts?.fbLinks || 0)} fbLinks, ${(probe.selectorCounts?.anchors || 0)} anchors)`, 'warn');
+            items = result.items;
+          }
+          
+          if (items.length > 0) {
+            addLog(sectionName, 'PARSE', `Parsed ${items.length} items from ${candidate.path} (category: ${category})`, 'success', items.length);
+            
+            if (category === 'actual_friends' || category === 'other') {
+              resultsByCategory.actual_friends.push(...items);
+            } else if (resultsByCategory[category]) {
+              resultsByCategory[category].push(...items);
             }
+          } else {
+            const counts = probe.selectorCounts || {};
+            addLog(sectionName, 'PARSE', `0 items from ${candidate.path} | divLeaf=${counts.divLeafTextCount || 0} textLen=${counts.textLength || 0}`, 'warn');
           }
         }
         
-        // Store probe results for UI
+        // Use actual_friends as primary data
+        parsedData = resultsByCategory.actual_friends.slice(0, 100);
+        
+        // Store all results for UI
+        setLoadedSections(prev => ({ 
+          ...prev, 
+          [sectionName]: { 
+            items: parsedData,
+            byCategory: resultsByCategory,
+            probeResults: probeResults.map(r => ({ 
+              path: r.candidate.path, 
+              probe: r.probe,
+              content: r.content,
+              category: r.category
+            }))
+          }
+        }));
+        
         if (parsedData.length === 0) {
-          setLoadedSections(prev => ({ 
-            ...prev, 
-            [sectionName]: { 
-              items: [],
-              probeResults: probeResults.map(r => ({ 
-                path: r.candidate.path, 
-                probe: r.probe,
-                content: r.content 
-              }))
-            }
-          }));
-          addLog(sectionName, 'PARSE', `No friend names extracted from any of ${probeResults.length} files. View raw HTML to confirm structure.`, 'error');
+          addLog(sectionName, 'PARSE', `No friends extracted from "actual_friends" files. View raw HTML to confirm structure.`, 'error');
         }
       } else if (sectionName === 'messages') {
         const threads = normalized.messageThreads;
@@ -1048,14 +1083,86 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                 )}
               </Button>
             </div>
-          ) : loadedSections.friends && Array.isArray(loadedSections.friends.items) && loadedSections.friends.items.length === 0 && loadedSections.friends.probeResults ? (
+          ) : loadedSections.friends && loadedSections.friends.probeResults ? (
             <div className="space-y-4">
-              <Alert className="bg-yellow-50 border-yellow-300">
-                <AlertDescription className="text-yellow-900">
-                  No friend names extracted from {loadedSections.friends.probeResults.length} files. View raw HTML below to confirm structure.
-                </AlertDescription>
-              </Alert>
-              {loadedSections.friends.probeResults.map((probeResult, i) => (
+              {loadedSections.friends.items?.length === 0 && (
+                <Alert className="bg-yellow-50 border-yellow-300">
+                  <AlertDescription className="text-yellow-900">
+                    No friends listed in your_friends.html. View raw HTML below to confirm structure.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {/* Show actual friends if extracted */}
+              {loadedSections.friends.items && loadedSections.friends.items.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Your Friends</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {loadedSections.friends.items.map((friend, i) => (
+                        <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                          <Avatar>
+                            <AvatarFallback className="bg-green-500 text-white">
+                              {friend.name?.[0] || 'F'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{friend.name}</p>
+                            {friend.profileUrl && (
+                              <p className="text-xs text-gray-500 truncate max-w-xs">{friend.profileUrl}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {/* Show other categories */}
+              {loadedSections.friends.byCategory?.suggestions?.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Suggested Friends</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xs text-gray-600">
+                      {loadedSections.friends.byCategory.suggestions.length} suggestions
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {loadedSections.friends.byCategory?.requests?.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Friend Requests</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xs text-gray-600">
+                      {loadedSections.friends.byCategory.requests.length} requests
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {loadedSections.friends.byCategory?.following?.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Following/Followers</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xs text-gray-600">
+                      {loadedSections.friends.byCategory.following.length} items
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {/* Probe results with raw viewer */}
+              {loadedSections.friends.probeResults.filter(p => p.category === 'actual_friends').map((probeResult, i) => (
                 <Card key={i}>
                   <CardHeader>
                     <CardTitle className="text-sm font-mono break-all">{probeResult.path}</CardTitle>
@@ -1063,11 +1170,20 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   <CardContent className="space-y-2">
                     <div className="text-xs text-gray-600 space-y-1">
                       <div>Title: {probeResult.probe.title || 'N/A'}</div>
+                      <div>DIV leaf texts: {probeResult.probe.selectorCounts?.divLeafTextCount || 0}</div>
+                      <div>Text length: {probeResult.probe.selectorCounts?.textLength || 0}</div>
                       <div>Tables: {probeResult.probe.selectorCounts?.tables || 0}, Rows: {probeResult.probe.selectorCounts?.tableRows || 0}</div>
-                      <div>List items: {probeResult.probe.selectorCounts?.li || 0}</div>
-                      <div>Anchors: {probeResult.probe.selectorCounts?.anchors || 0}</div>
-                      <div>FB Profile Links: {probeResult.probe.selectorCounts?.fbLinks || 0}</div>
-                      <div>Group Links: {probeResult.probe.selectorCounts?.groupLinks || 0}</div>
+                      <div>Anchors: {probeResult.probe.selectorCounts?.anchors || 0}, FB Links: {probeResult.probe.selectorCounts?.fbLinks || 0}</div>
+                      {probeResult.probe.sampleLeafTextsRedacted && probeResult.probe.sampleLeafTextsRedacted.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-blue-700 hover:text-blue-900 font-semibold">Sample leaf texts (redacted)</summary>
+                          <div className="mt-1 p-2 bg-gray-50 rounded font-mono text-xs space-y-1">
+                            {probeResult.probe.sampleLeafTextsRedacted.slice(0, 10).map((text, idx) => (
+                              <div key={idx}>• {text}</div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                     </div>
                     <details className="mt-2">
                       <summary className="cursor-pointer text-sm text-blue-700 hover:text-blue-900 font-semibold">View Raw HTML</summary>
