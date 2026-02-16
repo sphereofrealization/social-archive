@@ -53,16 +53,16 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   // Build knownMediaPathSet from ALL media entries (not just gallery)
   const knownMediaPathSet = React.useMemo(() => {
     const set = new Set();
-    // Use mediaEntriesAll if available (contains ALL image/video files in ZIP)
-    if (data?.index?.mediaEntriesAll && Array.isArray(data.index.mediaEntriesAll)) {
-      data.index.mediaEntriesAll.forEach(m => set.add(m.path));
+    // Use mediaAll if available (contains ALL image/video files in ZIP, including *_files folders)
+    if (data?.index?.mediaAll && Array.isArray(data.index.mediaAll)) {
+      data.index.mediaAll.forEach(m => set.add(m.path));
     } else {
       // Fallback to photos + videos
       normalized.photos.forEach(p => set.add(p.path));
       normalized.videos.forEach(v => set.add(v.path));
     }
     return set;
-  }, [data?.index?.mediaEntriesAll, normalized.photos, normalized.videos]);
+  }, [data?.index?.mediaAll, normalized.photos, normalized.videos]);
   
   // Log what we received and normalized
   React.useEffect(() => {
