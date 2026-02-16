@@ -571,6 +571,7 @@ Deno.serve(async (req) => {
       }),
       lengths,
       index: {
+        mediaAll: fileIndex.mediaAll.map(m => ({ path: m.path, name: m.name, size: m.size, ext: m.ext })),
         photos: fileIndex.photos.map(p => ({ path: p.path, name: p.name, size: p.size, ext: p.ext })),
         videos: fileIndex.videos.map(v => ({ path: v.path, name: v.name, size: v.size, ext: v.ext })),
         posts: {
