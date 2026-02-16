@@ -587,7 +587,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               <div className="mt-2"><strong>Data Sources:</strong></div>
               <div>• Photos Source: {normalized.photos.length > 0 ? 'index.photos' : 'data.photos'} → {normalized.photos.length} items</div>
               <div>• Videos Source: {normalized.videos.length > 0 ? 'index.videos' : 'data.videos'} → {normalized.videos.length} items</div>
-              <div>• Media Entries All: {data?.index?.mediaEntriesAll?.length || 0} (for resolving post media)</div>
+              <div>• Media All: {data?.index?.mediaAll?.length || 0} (ALL images/videos in ZIP for resolving post media)</div>
               <div>• Known Media Path Set Size: {knownMediaPathSet.size}</div>
               <div>• Posts Files: {normalized.postFiles.html.length + normalized.postFiles.json.length} files</div>
               <div>• Friends Files: {normalized.friendFiles.html.length + normalized.friendFiles.json.length} files</div>
