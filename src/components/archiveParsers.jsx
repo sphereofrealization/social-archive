@@ -641,7 +641,6 @@ export function resolveZipEntryPath(sourceFile, ref, rootPrefix, knownMediaPathS
 }
 
 function normalizeZipPath(baseDir, ref) {
-  // PHASE 2: Robust normalization
   if (!ref) return baseDir ? baseDir : '';
   
   // 1. Trim whitespace
@@ -653,15 +652,15 @@ function normalizeZipPath(baseDir, ref) {
   // 3. Strip query string and hash
   ref = ref.split('?')[0].split('#')[0];
   
-  // 4. Decode URL (safe)
+  // 4. Decode URL safely
   try {
     ref = decodeURIComponent(ref);
   } catch {
     // If decode fails, keep the original
   }
   
-  // 5. Remove leading "./"
-  ref = ref.replace(/^\.\//, '');
+  // 5. Remove leading "./" and "/"
+  ref = ref.replace(/^\.\//, '').replace(/^\/+/, '');
   
   let parts = [];
   
@@ -682,8 +681,8 @@ function normalizeZipPath(baseDir, ref) {
     }
   }
   
-  // 6. Collapse repeated slashes
-  const result = parts.join('/').replace(/^\/+/, '').replace(/\/+/g, '/');
+  // 6. Collapse repeated slashes and remove leading/trailing slashes
+  const result = parts.join('/').replace(/\/+/g, '/');
   return result;
 }
 
