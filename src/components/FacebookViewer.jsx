@@ -555,22 +555,34 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           expectedEntryCount
         );
         
-        const scanStatus = audit.expectedTotal && audit.entriesScanned < audit.expectedTotal * 0.8 ? 'error' : 
+        const manifestComplete = audit.manifestComplete !== false;
+        const scanStatus = audit.manifestMissing ? 'error' :
+                           !manifestComplete ? 'warn' : 
                            audit.entriesScanned > 0 ? 'success' : 'error';
         
         addLog(
           sectionName,
           'COMMENTS_AUDIT_SCAN',
-          `scanned=${audit.entriesScanned || 0} expectedTotal=${audit.expectedTotal || 'unknown'} source=${audit.entriesSource || 'unknown'}`,
+          `scanned=${audit.entriesScanned || 0} expectedTotal=${audit.expectedTotal || 'unknown'} source=${audit.entriesSource || 'unknown'} complete=${manifestComplete ? 'yes' : 'NO'}`,
           scanStatus
         );
+        
+        if (!manifestComplete && audit.expectedTotal) {
+          const missingCount = audit.expectedTotal - audit.entriesScanned;
+          addLog(
+            sectionName,
+            'COMMENTS_AUDIT_MISSING',
+            `missingCount=${missingCount} (${Math.round((missingCount / audit.expectedTotal) * 100)}% of archive not scanned)`,
+            'warn'
+          );
+        }
         
         if (audit.keywordMatchCount !== undefined) {
           addLog(
             sectionName,
             'COMMENTS_AUDIT_KEYWORD_MATCHES',
             `count=${audit.keywordMatchCount}`,
-            'info'
+            audit.keywordMatchCount > 0 ? 'success' : 'warn'
           );
         }
         
@@ -670,8 +682,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           [sectionName]: {
             items: parsedData,
             audit,
-            noFilesInExport: audit.candidatesSummary.length === 0,
-            scanFailed: audit.entriesScanned === 0
+            noFilesInExport: audit.keywordMatchCount === 0 && audit.manifestComplete !== false,
+            scanFailed: audit.entriesScanned === 0 || audit.manifestMissing,
+            scanIncomplete: audit.manifestComplete === false
           }
         }));
       } else if (sectionName === 'likes') {
@@ -1714,6 +1727,18 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   <CardContent className="p-8 text-center">
                     <p className="text-red-600 mb-2">Cannot enumerate ZIP entries (file index not loaded)</p>
                     <p className="text-sm text-gray-500">Error: {loadedSections.comments?.audit?.error || 'Unknown error'}</p>
+                  </CardContent>
+                </Card>
+              ) : loadedSections.comments?.scanIncomplete ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <p className="text-amber-600 mb-2">⚠ Comments scan incomplete</p>
+                    <p className="text-sm text-gray-600 mb-2">
+                      Scanned {loadedSections.comments?.audit?.entriesScanned || 0} of {loadedSections.comments?.audit?.expectedTotal || '?'} archive entries
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Some comment files may be missed. Try re-uploading the archive or check debug logs.
+                    </p>
                   </CardContent>
                 </Card>
               ) : loadedSections.comments?.noFilesInExport ? (
