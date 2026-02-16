@@ -38,7 +38,6 @@ import {
   probeFacebookHtmlStructure,
   resolveZipEntryPath
 } from "./archiveParsers";
-import { loadZipMediaAsObjectUrl } from "./loadZipMedia";
 
 export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "", debugMode = false }) {
   // Normalize data on mount
@@ -75,65 +74,52 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   const [showDebug, setShowDebug] = useState(false);
   const [debugLogs, setDebugLogs] = useState({});
   const [viewRawContent, setViewRawContent] = useState({});
-  const [mediaDebugLogs, setMediaDebugLogs] = useState({});
 
    const isStreamingIndex = normalized.isStreaming;
 
-  // Load media on demand using unified helper
-  const loadMedia = async (mediaPath, type, sourceFile = null, originalRef = null) => {
+  // Load media on demand
+  const loadMedia = async (mediaPath, type) => {
     if (loadedMedia[mediaPath] !== undefined) return;
     setLoadedMedia(prev => ({ ...prev, [mediaPath]: 'loading' }));
     
-    // Log initial click
-    const clickLog = {
-      step: 'MEDIA_CLICK',
-      entryPath: mediaPath,
-      postSourceFile: sourceFile,
-      ext: mediaPath.split('.').pop(),
-      resolvedFromRef: originalRef,
-      timestamp: new Date().toISOString()
-    };
-    console.log('[MEDIA_CLICK]', clickLog);
-    setMediaDebugLogs(prev => ({
-      ...prev,
-      [mediaPath]: [clickLog]
-    }));
-    
     try {
-      const result = await loadZipMediaAsObjectUrl({
+      console.log(`[FacebookViewer] Loading ${type} from ${mediaPath}`);
+      const response = await base44.functions.invoke('getArchiveEntry', {
         zipUrl: archiveUrl,
         entryPath: mediaPath,
-        onProgress: (logs) => {
-          setMediaDebugLogs(prev => ({
-            ...prev,
-            [mediaPath]: logs
-          }));
-        }
+        responseType: 'base64'
       });
       
-      console.log(`[MEDIA_SUCCESS] ${mediaPath}:`, result.debugLog);
-      setLoadedMedia(prev => ({ ...prev, [mediaPath]: result.objectUrl }));
-      
-      // Log render success after image/video loads
-      setTimeout(() => {
-        setMediaDebugLogs(prev => ({
-          ...prev,
-          [mediaPath]: [...(prev[mediaPath] || []), { step: 'MEDIA_RENDER_OK', timestamp: new Date().toISOString() }]
-        }));
-      }, 100);
-      
+      if (response.data?.content && response.data?.mime) {
+        const blobUrl = base64ToBlobUrl(response.data.content, response.data.mime);
+        if (blobUrl) {
+          console.log(`[FacebookViewer] Successfully created blob URL for ${mediaPath}`);
+          setLoadedMedia(prev => ({ ...prev, [mediaPath]: blobUrl }));
+        } else {
+          throw new Error('Failed to create blob URL');
+        }
+      } else {
+        throw new Error(`Invalid response: ${JSON.stringify(response.data)}`);
+      }
     } catch (err) {
-      console.error(`[MEDIA_ERROR] Failed to load ${type}:`, err);
-      const errorLog = {
-        step: 'MEDIA_RENDER_ERROR',
-        error: err.message,
-        entryPath: mediaPath
-      };
-      setMediaDebugLogs(prev => ({
-        ...prev,
-        [mediaPath]: [...(prev[mediaPath] || []), errorLog]
-      }));
+      console.error(`[FacebookViewer] Failed to load ${type}:`, err);
       setLoadedMedia(prev => ({ ...prev, [mediaPath]: { error: err.message } }));
+    }
+  };
+
+  // Convert base64 to blob URL
+  const base64ToBlobUrl = (base64, mimeType) => {
+    try {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: mimeType });
+      return URL.createObjectURL(blob);
+    } catch (err) {
+      console.error('[FacebookViewer] base64ToBlobUrl error:', err);
+      return null;
     }
   };
 
@@ -201,27 +187,15 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   // Resolve mediaRefs to actual ZIP entry paths
                   const resolvedItems = (result.items || []).map(item => {
                     if (item.mediaRefs && item.mediaRefs.length > 0) {
-                      const resolutionResults = item.mediaRefs.map(ref => 
-                        resolveZipEntryPath(filePath, ref, data?.rootPrefix || '', knownMediaPathSet)
-                      );
-
-                      const resolvedPaths = resolutionResults
-                        .filter(r => r.resolved)
-                        .map(r => r.resolved);
-
-                      const resolutionDebug = resolutionResults.map((r, i) => ({
-                        ref: item.mediaRefs[i],
-                        resolved: r.resolved,
-                        reason: r.reason,
-                        candidates: r.candidates?.slice(0, 3)
-                      }));
+                      const resolvedPaths = item.mediaRefs
+                        .map(ref => resolveZipEntryPath(filePath, ref, data?.rootPrefix || '', knownMediaPathSet))
+                        .filter(Boolean);
 
                       return {
                         ...item,
                         mediaRefs: undefined,
                         mediaPaths: resolvedPaths.length > 0 ? resolvedPaths : undefined,
-                        mediaRefsEmptyReason: resolvedPaths.length === 0 && item.mediaRefs.length > 0 ? 'Refs not found in media index' : undefined,
-                        _resolutionDebug: resolutionDebug
+                        mediaRefsEmptyReason: resolvedPaths.length === 0 && item.mediaRefs.length > 0 ? 'Refs not found in media index' : undefined
                       };
                     }
                     return item;
@@ -368,75 +342,26 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         if (selectedFiles.length === 0) {
           throw new Error('No group files found');
         }
-        
-        // Log all available files
-        addLog(sectionName, 'FILES_DETECTED', `Found ${selectedFiles.length} group files: ${selectedFiles.join(', ')}`);
-        
-        // Score and select best files for group membership
-        const scoredFiles = await Promise.all(selectedFiles.slice(0, 5).map(async (filePath) => {
-          let score = 0;
-          const pathLower = filePath.toLowerCase();
-          const titleLower = 'unknown';
-          
-          // Score by path
-          if (pathLower.includes('membership') || pathLower.includes('your_groups')) score += 10;
-          if (pathLower.includes('badge')) score -= 10;
-          
-          // Probe the file
-          try {
-            const response = await base44.functions.invoke('getArchiveEntry', {
-              zipUrl: archiveUrl,
-              entryPath: filePath,
-              responseType: 'text'
-            });
-            
-            if (response.data?.content) {
-              const probe = await parseGroupsFromHtml(response.data.content, filePath);
-              const titleLowerProbed = probe.probe?.title?.toLowerCase() || '';
-              
-              addLog(sectionName, 'PROBE', `${filePath} | title="${probe.probe?.title}" | groupLinks=${probe.probe?.groupLinkAnchors} | tables=${probe.probe?.tables} | rows=${probe.probe?.tableRows}`);
-              
-              // Score by title
-              if (titleLowerProbed.includes('groups you') || titleLowerProbed.includes('group membership')) score += 5;
-              if (titleLowerProbed.includes('badge')) score -= 10;
-              
-              // Score by probe
-              if (probe.probe?.groupLinkAnchors > 0) score += 10;
-              if (probe.probe?.groupLinkAnchors === 0 && probe.rejected) score -= 10;
-              
-              return { filePath, score, probe, content: response.data.content };
-            }
-          } catch (err) {
-            addLog(sectionName, 'PROBE_ERROR', `Failed to probe ${filePath}: ${err.message}`, 'error');
-          }
-          
-          return { filePath, score: -100 };
-        }));
-        
-        // Sort by score descending
-        scoredFiles.sort((a, b) => b.score - a.score);
-        addLog(sectionName, 'FILE_SELECTION', `Best files: ${scoredFiles.slice(0, 3).map(f => `${f.filePath} (score=${f.score})`).join(', ')}`);
-        
-        // Parse top 3 files
-        const allGroups = [];
-        const seenNames = new Set();
-        
-        for (const { filePath, content, probe } of scoredFiles.slice(0, 3)) {
-          if (!content) continue;
-          
-          const result = await parseGroupsFromHtml(content, filePath);
-          addLog(sectionName, 'PARSE', `${filePath} → ${result.items.length} groups (rejected=${result.rejected || false})`, result.error ? 'error' : 'success', result.items.length);
-          
-          result.items.forEach(item => {
-            if (!seenNames.has(item.name)) {
-              allGroups.push(item);
-              seenNames.add(item.name);
-            }
-          });
+        const filePath = selectedFiles[0];
+        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
+
+        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
+
+        const response = await base44.functions.invoke('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: filePath,
+          responseType
+        });
+
+        if (responseType === 'json' && response.data?.content) {
+          const result = parseJsonGeneric(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
+        } else if (responseType === 'text' && response.data?.content) {
+          const result = await parseGroupsFromHtml(response.data.content, filePath);
+          parsedData = result.items.slice(0, 50);
+          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
         }
-        
-        parsedData = { groups: allGroups, allFiles: selectedFiles };
-        addLog(sectionName, 'COMPLETE', `Total unique groups found: ${allGroups.length}`, 'success', allGroups.length);
       } else if (sectionName === 'reviews') {
         selectedFiles = normalized.reviewFiles.json.length > 0 ? normalized.reviewFiles.json : normalized.reviewFiles.html;
         if (selectedFiles.length === 0) {
@@ -564,9 +489,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   const messages = isStreamingIndex ? (Array.isArray(loadedSections.messages) ? loadedSections.messages : []) : (Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.messages) ? data.messages : []);
   const comments = isStreamingIndex ? (Array.isArray(loadedSections.comments) ? loadedSections.comments : []) : (Array.isArray(data?.comments) ? data.comments : []);
   const likes = isStreamingIndex ? (Array.isArray(loadedSections.likes) ? loadedSections.likes : []) : (Array.isArray(data?.likes) ? data.likes : []);
-  const groupsData = isStreamingIndex ? loadedSections.groups : data?.groups;
-  const groups = Array.isArray(groupsData) ? groupsData : (groupsData?.groups || []);
-  const groupFiles = groupsData?.allFiles || [];
+  const groups = isStreamingIndex ? (Array.isArray(loadedSections.groups) ? loadedSections.groups : []) : (Array.isArray(data?.groups) ? data.groups : []);
   const reviews = isStreamingIndex ? (Array.isArray(loadedSections.reviews) ? loadedSections.reviews : []) : (Array.isArray(data?.reviews) ? data.reviews : []);
   const marketplace = isStreamingIndex ? (Array.isArray(loadedSections.marketplace) ? loadedSections.marketplace : []) : (Array.isArray(data?.marketplace) ? data.marketplace : []);
   const events = isStreamingIndex ? (Array.isArray(loadedSections.events) ? loadedSections.events : []) : (Array.isArray(data?.events) ? data.events : []);
@@ -792,74 +715,31 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                               const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
                               const isLoading = mediaState === 'loading';
                               const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
-                              const mediaLogs = mediaDebugLogs[mediaPath] || [];
-                              const resDebug = post._resolutionDebug?.[j];
 
                               return (
-                                <div key={j} className="space-y-1">
-                                  <div
-                                    className={`aspect-square rounded flex items-center justify-center text-xs cursor-pointer transition-colors ${
-                                      hasError ? 'bg-red-100' : 'bg-gray-200 hover:bg-gray-300'
-                                    }`}
-                                    onClick={() => {
-                                      if (!isLoaded && !isLoading) {
-                                        loadMedia(
-                                          mediaPath, 
-                                          mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? 'video' : 'image',
-                                          post.sourceFile,
-                                          resDebug?.ref
-                                        );
-                                      }
-                                    }}
-                                  >
-                                    {isLoaded && typeof mediaState === 'string' ? (
-                                      mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? (
-                                        <video className="w-full h-full object-cover rounded" muted>
-                                          <source src={mediaState} />
-                                        </video>
-                                      ) : (
-                                        <img 
-                                          src={mediaState} 
-                                          alt="media" 
-                                          className="w-full h-full object-cover rounded"
-                                          onLoad={() => console.log('[MEDIA_RENDER_OK]', mediaPath)}
-                                          onError={(e) => console.log('[MEDIA_RENDER_ERROR]', mediaPath, e)}
-                                        />
-                                      )
+                                <div
+                                  key={j}
+                                  className={`aspect-square rounded flex items-center justify-center text-xs cursor-pointer transition-colors ${
+                                    hasError ? 'bg-red-100' : 'bg-gray-200 hover:bg-gray-300'
+                                  }`}
+                                  onClick={() => {
+                                    if (!isLoaded && !isLoading) loadMedia(mediaPath, mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? 'video' : 'image');
+                                  }}
+                                >
+                                  {isLoaded && typeof mediaState === 'string' ? (
+                                    mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? (
+                                      <video className="w-full h-full object-cover rounded" muted>
+                                        <source src={mediaState} />
+                                      </video>
                                     ) : (
-                                      <div className="text-center p-1">
-                                        {isLoading && <p className="text-gray-600">⟳</p>}
-                                        {hasError && (
-                                          <div>
-                                            <p className="text-red-600 text-xs">✕</p>
-                                            <p className="text-red-500 text-[9px] break-all">{mediaState.error}</p>
-                                          </div>
-                                        )}
-                                        {!isLoading && !hasError && <p className="text-gray-600">📷</p>}
-                                      </div>
-                                    )}
-                                  </div>
-                                  {(hasError || mediaLogs.length > 0) && (
-                                    <details className="text-[9px] bg-gray-100 p-1 rounded">
-                                      <summary className="cursor-pointer text-gray-600">Debug ({mediaLogs.length})</summary>
-                                      <div className="mt-1 space-y-1 max-h-32 overflow-y-auto">
-                                        {resDebug && (
-                                          <div className="bg-blue-50 p-1 rounded">
-                                            <div><strong>Ref:</strong> {resDebug.ref}</div>
-                                            <div><strong>Resolved:</strong> {resDebug.resolved || 'null'}</div>
-                                            <div><strong>Reason:</strong> {resDebug.reason}</div>
-                                            {resDebug.candidates?.length > 0 && (
-                                              <div><strong>Candidates:</strong> {resDebug.candidates.join(', ')}</div>
-                                            )}
-                                          </div>
-                                        )}
-                                        {mediaLogs.map((log, idx) => (
-                                          <div key={idx} className={`p-1 rounded ${log.step.includes('ERROR') ? 'bg-red-50' : 'bg-gray-50'}`}>
-                                            <strong>{log.step}:</strong> {JSON.stringify(log, null, 2).slice(0, 200)}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </details>
+                                      <img src={mediaState} alt="media" className="w-full h-full object-cover rounded" />
+                                    )
+                                  ) : (
+                                    <div className="text-center">
+                                      {isLoading && <p className="text-gray-600">⟳</p>}
+                                      {hasError && <p className="text-red-600 text-xs">✕</p>}
+                                      {!isLoading && !hasError && <p className="text-gray-600">📷</p>}
+                                    </div>
                                   )}
                                 </div>
                               );
@@ -1056,7 +936,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                       <div 
                         className="aspect-square cursor-pointer hover:opacity-90 transition-opacity bg-gray-100 flex items-center justify-center rounded-lg"
                         onClick={() => {
-                          if (!isLoaded && !isLoading) loadMedia(path, 'image', null, null);
+                          if (!isLoaded && !isLoading) loadMedia(path, 'image');
                         }}
                       >
                         {isLoaded && typeof mediaState === 'string' ? (
@@ -1120,7 +1000,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                           className={`w-full rounded-lg flex items-center justify-center cursor-pointer transition-colors ${hasError ? 'bg-red-100' : 'bg-gray-200 hover:bg-gray-300'}`}
                           style={{ height: '200px' }}
                           onClick={() => {
-                            if (!isLoading && !hasError) loadMedia(video.path, 'video', null, null);
+                            if (!isLoading && !hasError) loadMedia(video.path, 'video');
                           }}
                         >
                           <div className="text-center">
@@ -1317,62 +1197,20 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             </div>
           ) : (
             <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Groups Found: {groups.length}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {groups.length === 0 ? (
-                    <div>
-                      <p className="text-gray-500 mb-4">No group names detected in parsed files.</p>
-                      {groupFiles.length > 0 && (
-                        <details className="bg-gray-50 p-3 rounded">
-                          <summary className="cursor-pointer font-medium text-sm">
-                            Group-related files detected: {groupFiles.length}
-                          </summary>
-                          <div className="mt-2 space-y-1">
-                            {groupFiles.map((file, i) => (
-                              <div key={i} className="text-xs bg-white p-2 rounded">
-                                <code>{file}</code>
-                              </div>
-                            ))}
-                          </div>
-                        </details>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {groups.map((group, i) => (
-                        <div key={i} className="p-3 bg-gray-50 rounded">
-                          <p className="font-medium">{group.name}</p>
-                          {group.href && (
-                            <p className="text-xs text-gray-500 truncate">{group.href}</p>
-                          )}
-                          {group.extractedFrom && (
-                            <Badge variant="outline" className="text-xs mt-1">
-                              {group.extractedFrom}
-                            </Badge>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {groupFiles.length > 0 && (
+              {groups.length === 0 ? (
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">Group-related Files: {groupFiles.length}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-1">
-                    {groupFiles.map((file, i) => (
-                      <div key={i} className="text-xs bg-gray-50 p-2 rounded">
-                        <code className="break-all">{file}</code>
-                      </div>
-                    ))}
+                  <CardContent className="p-8 text-center text-gray-500">
+                    No groups found
                   </CardContent>
                 </Card>
+              ) : (
+                groups.map((group, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <p className="text-sm font-medium">{group.groupName || group.name || JSON.stringify(group).slice(0, 200)}</p>
+                    </CardContent>
+                  </Card>
+                ))
               )}
             </div>
           )}
