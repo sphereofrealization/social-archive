@@ -411,7 +411,14 @@ Deno.serve(async (req) => {
             if (ext === 'json') fileIndex.commentsJson.push(entry);
             else if (ext === 'html') fileIndex.commentsHtml.push(entry);
           }
-          else if (/(like|reaction)/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+          else if ((ext === 'json' || ext === 'html') && 
+                   !pathLower.includes('/fundraisers/') && 
+                   !pathLower.includes('_likely_') &&
+                   (/(^|\/)likes_and_reactions\//i.test(pathLower) ||
+                    /your_likes\./i.test(pathLower) ||
+                    /pages_you.?ve_liked\./i.test(pathLower) ||
+                    /(^|[^a-z])liked([^a-z]|$)/i.test(fileName.toLowerCase()) ||
+                    (/(^|[^a-z])like(s|d)?([^a-z]|$)/i.test(fileName.toLowerCase()) && !/(likely|unlike)/i.test(fileName)))) {
             if (ext === 'json') fileIndex.likesJson.push(entry);
             else if (ext === 'html') fileIndex.likesHtml.push(entry);
           }
