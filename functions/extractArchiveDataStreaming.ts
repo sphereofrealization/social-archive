@@ -422,7 +422,16 @@ Deno.serve(async (req) => {
             if (ext === 'json') fileIndex.likesJson.push(entry);
             else if (ext === 'html') fileIndex.likesHtml.push(entry);
           }
-          else if (/group/i.test(pathLower) && (ext === 'json' || ext === 'html')) {
+          else if ((ext === 'json' || ext === 'html') && 
+                   !pathLower.includes('/facebook_gaming/') && 
+                   !pathLower.includes('badges') &&
+                   (/(^|\/)groups\//i.test(pathLower) ||
+                    /groups_you.?ve_joined/i.test(pathLower) ||
+                    /your_group_memberships/i.test(pathLower) ||
+                    /groups_you_manage/i.test(pathLower) ||
+                    /your_posts_in_groups/i.test(pathLower) ||
+                    /your_comments_in_groups/i.test(pathLower) ||
+                    (/group/i.test(fileName) && !/(badges|gaming)/i.test(pathLower)))) {
             if (ext === 'json') fileIndex.groupsJson.push(entry);
             else if (ext === 'html') fileIndex.groupsHtml.push(entry);
           }
