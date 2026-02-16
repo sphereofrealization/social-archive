@@ -133,8 +133,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         bytes[i] = binary.charCodeAt(i);
       }
       const blob = new Blob([bytes], { type: mimeType });
-      return URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
+      return url;
     } catch (err) {
+      addMediaLog(`[MEDIA_BLOB_ERROR] ${err.message}`);
       console.error('[FacebookViewer] base64ToBlobUrl error:', err);
       return null;
     }
