@@ -1,6 +1,133 @@
 // Archive content parsers - HTML-first, JSON fallback
 // All functions return { items: [], sourceFile: string, error?: string }
 
+// Comments Presence Audit - forensic search for all comment sources in ZIP
+export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction) {
+  try {
+    const allEntries = zipIndex.all || [];
+    
+    // Find all comment-related files
+    const commentCandidates = allEntries.filter(entry => {
+      const path = entry.path.toLowerCase();
+      const ext = path.split('.').pop();
+      if (!['html', 'json'].includes(ext)) return false;
+      return path.includes('comment');
+    });
+    
+    // Score candidates by path quality
+    const scorePath = (path) => {
+      const lower = path.toLowerCase();
+      if (lower.includes('comments.html') || lower.includes('comments.json')) return 100;
+      if (lower.includes('/comments/') && !lower.includes('_in_groups')) return 90;
+      if (lower.includes('your_comments')) return 80;
+      if (lower.includes('comment')) return 50;
+      return 0;
+    };
+    
+    const rankedCandidates = commentCandidates
+      .map(entry => ({ ...entry, score: scorePath(entry.path) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 25);
+    
+    const candidatesSummary = [];
+    const validCandidates = [];
+    
+    for (const candidate of rankedCandidates) {
+      try {
+        const response = await invokeFunction('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: candidate.path,
+          responseType: 'text'
+        });
+        
+        if (!response.data?.content) continue;
+        
+        const content = response.data.content;
+        const isJson = candidate.path.endsWith('.json');
+        
+        let metrics = {
+          textLen: content.length,
+          timestampCount: 0,
+          commentPhraseCount: 0,
+          repeatedDivCount: 0,
+          hasNoCommentsMessage: false
+        };
+        
+        if (isJson) {
+          try {
+            const jsonData = JSON.parse(content);
+            const hasComments = jsonData.comments || jsonData.comment_list || Array.isArray(jsonData);
+            if (hasComments) {
+              const commentList = Array.isArray(jsonData) ? jsonData : (jsonData.comments || jsonData.comment_list || []);
+              metrics.commentPhraseCount = Array.isArray(commentList) ? commentList.length : 0;
+            }
+          } catch {}
+        } else {
+          // HTML analysis
+          const lowerContent = content.toLowerCase();
+          
+          // Check for "no comments" message
+          metrics.hasNoCommentsMessage = /no comments|you haven't commented|no data available/i.test(content);
+          
+          // Count timestamps (Month DD, YYYY patterns)
+          const timestampMatches = content.match(/(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},\s+\d{4}/gi);
+          metrics.timestampCount = timestampMatches ? timestampMatches.length : 0;
+          
+          // Count comment-related phrases
+          const commentPhrases = ['commented', 'replied', 'comment:', 'your comment'];
+          metrics.commentPhraseCount = commentPhrases.reduce((count, phrase) => {
+            const matches = lowerContent.match(new RegExp(phrase, 'gi'));
+            return count + (matches ? matches.length : 0);
+          }, 0);
+          
+          // Count repeated div structures (common in exports)
+          const divPamMatches = content.match(/<div class="pam">/gi);
+          metrics.repeatedDivCount = divPamMatches ? divPamMatches.length : 0;
+        }
+        
+        // Calculate quality score
+        const qualityScore = 
+          (metrics.commentPhraseCount * 10) + 
+          (metrics.timestampCount * 5) + 
+          (metrics.repeatedDivCount * 3) +
+          (metrics.textLen > 1000 ? 20 : 0) +
+          candidate.score;
+        
+        candidatesSummary.push({
+          path: candidate.path,
+          metrics,
+          qualityScore
+        });
+        
+        // Accept if has meaningful content and no "empty" message
+        if (!metrics.hasNoCommentsMessage && (metrics.commentPhraseCount > 0 || metrics.timestampCount > 1 || qualityScore > 50)) {
+          validCandidates.push({
+            path: candidate.path,
+            metrics,
+            qualityScore
+          });
+        }
+      } catch (err) {
+        console.error(`[auditCommentsPresence] Failed to audit ${candidate.path}:`, err);
+      }
+    }
+    
+    return {
+      commentsDetected: validCandidates.length > 0,
+      validCandidates: validCandidates.sort((a, b) => b.qualityScore - a.qualityScore),
+      candidatesSummary: candidatesSummary.sort((a, b) => b.qualityScore - a.qualityScore)
+    };
+  } catch (err) {
+    console.error('[auditCommentsPresence] Audit failed:', err);
+    return {
+      commentsDetected: false,
+      validCandidates: [],
+      candidatesSummary: [],
+      error: err.message
+    };
+  }
+}
+
 // Friends Presence Audit - forensic search for actual friends list in ZIP
 export async function auditFriendsPresence(zipIndex, archiveUrl, invokeFunction) {
   try {
@@ -696,27 +823,31 @@ export async function parseCommentsFromHtml(htmlString, sourceFile) {
     const probe = probeFacebookExportHtml(htmlString, sourceFile);
     const items = [];
     
+    // Check for "no comments" message first
+    const bodyText = getText(doc.querySelector('body')).toLowerCase();
+    if (/no comments|you haven't commented|no data available/i.test(bodyText)) {
+      console.log(`[parseCommentsFromHtml] "${sourceFile}" contains "no comments" message, skipping`);
+      return { items: [], sourceFile, skipped: true };
+    }
+    
     // Look for comment-like containers
     let commentContainers = doc.querySelectorAll('[data-testid*="comment"], .comment, [role="comment"]');
     
     if (commentContainers.length === 0) {
-      // Fallback: table rows (comments often stored in tables)
       commentContainers = doc.querySelectorAll('tr');
     }
     
     if (commentContainers.length === 0) {
-      // Fallback: list items
       commentContainers = doc.querySelectorAll('li');
     }
     
     if (commentContainers.length === 0) {
-      // Fallback: divs with text
-      commentContainers = doc.querySelectorAll('.contents > div, .contents > section');
+      commentContainers = doc.querySelectorAll('.pam, .contents > div, .contents > section');
     }
     
     commentContainers.forEach(container => {
       const text = getText(container);
-      if (text && text.length > 10) { // Minimum meaningful comment length
+      if (text && text.length > 10) {
         items.push({
           text: text.slice(0, 500),
           timestamp: null,
@@ -725,7 +856,67 @@ export async function parseCommentsFromHtml(htmlString, sourceFile) {
       }
     });
     
+    // Fallback: Flat text extraction (similar to friends)
+    if (items.length === 0) {
+      console.log(`[parseCommentsFromHtml] FALLBACK: Trying flat text extraction for ${sourceFile}`);
+      
+      let textContent = htmlString;
+      textContent = textContent.replace(/<br\s*\/?>/gi, '\n');
+      textContent = textContent.replace(/<\/div>/gi, '\n');
+      textContent = textContent.replace(/<\/p>/gi, '\n');
+      textContent = textContent.replace(/<\/tr>/gi, '\n');
+      textContent = textContent.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+      textContent = textContent.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+      textContent = textContent.replace(/<[^>]+>/g, ' ');
+      textContent = textContent.replace(/&nbsp;/g, ' ');
+      textContent = textContent.replace(/&amp;/g, '&');
+      
+      const lines = textContent.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length > 0);
+      
+      // Date pattern for timestamps
+      const datePattern = /(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},\s+\d{4}(?:\s+at\s+\d{1,2}:\d{2}\s*[AP]M)?/i;
+      
+      let currentComment = null;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const dateMatch = datePattern.exec(line);
+        
+        if (dateMatch) {
+          // Found a timestamp - previous lines might be comment context/text
+          const timestamp = dateMatch[0];
+          const beforeDate = line.substring(0, dateMatch.index).trim();
+          
+          if (currentComment) {
+            items.push(currentComment);
+          }
+          
+          currentComment = {
+            text: beforeDate || (i > 0 ? lines[i - 1] : ''),
+            timestamp,
+            sourceFile
+          };
+        } else if (currentComment && line.length > 10 && !line.toLowerCase().includes('commented')) {
+          // Accumulate comment text
+          if (currentComment.text) {
+            currentComment.text += ' ' + line;
+          } else {
+            currentComment.text = line;
+          }
+        }
+      }
+      
+      if (currentComment) {
+        items.push(currentComment);
+      }
+      
+      console.log(`[parseCommentsFromHtml] FALLBACK: Extracted ${items.length} comments using flat text`);
+    }
+    
     console.log(`[parseCommentsFromHtml] Extracted ${items.length} comments from ${sourceFile}`);
+    if (items.length > 0) {
+      console.log(`[parseCommentsFromHtml] Sample comments:`, items.slice(0, 3));
+    }
     return { items, sourceFile, probe: items.length === 0 ? probe : undefined };
   } catch (err) {
     console.error(`[parseCommentsFromHtml] Error:`, err);

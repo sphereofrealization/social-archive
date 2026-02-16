@@ -37,7 +37,8 @@ import {
   parseJsonGeneric,
   probeFacebookHtmlStructure,
   resolveZipEntryPath,
-  auditFriendsPresence
+  auditFriendsPresence,
+  auditCommentsPresence
 } from "./archiveParsers";
 
 // Helper to extract entry path from media item (string or object)
@@ -542,29 +543,85 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         }));
         addLog(sectionName, 'PARSE', `Found ${parsedData.length} message threads`, 'success', parsedData.length);
       } else if (sectionName === 'comments') {
-        selectedFiles = normalized.commentFiles.json.length > 0 ? normalized.commentFiles.json : normalized.commentFiles.html;
-        if (selectedFiles.length === 0) {
-          throw new Error('No comments files found');
+        // PHASE 1: Run Comments Presence Audit
+        addLog(sectionName, 'COMMENTS_AUDIT_START', 'Running Comments Presence Audit on entire ZIP...');
+        
+        const audit = await auditCommentsPresence(
+          data?.index || {}, 
+          archiveUrl,
+          (funcName, params) => base44.functions.invoke(funcName, params)
+        );
+        
+        addLog(
+          sectionName,
+          'COMMENTS_AUDIT_RESULT',
+          `Comments detected: ${audit.commentsDetected ? 'YES' : 'NO'} | Valid sources: ${audit.validCandidates.length} | Total candidates: ${audit.candidatesSummary.length}`,
+          audit.commentsDetected ? 'success' : 'warn'
+        );
+        
+        if (audit.validCandidates.length > 0) {
+          const topCandidates = audit.validCandidates.slice(0, 5);
+          addLog(
+            sectionName, 
+            'COMMENTS_CANDIDATES', 
+            `Top ${topCandidates.length} sources:\n${topCandidates.map(c => `- ${c.path} (score=${c.qualityScore}, phrases=${c.metrics.commentPhraseCount}, timestamps=${c.metrics.timestampCount})`).join('\n')}`
+          );
         }
-        const filePath = selectedFiles[0];
-        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
-
-        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
-
-        const response = await base44.functions.invoke('getArchiveEntry', {
-          zipUrl: archiveUrl,
-          entryPath: filePath,
-          responseType
-        });
-
-        if (responseType === 'json' && response.data?.content) {
-          const result = parseJsonGeneric(response.data.content, filePath);
-          parsedData = result.items.slice(0, 50);
-          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
-        } else if (responseType === 'text' && response.data?.content) {
-          const result = await parseCommentsFromHtml(response.data.content, filePath);
-          parsedData = result.items.slice(0, 50);
-          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+        
+        // PHASE 2: Parse all valid candidates and merge
+        const allComments = [];
+        
+        for (const candidate of audit.validCandidates.slice(0, 10)) {
+          try {
+            addLog(sectionName, 'COMMENTS_FETCH', `Fetching: ${candidate.path}...`);
+            
+            const response = await base44.functions.invoke('getArchiveEntry', {
+              zipUrl: archiveUrl,
+              entryPath: candidate.path,
+              responseType: 'text'
+            });
+            
+            if (!response.data?.content) continue;
+            
+            let result;
+            if (candidate.path.endsWith('.json')) {
+              try {
+                const jsonData = JSON.parse(response.data.content);
+                result = parseJsonGeneric(jsonData, candidate.path);
+              } catch (err) {
+                addLog(sectionName, 'COMMENTS_PARSE_ERROR', `JSON parse failed for ${candidate.path}: ${err.message}`, 'error');
+                continue;
+              }
+            } else {
+              result = await parseCommentsFromHtml(response.data.content, candidate.path);
+            }
+            
+            if (result.skipped) {
+              addLog(sectionName, 'COMMENTS_PARSE', `Skipped ${candidate.path} (no comments message)`, 'info');
+            } else if (result.items.length > 0) {
+              allComments.push(...result.items);
+              addLog(sectionName, 'COMMENTS_PARSE', `Parsed ${result.items.length} comments from ${candidate.path}`, 'success', result.items.length);
+            } else {
+              addLog(sectionName, 'COMMENTS_PARSE', `0 comments from ${candidate.path}`, 'warn');
+            }
+          } catch (err) {
+            addLog(sectionName, 'COMMENTS_ERROR', `Failed to parse ${candidate.path}: ${err.message}`, 'error');
+          }
+        }
+        
+        // Dedupe by text+timestamp
+        const seen = new Set();
+        parsedData = allComments.filter(comment => {
+          const key = `${comment.text?.slice(0, 100)}|${comment.timestamp || ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        }).slice(0, 50);
+        
+        addLog(sectionName, 'COMMENTS_RESULT', `Total: ${parsedData.length} unique comments from ${audit.validCandidates.length} sources`, 'success', parsedData.length);
+        
+        if (parsedData.length > 0) {
+          addLog(sectionName, 'COMMENTS_SAMPLE', `Sample (first 3): ${JSON.stringify(parsedData.slice(0, 3).map(c => ({ text: c.text?.slice(0, 50), timestamp: c.timestamp })))}`, 'info');
         }
       } else if (sectionName === 'likes') {
         selectedFiles = normalized.likeFiles.json.length > 0 ? normalized.likeFiles.json : normalized.likeFiles.html;
