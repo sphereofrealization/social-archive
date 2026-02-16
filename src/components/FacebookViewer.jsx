@@ -38,7 +38,8 @@ import {
   probeFacebookHtmlStructure,
   resolveZipEntryPath,
   auditFriendsPresence,
-  auditCommentsPresence
+  auditCommentsPresence,
+  auditGroupsPresence
 } from "./archiveParsers";
 
 // Helper to extract entry path from media item (string or object)
