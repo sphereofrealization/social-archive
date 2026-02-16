@@ -764,35 +764,64 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                           <div className="grid grid-cols-3 gap-2">
                             {post.mediaPaths.slice(0, 6).map((mediaPath, j) => {
                               const mediaState = loadedMedia[mediaPath];
-                              const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
+                              const isLoaded = mediaState && typeof mediaState === 'object' && mediaState.url;
                               const isLoading = mediaState === 'loading';
                               const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
 
                               return (
-                                <div
-                                  key={j}
-                                  className={`aspect-square rounded flex items-center justify-center text-xs cursor-pointer transition-colors ${
-                                    hasError ? 'bg-red-100' : 'bg-gray-200 hover:bg-gray-300'
-                                  }`}
-                                  onClick={() => {
-                                    if (!isLoaded && !isLoading) loadMedia(mediaPath, mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? 'video' : 'image');
-                                  }}
-                                >
-                                  {isLoaded && typeof mediaState === 'string' ? (
-                                    mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? (
-                                      <video className="w-full h-full object-cover rounded" muted>
-                                        <source src={mediaState} />
-                                      </video>
+                                <div key={j} className="relative">
+                                  <div
+                                    className={`aspect-square rounded flex items-center justify-center text-xs cursor-pointer transition-colors ${
+                                      hasError ? 'bg-red-100 border-2 border-red-400' : 'bg-gray-200 hover:bg-gray-300'
+                                    }`}
+                                    onClick={() => {
+                                      if (!isLoaded && !isLoading) {
+                                        const type = mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? 'video' : 'image';
+                                        loadMedia(mediaPath, type, post.sourceFile, post._mediaRefsRaw?.[j] || 'N/A');
+                                      }
+                                    }}
+                                  >
+                                    {isLoaded ? (
+                                      mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? (
+                                        <video 
+                                          className="w-full h-full object-cover rounded" 
+                                          muted
+                                          onLoadedData={() => addMediaLog(`[MEDIA_RENDER_OK] video ${mediaPath}`)}
+                                          onError={(e) => addMediaLog(`[MEDIA_RENDER_ERROR] video ${mediaPath}: ${e.target.error?.message || 'unknown'}`)}
+                                        >
+                                          <source src={mediaState.url} type={mediaState.mime || 'video/mp4'} />
+                                        </video>
+                                      ) : (
+                                        <img 
+                                          src={mediaState.url} 
+                                          alt="media" 
+                                          className="w-full h-full object-cover rounded"
+                                          onLoad={() => addMediaLog(`[MEDIA_RENDER_OK] image ${mediaPath}`)}
+                                          onError={(e) => addMediaLog(`[MEDIA_RENDER_ERROR] image ${mediaPath}: ${e.target.error || 'failed to load'}`)}
+                                        />
+                                      )
                                     ) : (
-                                      <img src={mediaState} alt="media" className="w-full h-full object-cover rounded" />
-                                    )
-                                  ) : (
-                                    <div className="text-center">
-                                      {isLoading && <p className="text-gray-600">⟳</p>}
-                                      {hasError && <p className="text-red-600 text-xs">✕</p>}
-                                      {!isLoading && !hasError && <p className="text-gray-600">📷</p>}
-                                    </div>
-                                  )}
+                                      <div className="text-center p-1">
+                                        {isLoading && <p className="text-gray-600 text-lg">⟳</p>}
+                                        {hasError && (
+                                          <div className="text-red-700">
+                                            <p className="font-bold text-lg">✕</p>
+                                            <p className="text-xs mt-1 break-all">{mediaState.error}</p>
+                                          </div>
+                                        )}
+                                        {!isLoading && !hasError && (
+                                          <div>
+                                            <p className="text-gray-600 text-2xl">📷</p>
+                                            <p className="text-xs text-gray-500 mt-1">Click to load</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Debug path tooltip */}
+                                  <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 text-white text-xs p-1 rounded-b opacity-0 hover:opacity-100 transition-opacity pointer-events-none overflow-hidden">
+                                    <div className="truncate" title={mediaPath}>{mediaPath.split('/').pop()}</div>
+                                  </div>
                                 </div>
                               );
                             })}
