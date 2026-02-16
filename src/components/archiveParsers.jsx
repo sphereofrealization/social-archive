@@ -4,13 +4,65 @@
 // Comments Presence Audit - forensic search for all comment sources in ZIP
 export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction) {
   try {
-    const allEntries = zipIndex.all || [];
+    // Try multiple sources for entry list
+    let allEntries = [];
+    let entriesSource = 'unknown';
     
-    console.log(`[auditCommentsPresence] SCAN: totalZipEntries=${allEntries.length}`);
+    // Source 1: zipIndex.all (streaming index format)
+    if (zipIndex.all && Array.isArray(zipIndex.all) && zipIndex.all.length > 0) {
+      allEntries = zipIndex.all;
+      entriesSource = 'zipIndex.all';
+    }
+    // Source 2: zipIndex.mediaEntriesAll (alternative format)
+    else if (zipIndex.mediaEntriesAll && Array.isArray(zipIndex.mediaEntriesAll) && zipIndex.mediaEntriesAll.length > 0) {
+      allEntries = zipIndex.mediaEntriesAll;
+      entriesSource = 'zipIndex.mediaEntriesAll';
+    }
+    // Source 3: Collect from all known file arrays
+    else {
+      const collected = [];
+      
+      // Collect from various categorized arrays
+      ['photos', 'videos', 'posts', 'messages', 'friends', 'comments', 'likes', 
+       'groups', 'reviews', 'marketplace', 'events', 'reels', 'checkins'].forEach(category => {
+        const categoryFiles = zipIndex[category] || [];
+        if (Array.isArray(categoryFiles)) {
+          categoryFiles.forEach(f => {
+            if (typeof f === 'string') {
+              collected.push({ path: f });
+            } else if (f && f.path) {
+              collected.push(f);
+            }
+          });
+        }
+      });
+      
+      if (collected.length > 0) {
+        allEntries = collected;
+        entriesSource = 'collected_from_categories';
+      }
+    }
+    
+    console.log(`[auditCommentsPresence] SCAN: totalZipEntries=${allEntries.length} source=${entriesSource}`);
+    console.log(`[auditCommentsPresence] SCAN_DEBUG: zipIndex keys=${Object.keys(zipIndex).join(', ')}`);
+    
+    if (allEntries.length > 0) {
+      const sample = allEntries.slice(0, 10).map(e => e.path || e);
+      console.log(`[auditCommentsPresence] SCAN_SAMPLE: first10=`, sample);
+    } else {
+      console.error(`[auditCommentsPresence] SCAN_FAILED: No entries found. zipIndex=`, zipIndex);
+      return {
+        commentsDetected: false,
+        validCandidates: [],
+        candidatesSummary: [],
+        error: 'Cannot enumerate ZIP entries (file index not loaded)',
+        entriesScanned: 0
+      };
+    }
     
     // Find all comment-related files using simple substring matching
     const commentCandidates = allEntries.filter(entry => {
-      const path = entry.path.toLowerCase();
+      const path = (entry.path || entry).toLowerCase();
       const ext = path.split('.').pop();
       if (!['html', 'json'].includes(ext)) return false;
       
@@ -22,7 +74,7 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
              path.includes('reply');
     });
     
-    console.log(`[auditCommentsPresence] CANDIDATES: ${commentCandidates.length} files matched comment keywords:`, commentCandidates.map(c => c.path));
+    console.log(`[auditCommentsPresence] CANDIDATES: ${commentCandidates.length} files matched comment keywords:`, commentCandidates.map(c => c.path || c));
     
     // Score candidates by path quality
     const scorePath = (path) => {
@@ -125,7 +177,9 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
     return {
       commentsDetected: validCandidates.length > 0,
       validCandidates: validCandidates.sort((a, b) => b.qualityScore - a.qualityScore),
-      candidatesSummary: candidatesSummary.sort((a, b) => b.qualityScore - a.qualityScore)
+      candidatesSummary: candidatesSummary.sort((a, b) => b.qualityScore - a.qualityScore),
+      entriesScanned: allEntries.length,
+      entriesSource
     };
   } catch (err) {
     console.error('[auditCommentsPresence] Audit failed:', err);
@@ -133,7 +187,8 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
       commentsDetected: false,
       validCandidates: [],
       candidatesSummary: [],
-      error: err.message
+      error: err.message,
+      entriesScanned: 0
     };
   }
 }

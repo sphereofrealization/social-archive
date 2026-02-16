@@ -555,9 +555,18 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         addLog(
           sectionName,
           'COMMENTS_AUDIT_SCAN',
-          `Scanned ${data?.index?.all?.length || 0} ZIP entries`,
-          'info'
+          `Scanned ${audit.entriesScanned || 0} ZIP entries (source: ${audit.entriesSource || 'unknown'})`,
+          audit.entriesScanned > 0 ? 'success' : 'error'
         );
+        
+        if (audit.error) {
+          addLog(
+            sectionName,
+            'COMMENTS_AUDIT_ERROR',
+            audit.error,
+            'error'
+          );
+        }
         
         addLog(
           sectionName,
@@ -646,7 +655,8 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           [sectionName]: {
             items: parsedData,
             audit,
-            noFilesInExport: audit.candidatesSummary.length === 0
+            noFilesInExport: audit.candidatesSummary.length === 0,
+            scanFailed: audit.entriesScanned === 0
           }
         }));
       } else if (sectionName === 'likes') {
@@ -1684,7 +1694,14 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             </div>
           ) : (
             <div className="space-y-4">
-              {loadedSections.comments?.noFilesInExport ? (
+              {loadedSections.comments?.scanFailed ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <p className="text-red-600 mb-2">Cannot enumerate ZIP entries (file index not loaded)</p>
+                    <p className="text-sm text-gray-500">Error: {loadedSections.comments?.audit?.error || 'Unknown error'}</p>
+                  </CardContent>
+                </Card>
+              ) : loadedSections.comments?.noFilesInExport ? (
                 <Card>
                   <CardContent className="p-8 text-center">
                     <p className="text-gray-600 mb-2">No comment files exist in this Facebook export.</p>
