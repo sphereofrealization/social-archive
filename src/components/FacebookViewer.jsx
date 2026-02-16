@@ -772,17 +772,40 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                       {post.text && (
                         <p className="text-gray-700 whitespace-pre-wrap mb-3">{post.text}</p>
                       )}
+
+                      {/* Debug output for first 3 posts with media (only in debug mode) */}
+                      {showDebug && post.mediaPaths && post.mediaPaths.length > 0 && i < 3 && (
+                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs font-mono">
+                          <div className="font-bold mb-1">Post Media Debug (post #{i}):</div>
+                          <div>• mediaCount: {post.mediaPaths.length}</div>
+                          {post.mediaPaths.slice(0, 3).map((item, idx) => {
+                            const entryPath = getEntryPath(item);
+                            return (
+                              <div key={idx} className="mt-1">
+                                media[{idx}] type={typeof item} entryPath="{entryPath || 'NULL'}" 
+                                {typeof item === 'object' && ` raw=${JSON.stringify(item).slice(0, 200)}`}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       {post.mediaPaths && post.mediaPaths.length > 0 && (
                         <div className="mt-3">
                           <div className="text-xs text-gray-500 mb-2 font-semibold">Media ({post.mediaPaths.length})</div>
                           <div className="grid grid-cols-3 gap-2">
-                            {post.mediaPaths.slice(0, 6).map((mediaPath, j) => {
-                              // Safety check: ensure mediaPath is a string
-                              if (typeof mediaPath !== 'string' || !mediaPath) {
-                                return null;
+                            {post.mediaPaths.slice(0, 6).map((mediaItem, j) => {
+                              const entryPath = getEntryPath(mediaItem);
+
+                              if (!entryPath) {
+                                return (
+                                  <div key={j} className="aspect-square rounded flex items-center justify-center bg-red-100 border-2 border-red-400 text-xs p-1">
+                                    <p className="text-red-700 text-center">Invalid media item (no path)</p>
+                                  </div>
+                                );
                               }
 
-                              const mediaState = loadedMedia[mediaPath];
+                              const mediaState = loadedMedia[entryPath];
                               const isLoaded = mediaState && typeof mediaState === 'object' && mediaState.url;
                               const isLoading = mediaState === 'loading';
                               const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
@@ -795,18 +818,18 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                                     }`}
                                     onClick={() => {
                                       if (!isLoaded && !isLoading) {
-                                        const type = mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? 'video' : 'image';
-                                        loadMedia(mediaPath, type, post.sourceFile, post._mediaRefsRaw?.[j] || 'N/A');
+                                        const type = entryPath.match(/\.(mp4|mov|m4v|webm)$/i) ? 'video' : 'image';
+                                        loadMedia(mediaItem, type, post.sourceFile, post._mediaRefsRaw?.[j] || 'N/A');
                                       }
                                     }}
                                   >
                                     {isLoaded ? (
-                                      mediaPath.match(/\.(mp4|mov|m4v|webm)$/i) ? (
+                                      entryPath.match(/\.(mp4|mov|m4v|webm)$/i) ? (
                                         <video 
                                           className="w-full h-full object-cover rounded" 
                                           muted
-                                          onLoadedData={() => addMediaLog(`[MEDIA_RENDER_OK] video ${mediaPath}`)}
-                                          onError={(e) => addMediaLog(`[MEDIA_RENDER_ERROR] video ${mediaPath}: ${e.target.error?.message || 'unknown'}`)}
+                                          onLoadedData={() => addMediaLog(`[MEDIA_RENDER_OK] video ${entryPath}`)}
+                                          onError={(e) => addMediaLog(`[MEDIA_RENDER_ERROR] video ${entryPath}: ${e.target.error?.message || 'unknown'}`)}
                                         >
                                           <source src={mediaState.url} type={mediaState.mime || 'video/mp4'} />
                                         </video>
@@ -815,8 +838,8 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                                           src={mediaState.url} 
                                           alt="media" 
                                           className="w-full h-full object-cover rounded"
-                                          onLoad={() => addMediaLog(`[MEDIA_RENDER_OK] image ${mediaPath}`)}
-                                          onError={(e) => addMediaLog(`[MEDIA_RENDER_ERROR] image ${mediaPath}: ${e.target.error || 'failed to load'}`)}
+                                          onLoad={() => addMediaLog(`[MEDIA_RENDER_OK] image ${entryPath}`)}
+                                          onError={(e) => addMediaLog(`[MEDIA_RENDER_ERROR] image ${entryPath}: ${e.target.error || 'failed to load'}`)}
                                         />
                                       )
                                     ) : (
@@ -839,7 +862,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                                   </div>
                                   {/* Debug path tooltip */}
                                   <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 text-white text-xs p-1 rounded-b opacity-0 hover:opacity-100 transition-opacity pointer-events-none overflow-hidden">
-                                    <div className="truncate" title={mediaPath}>{typeof mediaPath === 'string' ? mediaPath.split('/').pop() : 'invalid path'}</div>
+                                    <div className="truncate" title={entryPath}>{entryPath.split('/').pop()}</div>
                                   </div>
                                 </div>
                               );
