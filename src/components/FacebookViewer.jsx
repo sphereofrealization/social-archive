@@ -579,9 +579,53 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
               if (response.data?.index) {
                 archiveIndex = response.data.index;
+
+                // Derive manifest from index if not explicitly provided
+                if (!archiveIndex.all && !archiveIndex.allPaths && !archiveIndex.fileTree?.allPaths) {
+                  addLog(sectionName, 'MANIFEST_DERIVE', 'Deriving manifest from index categories...');
+
+                  const derivedPaths = new Set();
+
+                  // Flatten all arrays in the index
+                  Object.entries(archiveIndex).forEach(([key, value]) => {
+                    if (Array.isArray(value)) {
+                      value.forEach(item => {
+                        if (typeof item === 'string') {
+                          derivedPaths.add(item);
+                        } else if (item && typeof item === 'object') {
+                          const path = item.path || item.entryPath || item.filePath;
+                          if (path && typeof path === 'string') {
+                            derivedPaths.add(path);
+                          }
+                        }
+                      });
+                    }
+                  });
+
+                  const allPaths = Array.from(derivedPaths);
+                  archiveIndex.allPaths = allPaths;
+
+                  addLog(
+                    sectionName,
+                    'MANIFEST_DERIVE',
+                    `Derived ${allPaths.length} paths from index | sampleFirst10=${JSON.stringify(allPaths.slice(0, 10))}`,
+                    allPaths.length > 0 ? 'success' : 'warn'
+                  );
+                }
+
                 manifestSource = 'extractArchiveDataStreaming';
-                const manifestCount = archiveIndex.all?.length || archiveIndex.fileTree?.allPaths?.length || archiveIndex.entries?.length || 0;
-                addLog(sectionName, 'MANIFEST_ENSURE', `Fetched manifest: count=${manifestCount} source=${manifestSource}`, manifestCount > 0 ? 'success' : 'error');
+                const manifestCount = archiveIndex.all?.length || archiveIndex.allPaths?.length || archiveIndex.fileTree?.allPaths?.length || archiveIndex.entries?.length || 0;
+                const manifestSourceDetail = archiveIndex.all?.length ? 'index.all' :
+                                             archiveIndex.allPaths?.length ? 'index.allPaths(derived)' :
+                                             archiveIndex.fileTree?.allPaths?.length ? 'index.fileTree.allPaths' :
+                                             archiveIndex.entries?.length ? 'index.entries' : 'unknown';
+
+                addLog(
+                  sectionName, 
+                  'MANIFEST_ENSURE', 
+                  `Fetched manifest: count=${manifestCount} source=${manifestSourceDetail}`, 
+                  manifestCount > 0 ? 'success' : 'error'
+                );
               } else {
                 manifestFetchError = 'Response missing index object';
                 addLog(sectionName, 'MANIFEST_ENSURE', `Failed to fetch manifest: ${manifestFetchError}`, 'error');
