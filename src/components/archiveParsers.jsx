@@ -59,9 +59,15 @@ export function probeFacebookHtmlStructure(htmlString, sourceFile) {
     // Count DIV-based structures (for DIV-heavy layouts like your_friends.html)
     let root = contentsDiv || doc.querySelector('body');
     const allDivs = root.querySelectorAll('div');
+    const allSpans = root.querySelectorAll('span');
+    const allPs = root.querySelectorAll('p');
+    const scriptTags = doc.querySelectorAll('script');
+    
     let divLeafTextCount = 0;
     let spanLeafTextCount = 0;
+    let pLeafTextCount = 0;
     const sampleLeafTexts = [];
+    let longestLeafTextLen = 0;
     
     allDivs.forEach(div => {
       const hasChildStructure = div.querySelector('div, table, ul, ol');
@@ -71,19 +77,39 @@ export function probeFacebookHtmlStructure(htmlString, sourceFile) {
         if (sampleLeafTexts.length < 10) {
           sampleLeafTexts.push(text);
         }
+        longestLeafTextLen = Math.max(longestLeafTextLen, text.length);
       }
     });
     
-    const allSpans = root.querySelectorAll('span');
     allSpans.forEach(span => {
       const hasChildStructure = span.querySelector('div, table, ul, ol');
       const text = getText(span).trim();
       if (!hasChildStructure && text.length > 0) {
         spanLeafTextCount++;
+        if (sampleLeafTexts.length < 10) {
+          sampleLeafTexts.push(text);
+        }
+        longestLeafTextLen = Math.max(longestLeafTextLen, text.length);
+      }
+    });
+    
+    allPs.forEach(p => {
+      const hasChildStructure = p.querySelector('div, table, ul, ol');
+      const text = getText(p).trim();
+      if (!hasChildStructure && text.length > 0) {
+        pLeafTextCount++;
+        if (sampleLeafTexts.length < 10) {
+          sampleLeafTexts.push(text);
+        }
+        longestLeafTextLen = Math.max(longestLeafTextLen, text.length);
       }
     });
     
     const textLength = getText(root).length;
+    
+    // Check for "no data" messages
+    const bodyText = getText(root).toLowerCase();
+    const hasNoDataMessage = /no data available|no messages|you have no|this section is empty|no friends to display|no results found/i.test(bodyText);
     
     // Redact sample texts (letters -> X, keep digits/spaces/punctuation)
     const sampleLeafTextsRedacted = sampleLeafTexts.map(text => 
@@ -112,8 +138,12 @@ export function probeFacebookHtmlStructure(htmlString, sourceFile) {
         'divCount': allDivs.length,
         'divLeafTextCount': divLeafTextCount,
         'spanLeafTextCount': spanLeafTextCount,
-        'textLength': textLength
+        'pLeafTextCount': pLeafTextCount,
+        'scriptTags': scriptTags.length,
+        'textLength': textLength,
+        'longestLeafTextLen': longestLeafTextLen
       },
+      hasNoDataMessage,
       sampleLeafTextsRedacted,
       topChildClassCounts: topChildClasses
     };
@@ -275,14 +305,28 @@ export async function parseFriendsFromHtml(htmlString, sourceFile) {
     if (items.length === 0) {
       const allDivs = root.querySelectorAll('div');
       const allSpans = root.querySelectorAll('span');
+      const allPs = root.querySelectorAll('p');
       const candidateTexts = new Set();
+      
+      // Helper to split long text blocks into individual lines
+      const splitIntoLines = (text) => {
+        return text
+          .split(/[\n•·\t]|(?:\s{2,})/)  // Split by newline, bullets, tabs, or 2+ spaces
+          .map(line => line.trim())
+          .filter(line => line.length > 0);
+      };
       
       // Collect from leaf divs
       allDivs.forEach(div => {
         const hasChildStructure = div.querySelector('div, table, ul, ol');
         const text = getText(div).trim();
         if (!hasChildStructure && text.length > 0) {
-          candidateTexts.add(text);
+          if (text.length > 80) {
+            // Long text: split into lines
+            splitIntoLines(text).forEach(line => candidateTexts.add(line));
+          } else {
+            candidateTexts.add(text);
+          }
         }
       });
       
@@ -291,7 +335,24 @@ export async function parseFriendsFromHtml(htmlString, sourceFile) {
         const hasChildStructure = span.querySelector('div, table, ul, ol');
         const text = getText(span).trim();
         if (!hasChildStructure && text.length > 0) {
-          candidateTexts.add(text);
+          if (text.length > 80) {
+            splitIntoLines(text).forEach(line => candidateTexts.add(line));
+          } else {
+            candidateTexts.add(text);
+          }
+        }
+      });
+      
+      // Collect from leaf p tags
+      allPs.forEach(p => {
+        const hasChildStructure = p.querySelector('div, table, ul, ol');
+        const text = getText(p).trim();
+        if (!hasChildStructure && text.length > 0) {
+          if (text.length > 80) {
+            splitIntoLines(text).forEach(line => candidateTexts.add(line));
+          } else {
+            candidateTexts.add(text);
+          }
         }
       });
       
@@ -299,8 +360,33 @@ export async function parseFriendsFromHtml(htmlString, sourceFile) {
       root.querySelectorAll('[dir="auto"], [role="article"]').forEach(el => {
         const text = getText(el).trim();
         if (text.length > 0) {
-          candidateTexts.add(text);
+          if (text.length > 80) {
+            splitIntoLines(text).forEach(line => candidateTexts.add(line));
+          } else {
+            candidateTexts.add(text);
+          }
         }
+      });
+      
+      // Check scripts for JSON friend data
+      const scripts = doc.querySelectorAll('script');
+      scripts.forEach(script => {
+        const scriptContent = script.textContent || '';
+        try {
+          // Look for JSON-like objects with "name" keys
+          const jsonMatches = scriptContent.match(/\{[^}]*"name"\s*:\s*"[^"]+"/g);
+          if (jsonMatches) {
+            jsonMatches.forEach(match => {
+              try {
+                // Try to extract name value
+                const nameMatch = match.match(/"name"\s*:\s*"([^"]+)"/);
+                if (nameMatch && nameMatch[1]) {
+                  candidateTexts.add(nameMatch[1]);
+                }
+              } catch {}
+            });
+          }
+        } catch {}
       });
       
       // Add valid candidates

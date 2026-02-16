@@ -363,9 +363,19 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               addLog(
                 sectionName, 
                 'FRIENDS_PROBE', 
-                `${candidate.path} | title="${probe.title || 'N/A'}" | tables=${counts.tables || 0} rows=${counts.tableRows || 0} li=${counts.li || 0} anchors=${counts.anchors || 0} fbLinks=${counts.fbLinks || 0} divLeaf=${counts.divLeafTextCount || 0} textLength=${counts.textLength || 0}`,
+                `${candidate.path} | title="${probe.title || 'N/A'}" | tables=${counts.tables || 0} rows=${counts.tableRows || 0} li=${counts.li || 0} anchors=${counts.anchors || 0} fbLinks=${counts.fbLinks || 0} divLeaf=${counts.divLeafTextCount || 0} spanLeaf=${counts.spanLeafTextCount || 0} pLeaf=${counts.pLeafTextCount || 0} scripts=${counts.scriptTags || 0} textLen=${counts.textLength || 0} longestLeaf=${counts.longestLeafTextLen || 0}`,
                 'info'
               );
+              
+              // Add detailed probe for actual_friends files
+              if (categorize(candidate.path) === 'actual_friends' && probe.sampleLeafTextsRedacted) {
+                addLog(
+                  sectionName,
+                  'FRIENDS_PROBE_DETAILS',
+                  `${candidate.path} | sampleLeafTextsRedacted=[${probe.sampleLeafTextsRedacted.slice(0, 5).join(', ')}] | hasNoDataMessage=${probe.hasNoDataMessage || false}`,
+                  'info'
+                );
+              }
             }
           } catch (err) {
             addLog(sectionName, 'FRIENDS_PROBE', `${candidate.path} | ERROR: ${err.message}`, 'error');
@@ -413,7 +423,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         // Use actual_friends as primary data
         parsedData = resultsByCategory.actual_friends.slice(0, 100);
         
-        // Store all results for UI
+        // Store all results for UI (no error if actual_friends is empty)
         setLoadedSections(prev => ({ 
           ...prev, 
           [sectionName]: { 
@@ -424,12 +434,20 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               probe: r.probe,
               content: r.content,
               category: r.category
-            }))
+            })),
+            counts: {
+              yourFriends: resultsByCategory.actual_friends.length,
+              suggestions: resultsByCategory.suggestions.length,
+              requests: resultsByCategory.requests.length,
+              following: resultsByCategory.following.length
+            }
           }
         }));
         
         if (parsedData.length === 0) {
-          addLog(sectionName, 'PARSE', `No friends extracted from "actual_friends" files. View raw HTML to confirm structure.`, 'error');
+          addLog(sectionName, 'PARSE', `No friends in "your_friends" list. Showing other connection data.`, 'warn');
+        } else {
+          addLog(sectionName, 'PARSE', `Extracted ${parsedData.length} friends from actual_friends files.`, 'success');
         }
       } else if (sectionName === 'messages') {
         const threads = normalized.messageThreads;
@@ -1085,21 +1103,43 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             </div>
           ) : loadedSections.friends && loadedSections.friends.probeResults ? (
             <div className="space-y-4">
-              {loadedSections.friends.items?.length === 0 && (
-                <Alert className="bg-yellow-50 border-yellow-300">
-                  <AlertDescription className="text-yellow-900">
-                    No friends listed in your_friends.html. View raw HTML below to confirm structure.
-                  </AlertDescription>
-                </Alert>
-              )}
-              
-              {/* Show actual friends if extracted */}
-              {loadedSections.friends.items && loadedSections.friends.items.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Your Friends</CardTitle>
-                  </CardHeader>
-                  <CardContent>
+              {/* Your Friends Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center justify-between">
+                    <span>Your Friends ({loadedSections.friends.counts?.yourFriends || 0})</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loadedSections.friends.items?.length === 0 ? (
+                    <div className="text-sm text-gray-600 space-y-2">
+                      <p>This export does not include your friends list (your_friends.html contains no friend entries).</p>
+                      {loadedSections.friends.probeResults
+                        .filter(p => p.category === 'actual_friends')
+                        .map((probeResult, i) => (
+                          <div key={i} className="mt-2">
+                            <details>
+                              <summary className="cursor-pointer text-xs text-blue-700 hover:text-blue-900 font-semibold">
+                                View Raw: {probeResult.path.split('/').pop()}
+                              </summary>
+                              <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                <div>divLeaf={probeResult.probe.selectorCounts?.divLeafTextCount || 0}, textLength={probeResult.probe.selectorCounts?.textLength || 0}, hasNoDataMessage={probeResult.probe.hasNoDataMessage ? 'yes' : 'no'}</div>
+                                {probeResult.probe.sampleLeafTextsRedacted?.length > 0 && (
+                                  <div>Samples: [{probeResult.probe.sampleLeafTextsRedacted.slice(0, 3).join(', ')}]</div>
+                                )}
+                              </div>
+                              <div className="mt-2 border rounded overflow-hidden" style={{ maxHeight: '300px' }}>
+                                <iframe 
+                                  srcDoc={probeResult.content} 
+                                  className="w-full h-72 border-0"
+                                  sandbox="allow-same-origin"
+                                />
+                              </div>
+                            </details>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {loadedSections.friends.items.map((friend, i) => (
                         <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
@@ -1117,87 +1157,65 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                         </div>
                       ))}
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                  )}
+                </CardContent>
+              </Card>
               
-              {/* Show other categories */}
+              {/* People You May Know */}
               {loadedSections.friends.byCategory?.suggestions?.length > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm">Suggested Friends</CardTitle>
+                    <CardTitle className="text-base">People You May Know ({loadedSections.friends.byCategory.suggestions.length})</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-xs text-gray-600">
-                      {loadedSections.friends.byCategory.suggestions.length} suggestions
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {loadedSections.friends.byCategory.suggestions.slice(0, 10).map((person, i) => (
+                        <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                          <Avatar className="w-8 h-8">
+                            <AvatarFallback className="bg-purple-500 text-white text-xs">
+                              {person.name?.[0] || 'P'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <p className="font-medium">{person.name}</p>
+                        </div>
+                      ))}
+                      {loadedSections.friends.byCategory.suggestions.length > 10 && (
+                        <div className="text-xs text-gray-500 p-2">
+                          ... and {loadedSections.friends.byCategory.suggestions.length - 10} more
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
               )}
               
+              {/* Friend Requests */}
               {loadedSections.friends.byCategory?.requests?.length > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm">Friend Requests</CardTitle>
+                    <CardTitle className="text-base">Friend Requests ({loadedSections.friends.byCategory.requests.length})</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-xs text-gray-600">
-                      {loadedSections.friends.byCategory.requests.length} requests
+                      {loadedSections.friends.byCategory.requests.length} rejected/pending requests
                     </div>
                   </CardContent>
                 </Card>
               )}
               
+              {/* Following/Followers */}
               {loadedSections.friends.byCategory?.following?.length > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm">Following/Followers</CardTitle>
+                    <CardTitle className="text-base">Following/Followers ({loadedSections.friends.byCategory.following.length})</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-xs text-gray-600">
-                      {loadedSections.friends.byCategory.following.length} items
+                      {loadedSections.friends.byCategory.following.length} accounts you follow/followed you
                     </div>
                   </CardContent>
                 </Card>
               )}
-              
-              {/* Probe results with raw viewer */}
-              {loadedSections.friends.probeResults.filter(p => p.category === 'actual_friends').map((probeResult, i) => (
-                <Card key={i}>
-                  <CardHeader>
-                    <CardTitle className="text-sm font-mono break-all">{probeResult.path}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="text-xs text-gray-600 space-y-1">
-                      <div>Title: {probeResult.probe.title || 'N/A'}</div>
-                      <div>DIV leaf texts: {probeResult.probe.selectorCounts?.divLeafTextCount || 0}</div>
-                      <div>Text length: {probeResult.probe.selectorCounts?.textLength || 0}</div>
-                      <div>Tables: {probeResult.probe.selectorCounts?.tables || 0}, Rows: {probeResult.probe.selectorCounts?.tableRows || 0}</div>
-                      <div>Anchors: {probeResult.probe.selectorCounts?.anchors || 0}, FB Links: {probeResult.probe.selectorCounts?.fbLinks || 0}</div>
-                      {probeResult.probe.sampleLeafTextsRedacted && probeResult.probe.sampleLeafTextsRedacted.length > 0 && (
-                        <details className="mt-2">
-                          <summary className="cursor-pointer text-blue-700 hover:text-blue-900 font-semibold">Sample leaf texts (redacted)</summary>
-                          <div className="mt-1 p-2 bg-gray-50 rounded font-mono text-xs space-y-1">
-                            {probeResult.probe.sampleLeafTextsRedacted.slice(0, 10).map((text, idx) => (
-                              <div key={idx}>• {text}</div>
-                            ))}
-                          </div>
-                        </details>
-                      )}
-                    </div>
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-sm text-blue-700 hover:text-blue-900 font-semibold">View Raw HTML</summary>
-                      <div className="mt-2 border rounded overflow-hidden" style={{ maxHeight: '400px' }}>
-                        <iframe 
-                          srcDoc={probeResult.content} 
-                          className="w-full h-96 border-0"
-                          sandbox="allow-same-origin"
-                        />
-                      </div>
-                    </details>
-                  </CardContent>
-                </Card>
-              ))}
             </div>
           ) : (
             <Card>
