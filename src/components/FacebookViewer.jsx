@@ -1071,7 +1071,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {normalized.videos.map((video, i) => {
                 const mediaState = loadedMedia[video.path];
-                const isLoaded = typeof mediaState === 'string' && mediaState.startsWith('blob:');
+                const isLoaded = mediaState && typeof mediaState === 'object' && mediaState.url;
                 const isLoading = mediaState === 'loading';
                 const hasError = mediaState && typeof mediaState === 'object' && mediaState.error;
 
@@ -1083,7 +1083,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                           className={`w-full rounded-lg flex items-center justify-center cursor-pointer transition-colors ${hasError ? 'bg-red-100' : 'bg-gray-200 hover:bg-gray-300'}`}
                           style={{ height: '200px' }}
                           onClick={() => {
-                            if (!isLoading && !hasError) loadMedia(video.path, 'video');
+                            if (!isLoading && !hasError) loadMedia(video.path, 'video', 'videos_tab', video.path);
                           }}
                         >
                           <div className="text-center">
@@ -1107,8 +1107,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                           controls 
                           className="w-full rounded-lg"
                           style={{ maxHeight: '400px' }}
+                          onLoadedData={() => addMediaLog(`[MEDIA_RENDER_OK] video ${video.path}`)}
+                          onError={(e) => addMediaLog(`[MEDIA_RENDER_ERROR] video ${video.path}`)}
                         >
-                          <source src={mediaState} type="video/mp4" />
+                          <source src={mediaState.url} type={mediaState.mime || 'video/mp4'} />
                           Your browser does not support the video tag.
                         </video>
                       )}
