@@ -763,6 +763,11 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                           <div className="text-xs text-gray-500 mb-2 font-semibold">Media ({post.mediaPaths.length})</div>
                           <div className="grid grid-cols-3 gap-2">
                             {post.mediaPaths.slice(0, 6).map((mediaPath, j) => {
+                              // Safety check: ensure mediaPath is a string
+                              if (typeof mediaPath !== 'string' || !mediaPath) {
+                                return null;
+                              }
+
                               const mediaState = loadedMedia[mediaPath];
                               const isLoaded = mediaState && typeof mediaState === 'object' && mediaState.url;
                               const isLoading = mediaState === 'loading';
