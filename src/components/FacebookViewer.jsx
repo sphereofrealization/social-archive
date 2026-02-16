@@ -558,17 +558,17 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         const manifestComplete = audit.manifestComplete !== false;
         const scanStatus = audit.manifestMissing ? 'error' :
                            !manifestComplete ? 'warn' : 
-                           audit.entriesScanned > 0 ? 'success' : 'error';
+                           audit.manifestCount > 0 ? 'success' : 'error';
         
         addLog(
           sectionName,
-          'COMMENTS_AUDIT_SCAN',
-          `scanned=${audit.entriesScanned || 0} expectedTotal=${audit.expectedTotal || 'unknown'} source=${audit.entriesSource || 'unknown'} complete=${manifestComplete ? 'yes' : 'NO'}`,
+          'COMMENTS_AUDIT_MANIFEST',
+          `count=${audit.manifestCount || 0} expectedTotal=${audit.expectedTotal || 'unknown'} source=${audit.entriesSource || 'unknown'}`,
           scanStatus
         );
         
-        if (!manifestComplete && audit.expectedTotal) {
-          const missingCount = audit.expectedTotal - audit.entriesScanned;
+        if (!manifestComplete && audit.expectedTotal && audit.manifestCount > 0) {
+          const missingCount = audit.expectedTotal - audit.manifestCount;
           addLog(
             sectionName,
             'COMMENTS_AUDIT_MISSING',
@@ -577,12 +577,21 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           );
         }
         
-        if (audit.keywordMatchCount !== undefined) {
+        if (audit.probeCount !== undefined) {
           addLog(
             sectionName,
-            'COMMENTS_AUDIT_KEYWORD_MATCHES',
-            `count=${audit.keywordMatchCount}`,
-            audit.keywordMatchCount > 0 ? 'success' : 'warn'
+            'COMMENTS_AUDIT_FILTER',
+            `htmlJsonCount=${audit.probeCount} skippedBinary=${audit.manifestCount - audit.probeCount}`,
+            'info'
+          );
+        }
+        
+        if (audit.candidateCount !== undefined) {
+          addLog(
+            sectionName,
+            'COMMENTS_AUDIT_CANDIDATES',
+            `count=${audit.candidateCount}`,
+            audit.candidateCount > 0 ? 'success' : 'warn'
           );
         }
         
@@ -682,9 +691,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           [sectionName]: {
             items: parsedData,
             audit,
-            noFilesInExport: audit.keywordMatchCount === 0 && audit.manifestComplete !== false,
-            scanFailed: audit.entriesScanned === 0 || audit.manifestMissing,
-            scanIncomplete: audit.manifestComplete === false
+            noFilesInExport: audit.candidateCount === 0 && audit.manifestComplete !== false,
+            scanFailed: audit.manifestCount === 0 || audit.manifestMissing,
+            scanIncomplete: audit.manifestComplete === false && audit.manifestCount > 0
           }
         }));
       } else if (sectionName === 'likes') {
@@ -1734,10 +1743,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   <CardContent className="p-8 text-center">
                     <p className="text-amber-600 mb-2">⚠ Comments scan incomplete</p>
                     <p className="text-sm text-gray-600 mb-2">
-                      Scanned {loadedSections.comments?.audit?.entriesScanned || 0} of {loadedSections.comments?.audit?.expectedTotal || '?'} archive entries
+                      Manifest: {loadedSections.comments?.audit?.manifestCount || 0} of {loadedSections.comments?.audit?.expectedTotal || '?'} archive entries
                     </p>
                     <p className="text-xs text-gray-500">
-                      Some comment files may be missed. Try re-uploading the archive or check debug logs.
+                      Some comment files may be missed. Check debug logs for details.
                     </p>
                   </CardContent>
                 </Card>

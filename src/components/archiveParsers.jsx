@@ -1,71 +1,101 @@
 // Archive content parsers - HTML-first, JSON fallback
 // All functions return { items: [], sourceFile: string, error?: string }
 
+// Helper: Get canonical manifest (same source as File Tree)
+function getCanonicalManifest(archiveState) {
+  console.log(`[getCanonicalManifest] zipIndexPresent=${!!archiveState} zipIndexKeys=${archiveState ? Object.keys(archiveState).join(',') : 'none'}`);
+  
+  if (!archiveState) {
+    return { paths: [], source: 'none_null_state' };
+  }
+  
+  // Priority 1: fileTree paths (what View File Tree uses)
+  if (Array.isArray(archiveState.fileTree?.allPaths)) {
+    return { paths: archiveState.fileTree.allPaths, source: 'fileTree.allPaths' };
+  }
+  if (Array.isArray(archiveState.fileTree?.paths)) {
+    return { paths: archiveState.fileTree.paths, source: 'fileTree.paths' };
+  }
+  
+  // Priority 2: rawIndex
+  if (Array.isArray(archiveState.rawIndex?.paths)) {
+    return { paths: archiveState.rawIndex.paths, source: 'rawIndex.paths' };
+  }
+  
+  // Priority 3: zipIndex.all (streaming format)
+  if (Array.isArray(archiveState.all)) {
+    const paths = archiveState.all.map(e => e.path || e).filter(p => typeof p === 'string');
+    return { paths, source: 'zipIndex.all' };
+  }
+  
+  // Priority 4: zipIndex.allPaths
+  if (Array.isArray(archiveState.allPaths)) {
+    return { paths: archiveState.allPaths, source: 'zipIndex.allPaths' };
+  }
+  
+  // Priority 5: zipIndex.paths
+  if (Array.isArray(archiveState.paths)) {
+    return { paths: archiveState.paths, source: 'zipIndex.paths' };
+  }
+  
+  // Priority 6: zipIndex.files (object with file entries)
+  if (archiveState.files && typeof archiveState.files === 'object') {
+    return { paths: Object.keys(archiveState.files), source: 'zipIndex.files(keys)' };
+  }
+  
+  // Priority 7: zipIndex.entries (object)
+  if (archiveState.entries && typeof archiveState.entries === 'object' && !Array.isArray(archiveState.entries)) {
+    return { paths: Object.keys(archiveState.entries), source: 'zipIndex.entries(keys)' };
+  }
+  
+  return { paths: [], source: 'none_not_found' };
+}
+
 // Comments Presence Audit - forensic search for all comment sources in ZIP
 export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction, expectedTotal = null) {
   try {
-    console.log(`[auditCommentsPresence] SCAN_DEBUG: zipIndex keys=${Object.keys(zipIndex).join(', ')}, expectedTotal=${expectedTotal}`);
+    // Get canonical manifest (same source as File Tree)
+    const manifest = getCanonicalManifest(zipIndex);
+    const manifestPaths = manifest.paths;
+    const entriesSource = manifest.source;
     
-    // Extract manifest paths - MUST match the canonical source used by File Tree
-    let manifestPaths = [];
-    let entriesSource = 'unknown';
+    const manifestCount = manifestPaths.length;
     
-    // Priority 1: Use zipIndex.all (streaming index - canonical manifest)
-    if (zipIndex.all && Array.isArray(zipIndex.all) && zipIndex.all.length > 0) {
-      manifestPaths = zipIndex.all.map(e => e.path || e).filter(p => typeof p === 'string');
-      entriesSource = 'zip_manifest_all';
-    }
-    // Priority 2: Use zipIndex.manifest if available
-    else if (zipIndex.manifest && Array.isArray(zipIndex.manifest)) {
-      manifestPaths = zipIndex.manifest.map(e => e.path || e).filter(p => typeof p === 'string');
-      entriesSource = 'zip_manifest';
-    }
-    // Priority 3: Collect from raw entries array
-    else if (zipIndex.entries && Array.isArray(zipIndex.entries)) {
-      manifestPaths = zipIndex.entries.map(e => e.path || e).filter(p => typeof p === 'string');
-      entriesSource = 'zip_entries';
-    }
-    // Last resort: request the manifest from the backend
-    else {
-      console.warn(`[auditCommentsPresence] No canonical manifest found in zipIndex. Keys available:`, Object.keys(zipIndex));
+    console.log(`[auditCommentsPresence] MANIFEST: count=${manifestCount} expectedTotal=${expectedTotal || 'unknown'} source=${entriesSource}`);
+    
+    // Show sample of manifest paths
+    if (manifestPaths.length > 0) {
+      const sample = manifestPaths.slice(0, 20);
+      console.log(`[auditCommentsPresence] MANIFEST_SAMPLE: first20=`, sample);
+    } else {
+      console.error(`[auditCommentsPresence] MANIFEST_EMPTY: Cannot enumerate ZIP entries`);
       return {
         commentsDetected: false,
         validCandidates: [],
         candidatesSummary: [],
-        error: 'Cannot enumerate ZIP entries (canonical manifest not found in zipIndex)',
-        entriesScanned: 0,
+        error: 'Cannot enumerate ZIP entries (manifest is empty)',
+        manifestCount: 0,
         expectedTotal,
         manifestMissing: true
       };
     }
     
-    const scannedCount = manifestPaths.length;
-    
-    console.log(`[auditCommentsPresence] SCAN: scanned=${scannedCount} expectedTotal=${expectedTotal || 'unknown'} source=${entriesSource}`);
-    
-    // Show sample of manifest paths
-    if (manifestPaths.length > 0) {
-      const sample = manifestPaths.slice(0, 20);
-      console.log(`[auditCommentsPresence] SCAN_SAMPLE: first20Paths=`, sample);
+    // Check if manifest is incomplete
+    if (expectedTotal && manifestCount < expectedTotal * 0.9) {
+      const missingCount = expectedTotal - manifestCount;
+      const missingPercent = Math.round((missingCount / expectedTotal) * 100);
+      console.warn(`[auditCommentsPresence] MANIFEST_INCOMPLETE: missingCount=${missingCount} (${missingPercent}% missing, manifest=${manifestCount}, expected=${expectedTotal})`);
     }
     
-    // Check for missing paths
-    if (expectedTotal && scannedCount < expectedTotal) {
-      const missingCount = expectedTotal - scannedCount;
-      console.warn(`[auditCommentsPresence] MISSING: missingCount=${missingCount} (scanned=${scannedCount}, expected=${expectedTotal})`);
-      
-      // Still proceed with scan, but warn about incompleteness
-      if (scannedCount === 0) {
-        return {
-          commentsDetected: false,
-          validCandidates: [],
-          candidatesSummary: [],
-          error: 'Cannot enumerate ZIP entries (manifest is empty)',
-          entriesScanned: 0,
-          expectedTotal
-        };
-      }
-    }
+    // Filter to HTML/JSON only (for probing)
+    const htmlJsonFiles = manifestPaths.filter(path => {
+      const ext = path.toLowerCase().split('.').pop();
+      return ['html', 'json'].includes(ext);
+    });
+    const probeCount = htmlJsonFiles.length;
+    const skippedBinary = manifestCount - probeCount;
+    
+    console.log(`[auditCommentsPresence] FILTER: htmlJsonCount=${probeCount} skippedBinary=${skippedBinary}`);
     
     // Verify known comment paths exist in manifest
     const knownCommentPaths = [
@@ -75,20 +105,22 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
       'your_activity_across_facebook/comments/comments.html'
     ];
     
-    const foundKnownPaths = knownCommentPaths.filter(kp => 
-      manifestPaths.some(mp => mp.toLowerCase().includes(kp.toLowerCase()))
-    );
+    const foundKnownPaths = [];
+    knownCommentPaths.forEach(kp => {
+      const found = manifestPaths.find(mp => mp.toLowerCase().includes(kp.toLowerCase()));
+      if (found) {
+        foundKnownPaths.push({ expected: kp, actual: found, presentInManifest: true });
+      } else {
+        foundKnownPaths.push({ expected: kp, actual: null, presentInManifest: false });
+      }
+    });
     
-    console.log(`[auditCommentsPresence] KNOWN_PATHS_CHECK: foundKnownPaths=`, foundKnownPaths);
+    console.log(`[auditCommentsPresence] KNOWN_PATHS_CHECK:`, foundKnownPaths);
     
     // Find all comment-related files using simple substring matching on paths only
     const keywordMatches = [];
-    manifestPaths.forEach(path => {
+    htmlJsonFiles.forEach(path => {
       const pathLower = path.toLowerCase();
-      const ext = pathLower.split('.').pop();
-      
-      // Only check HTML and JSON files
-      if (!['html', 'json'].includes(ext)) return;
       
       // Simple substring match (NO word boundaries)
       if (pathLower.includes('comment') || 
@@ -100,11 +132,12 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
       }
     });
     
-    console.log(`[auditCommentsPresence] KEYWORD_MATCHES: count=${keywordMatches.length} paths=`, keywordMatches);
+    console.log(`[auditCommentsPresence] CANDIDATES: count=${keywordMatches.length} paths=`, keywordMatches);
     
     // If no keyword matches but we found known paths, something is wrong with matching logic
-    if (keywordMatches.length === 0 && foundKnownPaths.length > 0) {
-      console.error(`[auditCommentsPresence] MATCHING_ERROR: Found ${foundKnownPaths.length} known comment paths but 0 keyword matches!`);
+    const knownPresent = foundKnownPaths.filter(p => p.presentInManifest).length;
+    if (keywordMatches.length === 0 && knownPresent > 0) {
+      console.error(`[auditCommentsPresence] MATCHING_ERROR: Found ${knownPresent} known comment paths in manifest but 0 keyword matches!`);
     }
     
     const commentCandidates = keywordMatches.map(path => ({ path }));
@@ -211,11 +244,12 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
       commentsDetected: validCandidates.length > 0,
       validCandidates: validCandidates.sort((a, b) => b.qualityScore - a.qualityScore),
       candidatesSummary: candidatesSummary.sort((a, b) => b.qualityScore - a.qualityScore),
-      entriesScanned: scannedCount,
+      manifestCount,
+      probeCount,
+      candidateCount: keywordMatches.length,
       expectedTotal,
       entriesSource,
-      keywordMatchCount: keywordMatches.length,
-      manifestComplete: !expectedTotal || scannedCount >= expectedTotal * 0.95
+      manifestComplete: !expectedTotal || manifestCount >= expectedTotal * 0.9
     };
   } catch (err) {
     console.error('[auditCommentsPresence] Audit failed:', err);
@@ -224,7 +258,7 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
       validCandidates: [],
       candidatesSummary: [],
       error: err.message,
-      entriesScanned: 0,
+      manifestCount: 0,
       expectedTotal
     };
   }
