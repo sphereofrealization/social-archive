@@ -791,7 +791,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                       {showDebug && post.mediaPaths && post.mediaPaths.length > 0 && i < 3 && (
                         <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs font-mono">
                           <div className="font-bold mb-1">Post Media Debug (post #{i}):</div>
-                          <div>• mediaCount: {post.mediaPaths.length}</div>
+                          <div>• resolvedCount: {post.mediaPaths.length}</div>
                           {post.mediaPaths.slice(0, 3).map((item, idx) => {
                             const entryPath = getEntryPath(item);
                             return (
@@ -801,6 +801,26 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                               </div>
                             );
                           })}
+                          {post.mediaUnresolvedRefs && post.mediaUnresolvedRefs.length > 0 && (
+                            <div className="mt-2">
+                              <div className="font-bold">• unresolvedRefs: {post.mediaUnresolvedRefs.length}</div>
+                              {post.mediaUnresolvedRefs.slice(0, 3).map((ref, idx) => (
+                                <div key={idx} className="ml-2 text-xs text-red-700">
+                                  [{idx}] {ref}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {post.mediaPagePaths && post.mediaPagePaths.length > 0 && (
+                            <div className="mt-2">
+                              <div className="font-bold">• htmlPagePaths: {post.mediaPagePaths.length}</div>
+                              {post.mediaPagePaths.slice(0, 3).map((ref, idx) => (
+                                <div key={idx} className="ml-2 text-xs text-blue-700">
+                                  [{idx}] {ref}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -813,8 +833,13 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
                               if (!entryPath) {
                                 return (
-                                  <div key={j} className="aspect-square rounded flex items-center justify-center bg-red-100 border-2 border-red-400 text-xs p-1">
-                                    <p className="text-red-700 text-center">Invalid media item (no path)</p>
+                                  <div key={j} className="aspect-square rounded flex flex-col items-center justify-center bg-red-100 border-2 border-red-400 text-xs p-1">
+                                    <p className="text-red-700 text-center font-bold mb-1">Invalid media item</p>
+                                    {showDebug && (
+                                      <div className="text-xs text-red-600 break-all">
+                                        type={typeof mediaItem} {typeof mediaItem === 'object' && `raw=${JSON.stringify(mediaItem).slice(0, 100)}`}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               }
