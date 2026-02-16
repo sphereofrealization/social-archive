@@ -548,6 +548,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
           let archiveIndex = data?.index || {};
           let manifestSource = 'existing';
+          let manifestFetchError = null;
 
           // Check if we have a usable manifest
           const hasManifest = (archiveIndex.all && Array.isArray(archiveIndex.all) && archiveIndex.all.length > 0) ||
@@ -555,27 +556,68 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                               (archiveIndex.entries && Array.isArray(archiveIndex.entries) && archiveIndex.entries.length > 0);
 
           if (!hasManifest) {
-            addLog(sectionName, 'MANIFEST_ENSURE', 'Manifest not in memory, fetching from archive...', 'warn');
+            addLog(sectionName, 'MANIFEST_ENSURE', 'Manifest not in memory, attempting fetch from archive...', 'warn');
 
             try {
+              // Log request details
+              addLog(
+                sectionName, 
+                'MANIFEST_FETCH_REQUEST', 
+                `method=POST endpoint=extractArchiveDataStreaming archiveUrl=${archiveUrl ? 'present' : 'MISSING'} urlLen=${archiveUrl?.length || 0}`
+              );
+
               // Fetch the full archive index (same as what File Tree uses)
               const response = await base44.functions.invoke('extractArchiveDataStreaming', {
                 zipUrl: archiveUrl
               });
 
+              addLog(
+                sectionName,
+                'MANIFEST_FETCH_RESPONSE',
+                `status=${response.status} hasData=${!!response.data} hasIndex=${!!response.data?.index} indexKeys=${response.data?.index ? Object.keys(response.data.index).join(',') : 'none'}`
+              );
+
               if (response.data?.index) {
                 archiveIndex = response.data.index;
                 manifestSource = 'extractArchiveDataStreaming';
-                addLog(sectionName, 'MANIFEST_ENSURE', `Fetched manifest: count=${archiveIndex.all?.length || 0}`, 'success');
+                const manifestCount = archiveIndex.all?.length || archiveIndex.fileTree?.allPaths?.length || archiveIndex.entries?.length || 0;
+                addLog(sectionName, 'MANIFEST_ENSURE', `Fetched manifest: count=${manifestCount} source=${manifestSource}`, manifestCount > 0 ? 'success' : 'error');
               } else {
-                addLog(sectionName, 'MANIFEST_ENSURE', 'Failed to fetch manifest', 'error');
+                manifestFetchError = 'Response missing index object';
+                addLog(sectionName, 'MANIFEST_ENSURE', `Failed to fetch manifest: ${manifestFetchError}`, 'error');
               }
             } catch (err) {
-              addLog(sectionName, 'MANIFEST_ENSURE', `Error fetching manifest: ${err.message}`, 'error');
+              // Detailed error logging
+              const errorDetails = {
+                message: err.message || 'unknown',
+                status: err.response?.status || err.status || 'none',
+                statusText: err.response?.statusText || 'none',
+                responseData: err.response?.data ? JSON.stringify(err.response.data).slice(0, 500) : 'none',
+                responseUrl: err.config?.url || err.request?.responseURL || 'none',
+                requestParams: err.config?.data ? JSON.stringify(JSON.parse(err.config.data)).slice(0, 200) : 'none'
+              };
+
+              manifestFetchError = `${errorDetails.status} - ${errorDetails.message}`;
+
+              addLog(
+                sectionName,
+                'MANIFEST_FETCH_ERROR',
+                `status=${errorDetails.status} statusText=${errorDetails.statusText} message=${errorDetails.message}`,
+                'error'
+              );
+              addLog(
+                sectionName,
+                'MANIFEST_FETCH_ERROR_DETAILS',
+                `responseData=${errorDetails.responseData} responseUrl=${errorDetails.responseUrl} requestParams=${errorDetails.requestParams}`,
+                'error'
+              );
             }
           } else {
             const existingCount = archiveIndex.all?.length || archiveIndex.fileTree?.allPaths?.length || archiveIndex.entries?.length || 0;
-            addLog(sectionName, 'MANIFEST_ENSURE', `Manifest already in memory: count=${existingCount}`, 'success');
+            const existingSource = archiveIndex.all?.length ? 'zipIndex.all' :
+                                   archiveIndex.fileTree?.allPaths?.length ? 'fileTree.allPaths' :
+                                   archiveIndex.entries?.length ? 'zipIndex.entries' : 'unknown';
+            addLog(sectionName, 'MANIFEST_ENSURE', `Manifest already in memory: count=${existingCount} source=${existingSource}`, 'success');
           }
 
           // PHASE 1: Run Comments Presence Audit
@@ -728,7 +770,8 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             audit,
             noFilesInExport: audit.candidateCount === 0 && audit.manifestComplete !== false,
             scanFailed: audit.manifestCount === 0 || audit.manifestMissing,
-            scanIncomplete: audit.manifestComplete === false && audit.manifestCount > 0
+            scanIncomplete: audit.manifestComplete === false && audit.manifestCount > 0,
+            manifestFetchError
           }
         }));
       } else if (sectionName === 'likes') {
@@ -1769,8 +1812,21 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               {loadedSections.comments?.scanFailed ? (
                 <Card>
                   <CardContent className="p-8 text-center">
-                    <p className="text-red-600 mb-2">Cannot enumerate ZIP entries (file index not loaded)</p>
-                    <p className="text-sm text-gray-500">Error: {loadedSections.comments?.audit?.error || 'Unknown error'}</p>
+                    <p className="text-red-600 font-semibold mb-2">
+                      {loadedSections.comments?.manifestFetchError 
+                        ? 'Cannot scan archive: Manifest fetch failed' 
+                        : 'Cannot enumerate ZIP entries (file index not loaded)'}
+                    </p>
+                    {loadedSections.comments?.manifestFetchError && (
+                      <p className="text-sm text-gray-700 mb-2">
+                        Error: {loadedSections.comments.manifestFetchError}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500">
+                      {loadedSections.comments?.manifestFetchError 
+                        ? 'The archive manifest could not be loaded. Check debug logs for request details.'
+                        : loadedSections.comments?.audit?.error || 'Unknown error'}
+                    </p>
                   </CardContent>
                 </Card>
               ) : loadedSections.comments?.scanIncomplete ? (
