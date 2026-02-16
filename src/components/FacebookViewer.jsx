@@ -543,17 +543,52 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         }));
         addLog(sectionName, 'PARSE', `Found ${parsedData.length} message threads`, 'success', parsedData.length);
       } else if (sectionName === 'comments') {
-        // PHASE 1: Run Comments Presence Audit
-        addLog(sectionName, 'COMMENTS_AUDIT_START', 'Running Comments Presence Audit on entire ZIP...');
-        
-        const expectedEntryCount = data?.archive?.entryCount || data?.index?.all?.length || null;
+          // PHASE 0: Ensure manifest is loaded
+          addLog(sectionName, 'MANIFEST_ENSURE', 'Checking if manifest is loaded...');
 
-        const audit = await auditCommentsPresence(
-          data?.index || {}, 
-          archiveUrl,
-          (funcName, params) => base44.functions.invoke(funcName, params),
-          expectedEntryCount
-        );
+          let archiveIndex = data?.index || {};
+          let manifestSource = 'existing';
+
+          // Check if we have a usable manifest
+          const hasManifest = (archiveIndex.all && Array.isArray(archiveIndex.all) && archiveIndex.all.length > 0) ||
+                              (archiveIndex.fileTree?.allPaths && archiveIndex.fileTree.allPaths.length > 0) ||
+                              (archiveIndex.entries && Array.isArray(archiveIndex.entries) && archiveIndex.entries.length > 0);
+
+          if (!hasManifest) {
+            addLog(sectionName, 'MANIFEST_ENSURE', 'Manifest not in memory, fetching from archive...', 'warn');
+
+            try {
+              // Fetch the full archive index (same as what File Tree uses)
+              const response = await base44.functions.invoke('extractArchiveDataStreaming', {
+                zipUrl: archiveUrl
+              });
+
+              if (response.data?.index) {
+                archiveIndex = response.data.index;
+                manifestSource = 'extractArchiveDataStreaming';
+                addLog(sectionName, 'MANIFEST_ENSURE', `Fetched manifest: count=${archiveIndex.all?.length || 0}`, 'success');
+              } else {
+                addLog(sectionName, 'MANIFEST_ENSURE', 'Failed to fetch manifest', 'error');
+              }
+            } catch (err) {
+              addLog(sectionName, 'MANIFEST_ENSURE', `Error fetching manifest: ${err.message}`, 'error');
+            }
+          } else {
+            const existingCount = archiveIndex.all?.length || archiveIndex.fileTree?.allPaths?.length || archiveIndex.entries?.length || 0;
+            addLog(sectionName, 'MANIFEST_ENSURE', `Manifest already in memory: count=${existingCount}`, 'success');
+          }
+
+          // PHASE 1: Run Comments Presence Audit
+          addLog(sectionName, 'COMMENTS_AUDIT_START', 'Running Comments Presence Audit on entire ZIP...');
+
+          const expectedEntryCount = data?.archive?.entryCount || archiveIndex.all?.length || null;
+
+          const audit = await auditCommentsPresence(
+            archiveIndex, 
+            archiveUrl,
+            (funcName, params) => base44.functions.invoke(funcName, params),
+            expectedEntryCount
+          );
         
         const manifestComplete = audit.manifestComplete !== false;
         const scanStatus = audit.manifestMissing ? 'error' :

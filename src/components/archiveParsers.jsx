@@ -3,51 +3,81 @@
 
 // Helper: Get canonical manifest (same source as File Tree)
 function getCanonicalManifest(archiveState) {
-  console.log(`[getCanonicalManifest] zipIndexPresent=${!!archiveState} zipIndexKeys=${archiveState ? Object.keys(archiveState).join(',') : 'none'}`);
+  const stateKeys = archiveState ? Object.keys(archiveState).join(',') : 'none';
+  console.log(`[getCanonicalManifest] zipIndexPresent=${!!archiveState} zipIndexKeys=${stateKeys}`);
   
   if (!archiveState) {
+    console.log(`[getCanonicalManifest] FAIL: archiveState is null/undefined`);
     return { paths: [], source: 'none_null_state' };
   }
   
+  // Check what sources are available
+  const sourceCheck = {
+    'fileTree.allPaths': Array.isArray(archiveState.fileTree?.allPaths) ? archiveState.fileTree.allPaths.length : false,
+    'fileTree.paths': Array.isArray(archiveState.fileTree?.paths) ? archiveState.fileTree.paths.length : false,
+    'rawIndex.paths': Array.isArray(archiveState.rawIndex?.paths) ? archiveState.rawIndex.paths.length : false,
+    'all': Array.isArray(archiveState.all) ? archiveState.all.length : false,
+    'allPaths': Array.isArray(archiveState.allPaths) ? archiveState.allPaths.length : false,
+    'paths': Array.isArray(archiveState.paths) ? archiveState.paths.length : false,
+    'files': (archiveState.files && typeof archiveState.files === 'object') ? Object.keys(archiveState.files).length : false,
+    'entries': (archiveState.entries && typeof archiveState.entries === 'object' && !Array.isArray(archiveState.entries)) ? Object.keys(archiveState.entries).length : false
+  };
+  console.log(`[getCanonicalManifest] MANIFEST_SOURCES:`, sourceCheck);
+  
   // Priority 1: fileTree paths (what View File Tree uses)
-  if (Array.isArray(archiveState.fileTree?.allPaths)) {
+  if (Array.isArray(archiveState.fileTree?.allPaths) && archiveState.fileTree.allPaths.length > 0) {
+    console.log(`[getCanonicalManifest] SUCCESS: Using fileTree.allPaths (${archiveState.fileTree.allPaths.length} paths)`);
     return { paths: archiveState.fileTree.allPaths, source: 'fileTree.allPaths' };
   }
-  if (Array.isArray(archiveState.fileTree?.paths)) {
+  if (Array.isArray(archiveState.fileTree?.paths) && archiveState.fileTree.paths.length > 0) {
+    console.log(`[getCanonicalManifest] SUCCESS: Using fileTree.paths (${archiveState.fileTree.paths.length} paths)`);
     return { paths: archiveState.fileTree.paths, source: 'fileTree.paths' };
   }
   
   // Priority 2: rawIndex
-  if (Array.isArray(archiveState.rawIndex?.paths)) {
+  if (Array.isArray(archiveState.rawIndex?.paths) && archiveState.rawIndex.paths.length > 0) {
+    console.log(`[getCanonicalManifest] SUCCESS: Using rawIndex.paths (${archiveState.rawIndex.paths.length} paths)`);
     return { paths: archiveState.rawIndex.paths, source: 'rawIndex.paths' };
   }
   
   // Priority 3: zipIndex.all (streaming format)
-  if (Array.isArray(archiveState.all)) {
+  if (Array.isArray(archiveState.all) && archiveState.all.length > 0) {
     const paths = archiveState.all.map(e => e.path || e).filter(p => typeof p === 'string');
+    console.log(`[getCanonicalManifest] SUCCESS: Using zipIndex.all (${paths.length} paths from ${archiveState.all.length} entries)`);
     return { paths, source: 'zipIndex.all' };
   }
   
   // Priority 4: zipIndex.allPaths
-  if (Array.isArray(archiveState.allPaths)) {
+  if (Array.isArray(archiveState.allPaths) && archiveState.allPaths.length > 0) {
+    console.log(`[getCanonicalManifest] SUCCESS: Using zipIndex.allPaths (${archiveState.allPaths.length} paths)`);
     return { paths: archiveState.allPaths, source: 'zipIndex.allPaths' };
   }
   
   // Priority 5: zipIndex.paths
-  if (Array.isArray(archiveState.paths)) {
+  if (Array.isArray(archiveState.paths) && archiveState.paths.length > 0) {
+    console.log(`[getCanonicalManifest] SUCCESS: Using zipIndex.paths (${archiveState.paths.length} paths)`);
     return { paths: archiveState.paths, source: 'zipIndex.paths' };
   }
   
   // Priority 6: zipIndex.files (object with file entries)
   if (archiveState.files && typeof archiveState.files === 'object') {
-    return { paths: Object.keys(archiveState.files), source: 'zipIndex.files(keys)' };
+    const paths = Object.keys(archiveState.files);
+    if (paths.length > 0) {
+      console.log(`[getCanonicalManifest] SUCCESS: Using zipIndex.files(keys) (${paths.length} paths)`);
+      return { paths, source: 'zipIndex.files(keys)' };
+    }
   }
   
   // Priority 7: zipIndex.entries (object)
   if (archiveState.entries && typeof archiveState.entries === 'object' && !Array.isArray(archiveState.entries)) {
-    return { paths: Object.keys(archiveState.entries), source: 'zipIndex.entries(keys)' };
+    const paths = Object.keys(archiveState.entries);
+    if (paths.length > 0) {
+      console.log(`[getCanonicalManifest] SUCCESS: Using zipIndex.entries(keys) (${paths.length} paths)`);
+      return { paths, source: 'zipIndex.entries(keys)' };
+    }
   }
   
+  console.log(`[getCanonicalManifest] FAIL: No valid manifest source found`);
   return { paths: [], source: 'none_not_found' };
 }
 
