@@ -353,34 +353,102 @@ export async function parseGroupsFromHtml(htmlString, sourceFile) {
     const doc = parseHtml(htmlString);
     if (!doc) throw new Error('Failed to parse HTML');
     
-    const probe = probeFacebookExportHtml(htmlString, sourceFile);
+    // Enhanced probe with groupLinkAnchors
+    const probe = probeGroupsHtml(htmlString, sourceFile);
     const items = [];
     
-    // Groups usually have specific names
-    let elements = doc.querySelectorAll('li, div[data-group]');
-    if (elements.length === 0) {
-      elements = doc.querySelectorAll('tr');
-    }
-    if (elements.length === 0) {
-      elements = doc.querySelectorAll('a');
-    }
+    // STRATEGY A: Extract group links (primary)
+    const groupLinkAnchors = doc.querySelectorAll('a[href*="facebook.com/groups"], a[href*="/groups/"]');
+    const seenNames = new Set();
+    const genericNames = new Set(['groups', 'see more', 'view all', 'show more', 'back']);
     
-    elements.forEach(el => {
-      const a = el.querySelector('a');
-      const text = a ? getText(a) : getText(el);
-      if (text && text.length > 0 && text.length < 200) {
+    groupLinkAnchors.forEach(a => {
+      const name = getText(a).trim();
+      const href = getAttr(a, 'href');
+      const nameLower = name.toLowerCase();
+      
+      if (name && name.length > 2 && name.length < 200 && !genericNames.has(nameLower) && !seenNames.has(name)) {
         items.push({
-          groupName: text,
+          name,
+          href,
           sourceFile
         });
+        seenNames.add(name);
       }
     });
     
-    console.log(`[parseGroupsFromHtml] Extracted ${items.length} groups from ${sourceFile}`);
-    return { items, sourceFile, probe: items.length === 0 ? probe : undefined };
+    console.log(`[parseGroupsFromHtml] Strategy A: Found ${items.length} groups from links in ${sourceFile}`);
+    
+    // STRATEGY B: Fallback to key/value tables if no links found
+    if (items.length === 0) {
+      const tableRows = doc.querySelectorAll('tr');
+      const badgeKeywords = ['badge', 'enabled', 'disabled', 'earned'];
+      let badgeRowCount = 0;
+      
+      tableRows.forEach(row => {
+        const cells = Array.from(row.querySelectorAll('td, th'));
+        if (cells.length >= 2) {
+          const key = getText(cells[0]).trim().toLowerCase();
+          const val = getText(cells[1]).trim();
+          
+          // Check if this is a badge/settings row
+          if (badgeKeywords.some(kw => key.includes(kw))) {
+            badgeRowCount++;
+          } else if (key.match(/(group|page).*name|name/i) && val && val !== 'True' && val !== 'False' && val.length > 2) {
+            // This looks like a group/page name
+            if (!seenNames.has(val)) {
+              items.push({
+                name: val,
+                sourceFile,
+                extractedFrom: 'key-value'
+              });
+              seenNames.add(val);
+            }
+          }
+        }
+      });
+      
+      // STRATEGY C: Reject if mostly badge/settings data
+      const totalRows = tableRows.length;
+      if (totalRows > 0 && badgeRowCount / totalRows > 0.5) {
+        console.log(`[parseGroupsFromHtml] Rejected ${sourceFile} as badge/settings file (${badgeRowCount}/${totalRows} badge rows)`);
+        return {
+          items: [],
+          sourceFile,
+          probe,
+          rejected: true,
+          rejectionReason: `Badge/settings file: ${badgeRowCount}/${totalRows} rows are badge data`
+        };
+      }
+      
+      console.log(`[parseGroupsFromHtml] Strategy B: Found ${items.length} groups from key-value tables in ${sourceFile}`);
+    }
+    
+    console.log(`[parseGroupsFromHtml] Total extracted: ${items.length} groups from ${sourceFile}`);
+    return { items, sourceFile, probe };
   } catch (err) {
     console.error(`[parseGroupsFromHtml] Error:`, err);
-    return { items: [], sourceFile, error: err.message, probe: probeFacebookExportHtml(htmlString, sourceFile) };
+    return { items: [], sourceFile, error: err.message, probe: probeGroupsHtml(htmlString, sourceFile) };
+  }
+}
+
+function probeGroupsHtml(htmlString, sourceFile) {
+  try {
+    const doc = parseHtml(htmlString);
+    if (!doc) throw new Error('Failed to parse HTML');
+    
+    const groupLinkAnchors = doc.querySelectorAll('a[href*="facebook.com/groups"], a[href*="/groups/"]').length;
+    
+    return {
+      sourceFile,
+      title: doc.querySelector('title')?.textContent?.trim() || 'N/A',
+      tables: doc.querySelectorAll('table').length,
+      tableRows: doc.querySelectorAll('tr').length,
+      anchors: doc.querySelectorAll('a').length,
+      groupLinkAnchors
+    };
+  } catch (err) {
+    return { sourceFile, error: err.message };
   }
 }
 

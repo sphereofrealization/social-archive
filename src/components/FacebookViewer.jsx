@@ -515,7 +515,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   const messages = isStreamingIndex ? (Array.isArray(loadedSections.messages) ? loadedSections.messages : []) : (Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.messages) ? data.messages : []);
   const comments = isStreamingIndex ? (Array.isArray(loadedSections.comments) ? loadedSections.comments : []) : (Array.isArray(data?.comments) ? data.comments : []);
   const likes = isStreamingIndex ? (Array.isArray(loadedSections.likes) ? loadedSections.likes : []) : (Array.isArray(data?.likes) ? data.likes : []);
-  const groups = isStreamingIndex ? (Array.isArray(loadedSections.groups) ? loadedSections.groups : []) : (Array.isArray(data?.groups) ? data.groups : []);
+  const groupsData = isStreamingIndex ? loadedSections.groups : data?.groups;
+  const groups = Array.isArray(groupsData) ? groupsData : (groupsData?.groups || []);
+  const groupFiles = groupsData?.allFiles || [];
   const reviews = isStreamingIndex ? (Array.isArray(loadedSections.reviews) ? loadedSections.reviews : []) : (Array.isArray(data?.reviews) ? data.reviews : []);
   const marketplace = isStreamingIndex ? (Array.isArray(loadedSections.marketplace) ? loadedSections.marketplace : []) : (Array.isArray(data?.marketplace) ? data.marketplace : []);
   const events = isStreamingIndex ? (Array.isArray(loadedSections.events) ? loadedSections.events : []) : (Array.isArray(data?.events) ? data.events : []);
@@ -1266,20 +1268,62 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             </div>
           ) : (
             <div className="space-y-4">
-              {groups.length === 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Groups Found: {groups.length}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {groups.length === 0 ? (
+                    <div>
+                      <p className="text-gray-500 mb-4">No group names detected in parsed files.</p>
+                      {groupFiles.length > 0 && (
+                        <details className="bg-gray-50 p-3 rounded">
+                          <summary className="cursor-pointer font-medium text-sm">
+                            Group-related files detected: {groupFiles.length}
+                          </summary>
+                          <div className="mt-2 space-y-1">
+                            {groupFiles.map((file, i) => (
+                              <div key={i} className="text-xs bg-white p-2 rounded">
+                                <code>{file}</code>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {groups.map((group, i) => (
+                        <div key={i} className="p-3 bg-gray-50 rounded">
+                          <p className="font-medium">{group.name}</p>
+                          {group.href && (
+                            <p className="text-xs text-gray-500 truncate">{group.href}</p>
+                          )}
+                          {group.extractedFrom && (
+                            <Badge variant="outline" className="text-xs mt-1">
+                              {group.extractedFrom}
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {groupFiles.length > 0 && (
                 <Card>
-                  <CardContent className="p-8 text-center text-gray-500">
-                    No groups found
+                  <CardHeader>
+                    <CardTitle className="text-sm">Group-related Files: {groupFiles.length}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-1">
+                    {groupFiles.map((file, i) => (
+                      <div key={i} className="text-xs bg-gray-50 p-2 rounded">
+                        <code className="break-all">{file}</code>
+                      </div>
+                    ))}
                   </CardContent>
                 </Card>
-              ) : (
-                groups.map((group, i) => (
-                  <Card key={i}>
-                    <CardContent className="p-4">
-                      <p className="text-sm font-medium">{group.groupName || group.name || JSON.stringify(group).slice(0, 200)}</p>
-                    </CardContent>
-                  </Card>
-                ))
               )}
             </div>
           )}
