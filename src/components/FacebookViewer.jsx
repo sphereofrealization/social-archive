@@ -820,7 +820,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                                   </div>
                                   {/* Debug path tooltip */}
                                   <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 text-white text-xs p-1 rounded-b opacity-0 hover:opacity-100 transition-opacity pointer-events-none overflow-hidden">
-                                    <div className="truncate" title={mediaPath}>{mediaPath.split('/').pop()}</div>
+                                    <div className="truncate" title={mediaPath}>{typeof mediaPath === 'string' ? mediaPath.split('/').pop() : 'invalid path'}</div>
                                   </div>
                                 </div>
                               );
