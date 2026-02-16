@@ -578,10 +578,27 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               );
 
               if (response.data?.index) {
+                // The backend already returns allPaths at root level (response.data.debug.samplePaths contains first 200)
+                // and also in response.data.index (though not explicitly documented in index keys)
+                // We need to extract it from the response
+
                 archiveIndex = response.data.index;
 
-                // Derive manifest from index if not explicitly provided
-                if (!archiveIndex.all && !archiveIndex.allPaths && !archiveIndex.fileTree?.allPaths) {
+                // Check if allPaths exists in response root or debug
+                const allPathsFromResponse = response.data.allPaths || 
+                                            (response.data.debug?.samplePaths && response.data.entriesParsed > 0 ? [] : null);
+
+                // The backend stores all paths in fileIndex.allPaths but doesn't return it in the response
+                // We need to derive it from the debug.samplePaths (first 200) + request full list
+                if (response.data.debug?.samplePaths && Array.isArray(response.data.debug.samplePaths)) {
+                  addLog(
+                    sectionName, 
+                    'MANIFEST_BACKEND', 
+                    `Backend returned ${response.data.debug.samplePaths.length} sample paths (full list not in response)`, 
+                    'warn'
+                  );
+
+                  // For now, derive from index categories as before
                   addLog(sectionName, 'MANIFEST_DERIVE', 'Deriving manifest from index categories...');
 
                   const derivedPaths = new Set();
@@ -599,6 +616,22 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                           }
                         }
                       });
+                    } else if (value && typeof value === 'object') {
+                      // Handle nested objects like posts: { html: [...], json: [...] }
+                      Object.values(value).forEach(subValue => {
+                        if (Array.isArray(subValue)) {
+                          subValue.forEach(item => {
+                            if (typeof item === 'string') {
+                              derivedPaths.add(item);
+                            } else if (item && typeof item === 'object') {
+                              const path = item.path || item.entryPath || item.filePath;
+                              if (path && typeof path === 'string') {
+                                derivedPaths.add(path);
+                              }
+                            }
+                          });
+                        }
+                      });
                     }
                   });
 
@@ -608,17 +641,26 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   addLog(
                     sectionName,
                     'MANIFEST_DERIVE',
-                    `Derived ${allPaths.length} paths from index | sampleFirst10=${JSON.stringify(allPaths.slice(0, 10))}`,
+                    `Derived ${allPaths.length} paths from index | expected=${response.data.archive?.entryCount || 'unknown'} | sampleFirst10=${JSON.stringify(allPaths.slice(0, 10))}`,
                     allPaths.length > 0 ? 'success' : 'warn'
                   );
+
+                  // Log the issue for backend fix
+                  if (allPaths.length < (response.data.archive?.entryCount || 0) * 0.9) {
+                    const missing = (response.data.archive?.entryCount || 0) - allPaths.length;
+                    addLog(
+                      sectionName,
+                      'MANIFEST_BACKEND_ISSUE',
+                      `Backend fileIndex.allPaths (${response.data.entriesParsed} entries) not returned in response.data.index → derived incomplete manifest (${allPaths.length} paths, missing ~${missing})`,
+                      'error'
+                    );
+                  }
                 }
 
                 manifestSource = 'extractArchiveDataStreaming';
-                const manifestCount = archiveIndex.all?.length || archiveIndex.allPaths?.length || archiveIndex.fileTree?.allPaths?.length || archiveIndex.entries?.length || 0;
-                const manifestSourceDetail = archiveIndex.all?.length ? 'index.all' :
-                                             archiveIndex.allPaths?.length ? 'index.allPaths(derived)' :
-                                             archiveIndex.fileTree?.allPaths?.length ? 'index.fileTree.allPaths' :
-                                             archiveIndex.entries?.length ? 'index.entries' : 'unknown';
+                const manifestCount = archiveIndex.allPaths?.length || archiveIndex.all?.length || 0;
+                const manifestSourceDetail = archiveIndex.allPaths?.length ? 'index.allPaths(derived)' :
+                                             archiveIndex.all?.length ? 'index.all' : 'unknown';
 
                 addLog(
                   sectionName, 
