@@ -1,6 +1,168 @@
 // Archive content parsers - HTML-first, JSON fallback
 // All functions return { items: [], sourceFile: string, error?: string }
 
+// Friends Presence Audit - forensic search for actual friends list in ZIP
+export async function auditFriendsPresence(zipIndex, archiveUrl, invokeFunction) {
+  try {
+    const allEntries = zipIndex.all || [];
+    
+    // Find all friend-related files
+    const friendCandidates = allEntries.filter(entry => {
+      const path = entry.path.toLowerCase();
+      const ext = path.split('.').pop();
+      if (!['html', 'json'].includes(ext)) return false;
+      if (!path.includes('friend')) return false;
+      
+      // Exclude non-friends
+      const excludePatterns = [
+        'suggested', 'people_you_may_know', 'audiences', 'rejected', 
+        'request', 'followers', 'followed', 'following'
+      ];
+      return !excludePatterns.some(pattern => path.includes(pattern));
+    });
+    
+    // Score candidates by path quality
+    const scorePath = (path) => {
+      const lower = path.toLowerCase();
+      if (lower.includes('your_friends') || lower.includes('friends_list')) return 100;
+      if (lower.includes('/friends/') && !lower.includes('suggested')) return 80;
+      if (lower.includes('friend')) return 50;
+      return 0;
+    };
+    
+    const rankedCandidates = friendCandidates
+      .map(entry => ({ ...entry, score: scorePath(entry.path) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 25);
+    
+    const candidatesSummary = [];
+    let bestCandidate = null;
+    let bestScore = -1;
+    
+    for (const candidate of rankedCandidates) {
+      try {
+        const response = await invokeFunction('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: candidate.path,
+          responseType: 'text'
+        });
+        
+        if (!response.data?.content) continue;
+        
+        const content = response.data.content;
+        const isJson = candidate.path.endsWith('.json');
+        
+        let metrics = {
+          title: null,
+          textLen: 0,
+          fbLinks: 0,
+          nameLikeLineCount: 0,
+          sampleNameLikeLinesRedacted: []
+        };
+        
+        if (isJson) {
+          // JSON parsing
+          try {
+            const jsonData = JSON.parse(content);
+            const hasNameField = JSON.stringify(jsonData).includes('"name"');
+            const hasFriendsKey = jsonData.friends || jsonData.friend_list || jsonData.connections;
+            
+            if (hasFriendsKey || hasNameField) {
+              const friendsList = hasFriendsKey || (Array.isArray(jsonData) ? jsonData : Object.values(jsonData));
+              if (Array.isArray(friendsList)) {
+                metrics.nameLikeLineCount = friendsList.filter(item => 
+                  item && (item.name || item.full_name || typeof item === 'string')
+                ).length;
+              }
+            }
+            metrics.textLen = content.length;
+          } catch {}
+        } else {
+          // HTML parsing
+          const doc = parseHtml(content);
+          if (doc) {
+            metrics.title = doc.querySelector('title')?.textContent?.slice(0, 100) || null;
+            
+            // Count FB profile links (exclude groups)
+            const anchors = doc.querySelectorAll('a[href]');
+            anchors.forEach(a => {
+              const href = a.getAttribute('href')?.toLowerCase() || '';
+              if ((href.includes('facebook.com') || href.includes('profile.php')) && !href.includes('/groups/')) {
+                metrics.fbLinks++;
+              }
+            });
+            
+            // Extract visible text and count name-like lines
+            const root = doc.querySelector('.contents') || doc.querySelector('body');
+            const text = getText(root);
+            metrics.textLen = text.length;
+            
+            const lines = text.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length > 0);
+            const nameLikeLines = lines.filter(line => {
+              if (line.length < 2 || line.length > 60) return false;
+              const lower = line.toLowerCase();
+              if (lower.includes('contains data you requested')) return false;
+              if (lower.includes('creation time') || lower.includes('last modified')) return false;
+              if (lower.includes('audience') || lower.includes('badge')) return false;
+              if (lower.endsWith('?')) return false;
+              if (/^(true|false|yes|no)$/i.test(line)) return false;
+              // Must have some letters
+              const letters = line.match(/[a-zA-Z]/g);
+              if (!letters || letters.length < line.length * 0.3) return false;
+              return true;
+            });
+            
+            metrics.nameLikeLineCount = nameLikeLines.length;
+            metrics.sampleNameLikeLinesRedacted = nameLikeLines
+              .slice(0, 10)
+              .map(line => line.replace(/[a-zA-Z]/g, 'X'));
+          }
+        }
+        
+        // Calculate quality score
+        const qualityScore = 
+          (metrics.nameLikeLineCount * 10) + 
+          (metrics.fbLinks * 5) + 
+          (metrics.textLen > 500 ? 10 : 0) +
+          candidate.score;
+        
+        candidatesSummary.push({
+          path: candidate.path,
+          metrics,
+          qualityScore
+        });
+        
+        if (qualityScore > bestScore && (metrics.nameLikeLineCount >= 2 || metrics.fbLinks >= 2)) {
+          bestScore = qualityScore;
+          bestCandidate = {
+            path: candidate.path,
+            metrics,
+            qualityScore
+          };
+        }
+      } catch (err) {
+        console.error(`[auditFriendsPresence] Failed to audit ${candidate.path}:`, err);
+      }
+    }
+    
+    return {
+      friendsListDetected: bestCandidate !== null,
+      bestCandidatePath: bestCandidate?.path || null,
+      bestCandidateMetrics: bestCandidate?.metrics || null,
+      candidatesSummary: candidatesSummary.sort((a, b) => b.qualityScore - a.qualityScore)
+    };
+  } catch (err) {
+    console.error('[auditFriendsPresence] Audit failed:', err);
+    return {
+      friendsListDetected: false,
+      bestCandidatePath: null,
+      bestCandidateMetrics: null,
+      candidatesSummary: [],
+      error: err.message
+    };
+  }
+}
+
 const parseHtml = (htmlString) => {
   try {
     const parser = new DOMParser();

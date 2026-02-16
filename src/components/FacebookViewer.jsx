@@ -36,7 +36,8 @@ import {
   parseCheckinsFromHtml,
   parseJsonGeneric,
   probeFacebookHtmlStructure,
-  resolveZipEntryPath
+  resolveZipEntryPath,
+  auditFriendsPresence
 } from "./archiveParsers";
 
 // Helper to extract entry path from media item (string or object)
@@ -300,49 +301,104 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           }
         }
       } else if (sectionName === 'friends') {
-        // Combine JSON and HTML candidates
+        // PHASE 1: Run Friends Presence Audit
+        addLog(sectionName, 'AUDIT_START', 'Running Friends Presence Audit on entire ZIP...');
+        
+        const audit = await auditFriendsPresence(
+          data?.index || {}, 
+          archiveUrl,
+          (funcName, params) => base44.functions.invoke(funcName, params)
+        );
+        
+        addLog(
+          sectionName,
+          'AUDIT_RESULT',
+          `Friends list detected: ${audit.friendsListDetected ? 'YES' : 'NO'} | Best: ${audit.bestCandidatePath || 'none'} | Candidates: ${audit.candidatesSummary.length}`,
+          audit.friendsListDetected ? 'success' : 'warn'
+        );
+        
+        if (audit.bestCandidateMetrics) {
+          const m = audit.bestCandidateMetrics;
+          addLog(
+            sectionName,
+            'AUDIT_BEST',
+            `${audit.bestCandidatePath} | nameLikeLines=${m.nameLikeLineCount} fbLinks=${m.fbLinks} textLen=${m.textLen}`,
+            'info'
+          );
+        }
+        
+        // PHASE 2: Load categorized friends data
+        // Use audit result to determine best actual_friends candidate
+        let actualFriendsCandidates = [];
+        
+        if (audit.friendsListDetected && audit.bestCandidatePath) {
+          actualFriendsCandidates.push({
+            path: audit.bestCandidatePath,
+            type: audit.bestCandidatePath.endsWith('.json') ? 'json' : 'html'
+          });
+        } else {
+          // Fallback: use normalized index
+          const yourFriends = normalized.friendFiles.html.filter(f => 
+            f.toLowerCase().includes('your_friends') || f.toLowerCase().includes('friends_list')
+          );
+          if (yourFriends.length > 0) {
+            actualFriendsCandidates.push({ path: yourFriends[0], type: 'html' });
+          }
+        }
+        
+        // Combine all candidates for other categories
         const allCandidates = [
+          ...actualFriendsCandidates,
           ...normalized.friendFiles.json.map(f => ({ path: f, type: 'json' })),
           ...normalized.friendFiles.html.map(f => ({ path: f, type: 'html' }))
         ];
         
-        if (allCandidates.length === 0) {
-          throw new Error('No friends files found in index');
-        }
+        // Remove duplicates
+        const uniqueCandidates = Array.from(
+          new Map(allCandidates.map(c => [c.path, c])).values()
+        );
 
         // Log all candidates
-        addLog(sectionName, 'FRIENDS_CANDIDATES', `${allCandidates.length} files:\n${allCandidates.map(f => `- ${f.path}`).join('\n')}`);
+        addLog(sectionName, 'FRIENDS_CANDIDATES', `${uniqueCandidates.length} files:\n${uniqueCandidates.map(f => `- ${f.path}`).join('\n')}`);
         
         // Categorize files
         const categorize = (path) => {
           const lower = path.toLowerCase();
           if (lower.includes('your_friends') || lower.includes('friends_list')) return 'actual_friends';
-          if (lower.includes('suggested_friends') || lower.includes('people_you_may_know')) return 'suggestions';
+          if (lower.includes('people_you_may_know')) return 'people_you_may_know';
+          if (lower.includes('suggested_friends')) return 'suggestions';
           if (lower.includes('friend_request') || lower.includes('rejected_friend')) return 'requests';
           if (lower.includes('following') || lower.includes('followers') || lower.includes('who_you') || lower.includes('followed')) return 'following';
+          if (lower.includes('audiences') || lower.includes('post_audience')) return 'other';
           return 'other';
         };
         
         const categorized = {
           actual_friends: [],
+          people_you_may_know: [],
           suggestions: [],
           requests: [],
           following: [],
           other: []
         };
         
-        allCandidates.forEach(c => {
+        uniqueCandidates.forEach(c => {
           const cat = categorize(c.path);
-          categorized[cat].push(c);
+          if (categorized[cat]) {
+            categorized[cat].push(c);
+          } else {
+            categorized.other.push(c);
+          }
         });
         
         // Always try actual_friends FIRST
         const tryOrder = [
           ...categorized.actual_friends,
-          ...categorized.other,
+          ...categorized.people_you_may_know,
           ...categorized.suggestions,
           ...categorized.requests,
-          ...categorized.following
+          ...categorized.following,
+          ...categorized.other
         ];
         
         // Probe each file
@@ -382,9 +438,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           }
         }
         
-        // Parse friends by category
+        // Parse friends by category with minimum threshold
         const resultsByCategory = {
           actual_friends: [],
+          people_you_may_know: [],
           suggestions: [],
           requests: [],
           following: []
@@ -396,8 +453,22 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           if (candidate.type === 'json') {
             try {
               const jsonData = JSON.parse(content);
-              const result = parseJsonGeneric(jsonData, candidate.path);
-              items = result.items;
+              
+              // Try to extract friends from JSON
+              const friendsList = jsonData.friends || jsonData.friend_list || jsonData.connections || 
+                                  (Array.isArray(jsonData) ? jsonData : null);
+              
+              if (friendsList && Array.isArray(friendsList)) {
+                items = friendsList
+                  .filter(item => item && (item.name || item.full_name || typeof item === 'string'))
+                  .map(item => ({
+                    name: typeof item === 'string' ? item : (item.name || item.full_name),
+                    sourceFile: candidate.path
+                  }));
+              } else {
+                const result = parseJsonGeneric(jsonData, candidate.path);
+                items = result.items;
+              }
             } catch (err) {
               addLog(sectionName, 'PARSE_ERROR', `JSON parse failed for ${candidate.path}: ${err.message}`, 'error');
             }
@@ -406,17 +477,24 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
             items = result.items;
           }
           
+          // Apply minimum threshold for actual_friends
+          const counts = probe.selectorCounts || {};
+          const nameLikeLineCount = items.length;
+          const fbLinks = counts.fbLinks || 0;
+          const meetsThreshold = nameLikeLineCount >= 2 || fbLinks >= 2;
+          
           if (items.length > 0) {
-            addLog(sectionName, 'PARSE', `Parsed ${items.length} items from ${candidate.path} (category: ${category})`, 'success', items.length);
+            addLog(sectionName, 'PARSE', `Parsed ${items.length} items from ${candidate.path} (category: ${category}, threshold: ${meetsThreshold})`, 'success', items.length);
             
-            if (category === 'actual_friends' || category === 'other') {
+            if (category === 'actual_friends' && meetsThreshold) {
               resultsByCategory.actual_friends.push(...items);
+            } else if (category === 'people_you_may_know') {
+              resultsByCategory.people_you_may_know.push(...items);
             } else if (resultsByCategory[category]) {
               resultsByCategory[category].push(...items);
             }
           } else {
-            const counts = probe.selectorCounts || {};
-            addLog(sectionName, 'PARSE', `0 items from ${candidate.path} | divLeaf=${counts.divLeafTextCount || 0} textLen=${counts.textLength || 0}`, 'warn');
+            addLog(sectionName, 'PARSE', `0 items from ${candidate.path} | divLeaf=${counts.divLeafTextCount || 0} nameLike=${counts.divLeafTextCount || 0} textLen=${counts.textLength || 0}`, 'warn');
           }
         }
         
@@ -435,8 +513,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               content: r.content,
               category: r.category
             })),
+            audit,
             counts: {
               yourFriends: resultsByCategory.actual_friends.length,
+              peopleYouMayKnow: resultsByCategory.people_you_may_know.length,
               suggestions: resultsByCategory.suggestions.length,
               requests: resultsByCategory.requests.length,
               following: resultsByCategory.following.length
@@ -445,9 +525,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         }));
         
         if (parsedData.length === 0) {
-          addLog(sectionName, 'PARSE', `No friends in "your_friends" list. Showing other connection data.`, 'warn');
+          addLog(sectionName, 'RESULT', `Facebook did not include friends list in export. Showing ${resultsByCategory.people_you_may_know.length} suggestions.`, 'warn');
         } else {
-          addLog(sectionName, 'PARSE', `Extracted ${parsedData.length} friends from actual_friends files.`, 'success');
+          addLog(sectionName, 'RESULT', `Found ${parsedData.length} friends + ${resultsByCategory.people_you_may_know.length} suggestions.`, 'success');
         }
       } else if (sectionName === 'messages') {
         const threads = normalized.messageThreads;
@@ -805,7 +885,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               Posts ({normalized.counts.posts})
             </TabsTrigger>
             <TabsTrigger value="friends" className="bg-orange-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-orange-600 text-sm">
-              Friends ({normalized.counts.friends})
+              Friends ({loadedSections.friends?.counts?.yourFriends || normalized.counts.friends})
             </TabsTrigger>
             <TabsTrigger value="messages" className="bg-yellow-500 text-white font-semibold px-4 py-2 rounded data-[state=active]:bg-yellow-600 text-sm">
               Chats ({normalized.counts.chats})
@@ -1162,28 +1242,42 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               </Card>
               
               {/* People You May Know */}
-              {loadedSections.friends.byCategory?.suggestions?.length > 0 && (
+              {loadedSections.friends.byCategory?.people_you_may_know?.length > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">People You May Know ({loadedSections.friends.byCategory.suggestions.length})</CardTitle>
+                    <CardTitle className="text-base">People You May Know ({loadedSections.friends.byCategory.people_you_may_know.length})</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {loadedSections.friends.byCategory.suggestions.slice(0, 10).map((person, i) => (
+                      {loadedSections.friends.byCategory.people_you_may_know.slice(0, 10).map((person, i) => (
                         <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
                           <Avatar className="w-8 h-8">
                             <AvatarFallback className="bg-purple-500 text-white text-xs">
                               {person.name?.[0] || 'P'}
                             </AvatarFallback>
                           </Avatar>
-                          <p className="font-medium">{person.name}</p>
+                          <p className="font-medium text-xs">{person.name}</p>
                         </div>
                       ))}
-                      {loadedSections.friends.byCategory.suggestions.length > 10 && (
+                      {loadedSections.friends.byCategory.people_you_may_know.length > 10 && (
                         <div className="text-xs text-gray-500 p-2">
-                          ... and {loadedSections.friends.byCategory.suggestions.length - 10} more
+                          ... and {loadedSections.friends.byCategory.people_you_may_know.length - 10} more
                         </div>
                       )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {/* Suggested Friends */}
+              {loadedSections.friends.byCategory?.suggestions?.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Suggested Friends ({loadedSections.friends.byCategory.suggestions.length})</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xs text-gray-600">
+                      {loadedSections.friends.byCategory.suggestions.length} suggested connections
                     </div>
                   </CardContent>
                 </Card>
