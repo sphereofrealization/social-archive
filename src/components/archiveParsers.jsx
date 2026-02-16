@@ -294,6 +294,215 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
   }
 }
 
+// Groups Presence Audit - forensic search for actual group membership files in ZIP
+export async function auditGroupsPresence(zipIndex, archiveUrl, invokeFunction, expectedTotal = null) {
+  try {
+    // Get canonical manifest
+    const manifest = getCanonicalManifest(zipIndex);
+    const manifestPaths = manifest.paths;
+    const entriesSource = manifest.source;
+    
+    const manifestCount = manifestPaths.length;
+    
+    console.log(`[auditGroupsPresence] GROUPS_AUDIT_MANIFEST: count=${manifestCount} expectedTotal=${expectedTotal || 'unknown'} source=${entriesSource}`);
+    
+    if (manifestPaths.length === 0) {
+      console.error(`[auditGroupsPresence] MANIFEST_EMPTY: Cannot enumerate ZIP entries`);
+      return {
+        groupsDetected: false,
+        validCandidates: [],
+        candidatesSummary: [],
+        excludedPaths: [],
+        error: 'Cannot enumerate ZIP entries (manifest is empty)',
+        manifestCount: 0,
+        expectedTotal,
+        manifestMissing: true
+      };
+    }
+    
+    // Check if manifest is incomplete
+    if (expectedTotal && manifestCount < expectedTotal * 0.9) {
+      const missingCount = expectedTotal - manifestCount;
+      const missingPercent = Math.round((missingCount / expectedTotal) * 100);
+      console.warn(`[auditGroupsPresence] MANIFEST_INCOMPLETE: missingCount=${missingCount} (${missingPercent}% missing, manifest=${manifestCount}, expected=${expectedTotal})`);
+    }
+    
+    // HARD EXCLUSIONS
+    const excludedPaths = [];
+    const excludePatterns = [
+      { test: (p) => p.includes('/facebook_gaming/'), reason: 'facebook_gaming' },
+      { test: (p) => p.toLowerCase().includes('badges'), reason: 'badges' },
+      { test: (p) => p.endsWith('your_page_or_groups_badges.html'), reason: 'gaming_badges_file' }
+    ];
+    
+    // HARD ALLOWLIST
+    const allowlistPatterns = [
+      { test: (p) => /\/connections\/groups\//i.test(p), score: 100, name: 'connections/groups/' },
+      { test: (p) => /\/your_facebook_activity\/groups\//i.test(p), score: 90, name: 'your_facebook_activity/groups/' },
+      { test: (p) => /\/groups\//i.test(p), score: 80, name: '/groups/' },
+      { test: (p) => /your_groups\./i.test(p), score: 95, name: 'your_groups' },
+      { test: (p) => /your_group_memberships\./i.test(p), score: 95, name: 'your_group_memberships' },
+      { test: (p) => /groups_you.?ve_joined\./i.test(p), score: 90, name: "groups_you've_joined" },
+      { test: (p) => /groups_you_manage\./i.test(p), score: 90, name: 'groups_you_manage' },
+      { test: (p) => /your_posts_in_groups\./i.test(p), score: 85, name: 'your_posts_in_groups' },
+      { test: (p) => /your_comments_in_groups\./i.test(p), score: 85, name: 'your_comments_in_groups' }
+    ];
+    
+    // Filter to HTML/JSON only
+    const htmlJsonFiles = manifestPaths.filter(path => {
+      const ext = path.toLowerCase().split('.').pop();
+      return ['html', 'json'].includes(ext);
+    });
+    
+    // Apply exclusions and allowlist
+    const groupCandidates = [];
+    
+    for (const path of htmlJsonFiles) {
+      // Check exclusions
+      let excluded = false;
+      for (const exclusion of excludePatterns) {
+        if (exclusion.test(path)) {
+          excludedPaths.push({ path, reason: exclusion.reason });
+          excluded = true;
+          break;
+        }
+      }
+      if (excluded) continue;
+      
+      // Check allowlist
+      for (const allowPattern of allowlistPatterns) {
+        if (allowPattern.test(path)) {
+          groupCandidates.push({
+            path,
+            score: allowPattern.score,
+            matchedPattern: allowPattern.name
+          });
+          break;
+        }
+      }
+    }
+    
+    console.log(`[auditGroupsPresence] GROUPS_EXCLUDED: count=${excludedPaths.length} paths=`, excludedPaths.slice(0, 10).map(e => `${e.path} (${e.reason})`));
+    console.log(`[auditGroupsPresence] GROUPS_CANDIDATES: count=${groupCandidates.length} paths=`, groupCandidates.map(c => `${c.path} (score=${c.score}, pattern=${c.matchedPattern})`));
+    
+    if (groupCandidates.length === 0) {
+      return {
+        groupsDetected: false,
+        validCandidates: [],
+        candidatesSummary: [],
+        excludedPaths: excludedPaths.slice(0, 20),
+        noGroupFilesInExport: true,
+        manifestCount,
+        expectedTotal,
+        entriesSource,
+        manifestComplete: !expectedTotal || manifestCount >= expectedTotal * 0.9
+      };
+    }
+    
+    // Sort by score and take top candidates
+    const rankedCandidates = groupCandidates
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10);
+    
+    const candidatesSummary = [];
+    const validCandidates = [];
+    
+    for (const candidate of rankedCandidates) {
+      try {
+        const response = await invokeFunction('getArchiveEntry', {
+          zipUrl: archiveUrl,
+          entryPath: candidate.path,
+          responseType: 'text'
+        });
+        
+        if (!response.data?.content) continue;
+        
+        const content = response.data.content;
+        const isJson = candidate.path.endsWith('.json');
+        
+        let metrics = {
+          textLen: content.length,
+          groupPhraseCount: 0,
+          hasNoGroupsMessage: false
+        };
+        
+        if (isJson) {
+          try {
+            const jsonData = JSON.parse(content);
+            const hasGroups = jsonData.groups || jsonData.group_list || Array.isArray(jsonData);
+            if (hasGroups) {
+              const groupList = Array.isArray(jsonData) ? jsonData : (jsonData.groups || jsonData.group_list || []);
+              metrics.groupPhraseCount = Array.isArray(groupList) ? groupList.length : 0;
+            }
+          } catch {}
+        } else {
+          // HTML analysis
+          const lowerContent = content.toLowerCase();
+          
+          // Check for "no groups" message
+          metrics.hasNoGroupsMessage = /no groups|you haven't joined|no data available/i.test(content);
+          
+          // Count group-related phrases
+          const groupPhrases = ['group name', 'joined group', 'member of'];
+          metrics.groupPhraseCount = groupPhrases.reduce((count, phrase) => {
+            const matches = lowerContent.match(new RegExp(phrase, 'gi'));
+            return count + (matches ? matches.length : 0);
+          }, 0);
+        }
+        
+        // Calculate quality score
+        const qualityScore = 
+          (metrics.groupPhraseCount * 10) + 
+          (metrics.textLen > 500 ? 10 : 0) +
+          candidate.score;
+        
+        candidatesSummary.push({
+          path: candidate.path,
+          metrics,
+          qualityScore,
+          matchedPattern: candidate.matchedPattern
+        });
+        
+        // Accept if has meaningful content and no "empty" message
+        if (!metrics.hasNoGroupsMessage && (metrics.groupPhraseCount > 0 || qualityScore > 80)) {
+          validCandidates.push({
+            path: candidate.path,
+            metrics,
+            qualityScore,
+            matchedPattern: candidate.matchedPattern
+          });
+        }
+      } catch (err) {
+        console.error(`[auditGroupsPresence] Failed to audit ${candidate.path}:`, err);
+      }
+    }
+    
+    console.log(`[auditGroupsPresence] GROUPS_SELECTED_SOURCES: count=${validCandidates.length} paths=`, validCandidates.map(c => `${c.path} (score=${c.qualityScore})`));
+    
+    return {
+      groupsDetected: validCandidates.length > 0,
+      validCandidates: validCandidates.sort((a, b) => b.qualityScore - a.qualityScore),
+      candidatesSummary: candidatesSummary.sort((a, b) => b.qualityScore - a.qualityScore),
+      excludedPaths: excludedPaths.slice(0, 20),
+      manifestCount,
+      expectedTotal,
+      entriesSource,
+      manifestComplete: !expectedTotal || manifestCount >= expectedTotal * 0.9
+    };
+  } catch (err) {
+    console.error('[auditGroupsPresence] Audit failed:', err);
+    return {
+      groupsDetected: false,
+      validCandidates: [],
+      candidatesSummary: [],
+      excludedPaths: [],
+      error: err.message,
+      manifestCount: 0,
+      expectedTotal
+    };
+  }
+}
+
 // Friends Presence Audit - forensic search for actual friends list in ZIP
 export async function auditFriendsPresence(zipIndex, archiveUrl, invokeFunction) {
   try {
