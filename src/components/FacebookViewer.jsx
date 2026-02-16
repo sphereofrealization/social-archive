@@ -573,6 +573,8 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               <div className="mt-2"><strong>Data Sources:</strong></div>
               <div>• Photos Source: {normalized.photos.length > 0 ? 'index.photos' : 'data.photos'} → {normalized.photos.length} items</div>
               <div>• Videos Source: {normalized.videos.length > 0 ? 'index.videos' : 'data.videos'} → {normalized.videos.length} items</div>
+              <div>• Media Entries All: {data?.index?.mediaEntriesAll?.length || 0} (for resolving post media)</div>
+              <div>• Known Media Path Set Size: {knownMediaPathSet.size}</div>
               <div>• Posts Files: {normalized.postFiles.html.length + normalized.postFiles.json.length} files</div>
               <div>• Friends Files: {normalized.friendFiles.html.length + normalized.friendFiles.json.length} files</div>
               <div>• Comments Files: {normalized.commentFiles.html.length + normalized.commentFiles.json.length} files</div>
@@ -589,6 +591,22 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   </div>
                 </details>
               )}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Media Debug Logs */}
+      {mediaDebugLogs.length > 0 && (
+        <Alert className="bg-blue-50 border-blue-300 mb-4">
+          <AlertDescription>
+            <div className="text-xs font-mono space-y-1 max-h-64 overflow-y-auto">
+              <div className="font-bold text-blue-900 mb-2">Media Load Debug Log:</div>
+              {mediaDebugLogs.map((log, i) => (
+                <div key={i} className={`${log.includes('ERROR') ? 'text-red-700' : log.includes('RENDER_OK') ? 'text-green-700' : 'text-gray-700'}`}>
+                  {log}
+                </div>
+              ))}
             </div>
           </AlertDescription>
         </Alert>
