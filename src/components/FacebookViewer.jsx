@@ -368,26 +368,75 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         if (selectedFiles.length === 0) {
           throw new Error('No group files found');
         }
-        const filePath = selectedFiles[0];
-        const responseType = filePath.endsWith('.json') ? 'json' : 'text';
-
-        addLog(sectionName, 'FETCH', `Fetching: ${filePath} (${responseType})`);
-
-        const response = await base44.functions.invoke('getArchiveEntry', {
-          zipUrl: archiveUrl,
-          entryPath: filePath,
-          responseType
-        });
-
-        if (responseType === 'json' && response.data?.content) {
-          const result = parseJsonGeneric(response.data.content, filePath);
-          parsedData = result.items.slice(0, 50);
-          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
-        } else if (responseType === 'text' && response.data?.content) {
-          const result = await parseGroupsFromHtml(response.data.content, filePath);
-          parsedData = result.items.slice(0, 50);
-          addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from HTML`, result.error ? 'error' : 'success', parsedData.length);
+        
+        // Log all available files
+        addLog(sectionName, 'FILES_DETECTED', `Found ${selectedFiles.length} group files: ${selectedFiles.join(', ')}`);
+        
+        // Score and select best files for group membership
+        const scoredFiles = await Promise.all(selectedFiles.slice(0, 5).map(async (filePath) => {
+          let score = 0;
+          const pathLower = filePath.toLowerCase();
+          const titleLower = 'unknown';
+          
+          // Score by path
+          if (pathLower.includes('membership') || pathLower.includes('your_groups')) score += 10;
+          if (pathLower.includes('badge')) score -= 10;
+          
+          // Probe the file
+          try {
+            const response = await base44.functions.invoke('getArchiveEntry', {
+              zipUrl: archiveUrl,
+              entryPath: filePath,
+              responseType: 'text'
+            });
+            
+            if (response.data?.content) {
+              const probe = await parseGroupsFromHtml(response.data.content, filePath);
+              const titleLowerProbed = probe.probe?.title?.toLowerCase() || '';
+              
+              addLog(sectionName, 'PROBE', `${filePath} | title="${probe.probe?.title}" | groupLinks=${probe.probe?.groupLinkAnchors} | tables=${probe.probe?.tables} | rows=${probe.probe?.tableRows}`);
+              
+              // Score by title
+              if (titleLowerProbed.includes('groups you') || titleLowerProbed.includes('group membership')) score += 5;
+              if (titleLowerProbed.includes('badge')) score -= 10;
+              
+              // Score by probe
+              if (probe.probe?.groupLinkAnchors > 0) score += 10;
+              if (probe.probe?.groupLinkAnchors === 0 && probe.rejected) score -= 10;
+              
+              return { filePath, score, probe, content: response.data.content };
+            }
+          } catch (err) {
+            addLog(sectionName, 'PROBE_ERROR', `Failed to probe ${filePath}: ${err.message}`, 'error');
+          }
+          
+          return { filePath, score: -100 };
+        }));
+        
+        // Sort by score descending
+        scoredFiles.sort((a, b) => b.score - a.score);
+        addLog(sectionName, 'FILE_SELECTION', `Best files: ${scoredFiles.slice(0, 3).map(f => `${f.filePath} (score=${f.score})`).join(', ')}`);
+        
+        // Parse top 3 files
+        const allGroups = [];
+        const seenNames = new Set();
+        
+        for (const { filePath, content, probe } of scoredFiles.slice(0, 3)) {
+          if (!content) continue;
+          
+          const result = await parseGroupsFromHtml(content, filePath);
+          addLog(sectionName, 'PARSE', `${filePath} → ${result.items.length} groups (rejected=${result.rejected || false})`, result.error ? 'error' : 'success', result.items.length);
+          
+          result.items.forEach(item => {
+            if (!seenNames.has(item.name)) {
+              allGroups.push(item);
+              seenNames.add(item.name);
+            }
+          });
         }
+        
+        parsedData = { groups: allGroups, allFiles: selectedFiles };
+        addLog(sectionName, 'COMPLETE', `Total unique groups found: ${allGroups.length}`, 'success', allGroups.length);
       } else if (sectionName === 'reviews') {
         selectedFiles = normalized.reviewFiles.json.length > 0 ? normalized.reviewFiles.json : normalized.reviewFiles.html;
         if (selectedFiles.length === 0) {
