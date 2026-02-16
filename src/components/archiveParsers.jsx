@@ -2,79 +2,121 @@
 // All functions return { items: [], sourceFile: string, error?: string }
 
 // Comments Presence Audit - forensic search for all comment sources in ZIP
-export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction) {
+export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction, expectedTotal = null) {
   try {
     // Try multiple sources for entry list
     let allEntries = [];
     let entriesSource = 'unknown';
     
-    // Source 1: zipIndex.all (streaming index format)
+    console.log(`[auditCommentsPresence] SCAN_DEBUG: zipIndex keys=${Object.keys(zipIndex).join(', ')}, expectedTotal=${expectedTotal}`);
+    
+    // Source 1: zipIndex.all (streaming index format - canonical source)
     if (zipIndex.all && Array.isArray(zipIndex.all) && zipIndex.all.length > 0) {
       allEntries = zipIndex.all;
       entriesSource = 'zipIndex.all';
     }
-    // Source 2: zipIndex.mediaEntriesAll (alternative format)
-    else if (zipIndex.mediaEntriesAll && Array.isArray(zipIndex.mediaEntriesAll) && zipIndex.mediaEntriesAll.length > 0) {
-      allEntries = zipIndex.mediaEntriesAll;
-      entriesSource = 'zipIndex.mediaEntriesAll';
+    // Source 2: zipIndex.entries (alternative canonical source)
+    else if (zipIndex.entries && Array.isArray(zipIndex.entries) && zipIndex.entries.length > 0) {
+      allEntries = zipIndex.entries;
+      entriesSource = 'zipIndex.entries';
     }
-    // Source 3: Collect from all known file arrays
+    // Source 3: zipIndex.allEntries
+    else if (zipIndex.allEntries && Array.isArray(zipIndex.allEntries) && zipIndex.allEntries.length > 0) {
+      allEntries = zipIndex.allEntries;
+      entriesSource = 'zipIndex.allEntries';
+    }
+    // Source 4: Reconstruct from ALL available arrays (not just categories)
     else {
-      const collected = [];
+      const collected = new Set(); // Use Set to avoid duplicates
       
-      // Collect from various categorized arrays
-      ['photos', 'videos', 'posts', 'messages', 'friends', 'comments', 'likes', 
-       'groups', 'reviews', 'marketplace', 'events', 'reels', 'checkins'].forEach(category => {
-        const categoryFiles = zipIndex[category] || [];
-        if (Array.isArray(categoryFiles)) {
-          categoryFiles.forEach(f => {
-            if (typeof f === 'string') {
-              collected.push({ path: f });
-            } else if (f && f.path) {
-              collected.push(f);
+      // Iterate through ALL keys in zipIndex
+      Object.keys(zipIndex).forEach(key => {
+        const value = zipIndex[key];
+        
+        // Handle arrays of file paths
+        if (Array.isArray(value)) {
+          value.forEach(item => {
+            if (typeof item === 'string') {
+              collected.add(item);
+            } else if (item && item.path) {
+              collected.add(item.path);
+            }
+          });
+        }
+        // Handle nested objects with path arrays
+        else if (value && typeof value === 'object') {
+          Object.keys(value).forEach(subKey => {
+            const subValue = value[subKey];
+            if (Array.isArray(subValue)) {
+              subValue.forEach(item => {
+                if (typeof item === 'string') {
+                  collected.add(item);
+                } else if (item && item.path) {
+                  collected.add(item.path);
+                }
+              });
             }
           });
         }
       });
       
-      if (collected.length > 0) {
-        allEntries = collected;
-        entriesSource = 'collected_from_categories';
+      if (collected.size > 0) {
+        allEntries = Array.from(collected).map(path => ({ path }));
+        entriesSource = 'reconstructed_from_all_zipIndex_data';
       }
     }
     
-    console.log(`[auditCommentsPresence] SCAN: totalZipEntries=${allEntries.length} source=${entriesSource}`);
-    console.log(`[auditCommentsPresence] SCAN_DEBUG: zipIndex keys=${Object.keys(zipIndex).join(', ')}`);
+    console.log(`[auditCommentsPresence] SCAN: scanned=${allEntries.length} expectedTotal=${expectedTotal || 'unknown'} source=${entriesSource}`);
     
     if (allEntries.length > 0) {
-      const sample = allEntries.slice(0, 10).map(e => e.path || e);
-      console.log(`[auditCommentsPresence] SCAN_SAMPLE: first10=`, sample);
+      const sample = allEntries.slice(0, 20).map(e => e.path || e);
+      console.log(`[auditCommentsPresence] SCAN_SAMPLE: first20=`, sample);
     } else {
-      console.error(`[auditCommentsPresence] SCAN_FAILED: No entries found. zipIndex=`, zipIndex);
+      console.error(`[auditCommentsPresence] SCAN_FAILED: No entries found.`);
       return {
         commentsDetected: false,
         validCandidates: [],
         candidatesSummary: [],
         error: 'Cannot enumerate ZIP entries (file index not loaded)',
-        entriesScanned: 0
+        entriesScanned: 0,
+        expectedTotal
+      };
+    }
+    
+    // Check if scan is incomplete
+    if (expectedTotal && allEntries.length < expectedTotal * 0.8) {
+      console.error(`[auditCommentsPresence] SCAN_INCOMPLETE: scanned ${allEntries.length} but expected ${expectedTotal}`);
+      return {
+        commentsDetected: false,
+        validCandidates: [],
+        candidatesSummary: [],
+        error: `Comments scan incomplete (scanned ${allEntries.length}/${expectedTotal} entries). Cannot determine presence of comments.`,
+        entriesScanned: allEntries.length,
+        expectedTotal
       };
     }
     
     // Find all comment-related files using simple substring matching
-    const commentCandidates = allEntries.filter(entry => {
-      const path = (entry.path || entry).toLowerCase();
-      const ext = path.split('.').pop();
-      if (!['html', 'json'].includes(ext)) return false;
+    const keywordMatches = [];
+    allEntries.forEach(entry => {
+      const path = (entry.path || entry);
+      const pathLower = path.toLowerCase();
+      const ext = pathLower.split('.').pop();
       
-      // Simple substring match (no word boundaries)
-      return path.includes('comment') || 
-             path.includes('comments') || 
-             path.includes('reaction') || 
-             path.includes('reactions') || 
-             path.includes('reply');
+      if (['html', 'json'].includes(ext)) {
+        if (pathLower.includes('comment') || 
+            pathLower.includes('comments') || 
+            pathLower.includes('reaction') || 
+            pathLower.includes('reactions') || 
+            pathLower.includes('reply')) {
+          keywordMatches.push(path);
+        }
+      }
     });
     
-    console.log(`[auditCommentsPresence] CANDIDATES: ${commentCandidates.length} files matched comment keywords:`, commentCandidates.map(c => c.path || c));
+    console.log(`[auditCommentsPresence] KEYWORD_MATCHES: count=${keywordMatches.length} paths=`, keywordMatches);
+    
+    const commentCandidates = keywordMatches.map(path => ({ path }));
     
     // Score candidates by path quality
     const scorePath = (path) => {
@@ -179,7 +221,9 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
       validCandidates: validCandidates.sort((a, b) => b.qualityScore - a.qualityScore),
       candidatesSummary: candidatesSummary.sort((a, b) => b.qualityScore - a.qualityScore),
       entriesScanned: allEntries.length,
-      entriesSource
+      expectedTotal,
+      entriesSource,
+      keywordMatchCount: keywordMatches.length
     };
   } catch (err) {
     console.error('[auditCommentsPresence] Audit failed:', err);
@@ -188,7 +232,8 @@ export async function auditCommentsPresence(zipIndex, archiveUrl, invokeFunction
       validCandidates: [],
       candidatesSummary: [],
       error: err.message,
-      entriesScanned: 0
+      entriesScanned: 0,
+      expectedTotal
     };
   }
 }

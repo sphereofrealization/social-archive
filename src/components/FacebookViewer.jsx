@@ -546,18 +546,33 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         // PHASE 1: Run Comments Presence Audit
         addLog(sectionName, 'COMMENTS_AUDIT_START', 'Running Comments Presence Audit on entire ZIP...');
         
+        const expectedEntryCount = data?.archive?.entryCount || data?.index?.all?.length || null;
+
         const audit = await auditCommentsPresence(
           data?.index || {}, 
           archiveUrl,
-          (funcName, params) => base44.functions.invoke(funcName, params)
+          (funcName, params) => base44.functions.invoke(funcName, params),
+          expectedEntryCount
         );
+        
+        const scanStatus = audit.expectedTotal && audit.entriesScanned < audit.expectedTotal * 0.8 ? 'error' : 
+                           audit.entriesScanned > 0 ? 'success' : 'error';
         
         addLog(
           sectionName,
           'COMMENTS_AUDIT_SCAN',
-          `Scanned ${audit.entriesScanned || 0} ZIP entries (source: ${audit.entriesSource || 'unknown'})`,
-          audit.entriesScanned > 0 ? 'success' : 'error'
+          `scanned=${audit.entriesScanned || 0} expectedTotal=${audit.expectedTotal || 'unknown'} source=${audit.entriesSource || 'unknown'}`,
+          scanStatus
         );
+        
+        if (audit.keywordMatchCount !== undefined) {
+          addLog(
+            sectionName,
+            'COMMENTS_AUDIT_KEYWORD_MATCHES',
+            `count=${audit.keywordMatchCount}`,
+            'info'
+          );
+        }
         
         if (audit.error) {
           addLog(
