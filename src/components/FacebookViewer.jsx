@@ -227,15 +227,29 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   // Resolve mediaRefs to actual ZIP entry paths
                   const resolvedItems = (result.items || []).map(item => {
                     if (item.mediaRefs && item.mediaRefs.length > 0) {
-                      const resolvedPaths = item.mediaRefs
-                        .map(ref => resolveZipEntryPath(filePath, ref, data?.rootPrefix || '', knownMediaPathSet))
-                        .filter(Boolean);
+                      const resolvedPaths = [];
+                      const unresolvedRefs = [];
+                      const htmlPagePaths = [];
+                      
+                      item.mediaRefs.forEach(ref => {
+                        const resolution = resolveZipEntryPath(filePath, ref, data?.rootPrefix || '', knownMediaPathSet);
+                        
+                        if (resolution.resolved) {
+                          resolvedPaths.push(resolution.resolved);
+                        } else if (resolution.reason === 'REF_POINTS_TO_HTML' && resolution.htmlPath) {
+                          htmlPagePaths.push(resolution.htmlPath);
+                        } else {
+                          unresolvedRefs.push(ref);
+                        }
+                      });
 
                       return {
                         ...item,
                         mediaRefs: undefined,
                         mediaPaths: resolvedPaths.length > 0 ? resolvedPaths : undefined,
-                        mediaRefsEmptyReason: resolvedPaths.length === 0 && item.mediaRefs.length > 0 ? 'Refs not found in media index' : undefined
+                        mediaUnresolvedRefs: unresolvedRefs.length > 0 ? unresolvedRefs : undefined,
+                        mediaPagePaths: htmlPagePaths.length > 0 ? htmlPagePaths : undefined,
+                        _mediaRefsRaw: item.mediaRefs // Keep for debug
                       };
                     }
                     return item;
