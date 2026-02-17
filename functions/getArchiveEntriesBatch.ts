@@ -1,6 +1,6 @@
 import './_polyfills.ts';
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { inflateRaw, gzipSync } from 'npm:fflate';
+import { inflateRaw } from 'npm:fflate';
 
 const VERSION = '2026-02-17T02:00:00Z';
 
@@ -183,27 +183,11 @@ Deno.serve(async (req) => {
         elapsed,
         strategy: 'range-manual-batch'
       },
-      runtime: runtimeInfo
+      runtime: runtimeInfo,
+      version: VERSION
     };
     
-    // Gzip response if large
-    const responseJson = JSON.stringify(responsePayload);
-    const shouldGzip = responseJson.length > 50000;
-    
-    console.log(`[getArchiveEntriesBatch] BATCH_FETCH_OK success=${successCount} errors=${errorCount} totalUncompressedBytes=${totalUncompressedBytes} totalCompressedBytesFetched=${totalCompressedBytesFetched} responseBytes=${responseJson.length} gzipped=${shouldGzip} ms=${elapsed}`);
-    
-    if (shouldGzip) {
-      const encoder = new TextEncoder();
-      const gzipped = gzipSync(encoder.encode(responseJson));
-      return new Response(gzipped, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Encoding': 'gzip',
-          'Content-Length': gzipped.byteLength.toString()
-        }
-      });
-    }
+    console.log(`[getArchiveEntriesBatch] BATCH_FETCH_OK success=${successCount} errors=${errorCount} totalUncompressedBytes=${totalUncompressedBytes} totalCompressedBytesFetched=${totalCompressedBytesFetched} ms=${elapsed}`);
     
     return Response.json(responsePayload);
     
@@ -212,23 +196,25 @@ Deno.serve(async (req) => {
     const fileUrlHost = 'unknown';
     
     console.error(`[getArchiveEntriesBatch] BATCH_FETCH_ERROR stage=${stage} error=${error.message} ms=${elapsed}`);
-    console.error(`[getArchiveEntriesBatch] Stack:`, error.stack);
+    console.error(`[getArchiveEntriesBatch] Full stack:`, String(error?.stack || ''));
     
     return Response.json({ 
       ok: false,
       stage,
-      message: error.message || 'Unknown error',
-      stack: error.stack,
+      message: String(error?.message || 'Unknown error'),
+      stack: String(error?.stack || ''),
       fileUrlHost,
       batchCount: 0,
       elapsed,
+      version: VERSION,
       runtime: {
+        bufferGlobalType: typeof globalThis.Buffer,
         bufferType: typeof Buffer,
         bufferDefined: typeof Buffer !== 'undefined',
         bufferConstructor: typeof Buffer !== 'undefined' ? Buffer.constructor.name : 'N/A',
         hasTextDecoder: typeof TextDecoder !== 'undefined',
-        deno: typeof Deno !== 'undefined',
-        version: VERSION
+        deno: globalThis.Deno?.version?.deno ?? null,
+        node: globalThis.process?.version ?? null
       }
     }, { status: 500 });
   }
