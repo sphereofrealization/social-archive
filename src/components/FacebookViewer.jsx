@@ -299,6 +299,11 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
                 console.log(`[FacebookViewer] Batch response status=${batchResp.status} version=${batchResp.data?.version} bufferType=${batchResp.data?.runtime?.bufferType}`);
 
+                // Log version immediately to confirm new code
+                if (batchResp.data?.version) {
+                  addLog(sectionName, 'BATCH_VERSION_IMMEDIATE', `Deployed version: ${batchResp.data.version}`, 'success');
+                }
+
                 if (batchResp.data?.results) {
                   for (const [filePath, content] of Object.entries(batchResp.data.results)) {
                     try {
@@ -382,6 +387,13 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                       // Log full error JSON for diagnostics
                       console.error('[FacebookViewer] BATCH_FATAL Full Error JSON:', JSON.stringify(errorData, null, 2));
                       console.error('[FacebookViewer] Backend version from error:', errorData?.version, 'bufferType:', errorData?.runtime?.bufferType);
+
+                      // Log version to UI immediately
+                      if (errorData?.version) {
+                        addLog(sectionName, 'BATCH_ERROR_VERSION', `Backend crash version: ${errorData.version}`, 'error');
+                      } else {
+                        addLog(sectionName, 'BATCH_ERROR_VERSION', `No version in error response (old deployment or bundler issue)`, 'error');
+                      }
 
                     addLog(sectionName, 'BATCH_FATAL', `Batch ${Math.floor(i/batchSize) + 1} failed: status=${status} ${errorMsg}`, 'error');
 
