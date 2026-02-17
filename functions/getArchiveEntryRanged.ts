@@ -1,8 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { BlobReader, BlobWriter, ZipReader, HttpRangeReader, TextWriter } from 'npm:@zip.js/zip.js@2.7.34';
+import { inflateRaw } from 'node:zlib';
+import { promisify } from 'node:util';
 
-// In-memory cache for central directory (by URL)
-const centralDirCache = new Map();
+const inflateRawAsync = promisify(inflateRaw);
+
+// Cache for range probe results (by URL)
 const rangeProbeCache = new Map();
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -14,27 +16,17 @@ async function probeRangeSupport(fileUrl) {
   }
   
   try {
-    // Step 1: HEAD request
-    const headResp = await fetch(fileUrl, { method: 'HEAD' });
-    const contentLength = headResp.headers.get('content-length');
-    const acceptRanges = headResp.headers.get('accept-ranges');
-    
-    console.log(`[probeRangeSupport] HEAD status=${headResp.status} content-length=${contentLength} accept-ranges=${acceptRanges}`);
-    
-    // Step 2: GET with Range header
+    // GET with Range header
     const rangeResp = await fetch(fileUrl, {
       headers: { 'Range': 'bytes=0-1' }
     });
     
     const contentRange = rangeResp.headers.get('content-range');
-    console.log(`[probeRangeSupport] RANGE status=${rangeResp.status} content-range=${contentRange} content-length=${rangeResp.headers.get('content-length')}`);
+    console.log(`[probeRangeSupport] RANGE status=${rangeResp.status} content-range=${contentRange}`);
     
     const result = {
       ok: rangeResp.status === 206,
-      headStatus: headResp.status,
-      rangeStatus: rangeResp.status,
-      contentLength,
-      acceptRanges,
+      status: rangeResp.status,
       contentRange,
       message: rangeResp.status === 206 ? 'Range requests supported' : `Range not supported (status ${rangeResp.status})`
     };
@@ -65,7 +57,7 @@ Deno.serve(async (req) => {
 
     stage = 'parse_body';
     const body = await req.json();
-    const { zipUrl, entryPath, responseType = 'text' } = body;
+    const { zipUrl, entryPath, entriesByPath, responseType = 'text' } = body;
     
     const fileUrlHost = new URL(zipUrl).hostname;
     console.log(`[getArchiveEntryRanged] ENTRY_FETCH_REQUEST entryPath=${entryPath} responseType=${responseType} fileUrlHost=${fileUrlHost}`);
@@ -80,6 +72,16 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
     
+    if (!entriesByPath) {
+      return Response.json({
+        ok: false,
+        stage,
+        message: 'Missing entriesByPath metadata (frontend must provide from archive index)',
+        fileUrlHost,
+        entryPath
+      }, { status: 400 });
+    }
+    
     // PHASE 0: Range probe
     stage = 'range_probe';
     const rangeProbe = await probeRangeSupport(zipUrl);
@@ -89,7 +91,7 @@ Deno.serve(async (req) => {
       return Response.json({
         ok: false,
         stage,
-        message: 'Range requests not supported by storage',
+        message: 'Range requests not supported by storage; cannot do ranged ZIP access',
         fileUrlHost,
         entryPath,
         rangeProbe
@@ -97,84 +99,117 @@ Deno.serve(async (req) => {
     }
     
     console.log(`[getArchiveEntryRanged] Range probe OK: ${rangeProbe.message}`);
-
-    // Get or build central directory
-    stage = 'get_central_dir';
-    let centralDir = centralDirCache.get(zipUrl);
     
-    if (!centralDir || Date.now() - centralDir.timestamp > CACHE_TTL_MS) {
-      stage = 'build_central_dir';
-      console.log(`[getArchiveEntryRanged] Building central directory for ${zipUrl}...`);
-      
-      const cdStartTime = Date.now();
-      
-      // Use HttpRangeReader for range-based access
-      const httpReader = new HttpRangeReader(zipUrl);
-      const zipReader = new ZipReader(httpReader);
-      
-      const entries = await zipReader.getEntries();
-      
-      // Build path -> entry map
-      const entryMap = new Map();
-      entries.forEach(entry => {
-        entryMap.set(entry.filename, entry);
-      });
-      
-      await zipReader.close();
-      
-      centralDir = {
-        entryMap,
-        timestamp: Date.now(),
-        entryCount: entries.length
-      };
-      
-      centralDirCache.set(zipUrl, centralDir);
-      
-      const cdElapsed = Date.now() - cdStartTime;
-      console.log(`[getArchiveEntryRanged] Central directory built: ${entries.length} entries in ${cdElapsed}ms`);
-    } else {
-      console.log(`[getArchiveEntryRanged] Using cached central directory (${centralDir.entryMap.size} entries)`);
-    }
-
-    // Look up the entry
+    // PHASE 1: Lookup entry metadata
     stage = 'lookup_entry';
-    const entry = centralDir.entryMap.get(entryPath);
+    const entryMeta = entriesByPath[entryPath];
     
-    if (!entry) {
-      const errorMsg = `Entry not found: ${entryPath}`;
-      console.error(`[getArchiveEntryRanged] ENTRY_FETCH_ERROR status=404 ${errorMsg}`);
-      
-      // Find similar paths for debugging
-      const allPaths = Array.from(centralDir.entryMap.keys());
-      const similarPaths = allPaths
-        .filter(p => p.toLowerCase().includes(entryPath.toLowerCase().split('/').pop()))
-        .slice(0, 5);
-      
+    if (!entryMeta) {
       return Response.json({ 
         ok: false,
         stage,
-        message: errorMsg,
+        message: `Entry not found in manifest: ${entryPath}`,
         fileUrlHost,
         entryPath,
-        similarPaths: similarPaths.length > 0 ? similarPaths : allPaths.slice(0, 10)
+        hint: 'Entry metadata not in entriesByPath map'
       }, { status: 404 });
     }
-
-    // Extract the entry using range requests
-    stage = 'extract_entry';
-    const uncompressedSize = entry.uncompressedSize || 0;
-    const compressedSize = entry.compressedSize || 0;
     
-    console.log(`[getArchiveEntryRanged] Extracting: compressed=${compressedSize} uncompressed=${uncompressedSize}`);
+    const { localHeaderOffset, compressedSize, uncompressedSize, compressionMethod } = entryMeta;
+    
+    console.log(`[getArchiveEntryRanged] Found entry: offset=${localHeaderOffset} compressed=${compressedSize} uncompressed=${uncompressedSize} method=${compressionMethod}`);
+    
+    // PHASE 2: Fetch local file header (first 30 bytes + variable lengths)
+    stage = 'fetch_local_header';
+    const localHeaderResp = await fetch(zipUrl, {
+      headers: { 'Range': `bytes=${localHeaderOffset}-${localHeaderOffset + 29}` }
+    });
+    
+    if (!localHeaderResp.ok || localHeaderResp.status !== 206) {
+      return Response.json({
+        ok: false,
+        stage,
+        message: `Failed to fetch local header: HTTP ${localHeaderResp.status}`,
+        fileUrlHost,
+        entryPath
+      }, { status: 500 });
+    }
+    
+    const localHeaderBuf = await localHeaderResp.arrayBuffer();
+    const localHeaderView = new DataView(localHeaderBuf);
+    
+    // Verify local file header signature: 0x04034b50
+    const localSig = localHeaderView.getUint32(0, true);
+    if (localSig !== 0x04034b50) {
+      return Response.json({
+        ok: false,
+        stage,
+        message: `Invalid local file header signature: 0x${localSig.toString(16)}`,
+        fileUrlHost,
+        entryPath
+      }, { status: 500 });
+    }
+    
+    const fileNameLen = localHeaderView.getUint16(26, true);
+    const extraFieldLen = localHeaderView.getUint16(28, true);
+    
+    const dataOffset = localHeaderOffset + 30 + fileNameLen + extraFieldLen;
+    
+    console.log(`[getArchiveEntryRanged] Local header parsed: fileNameLen=${fileNameLen} extraFieldLen=${extraFieldLen} dataOffset=${dataOffset}`);
+    
+    // PHASE 3: Fetch compressed data
+    stage = 'fetch_compressed_data';
+    const compressedDataResp = await fetch(zipUrl, {
+      headers: { 'Range': `bytes=${dataOffset}-${dataOffset + compressedSize - 1}` }
+    });
+    
+    if (!compressedDataResp.ok || compressedDataResp.status !== 206) {
+      return Response.json({
+        ok: false,
+        stage,
+        message: `Failed to fetch compressed data: HTTP ${compressedDataResp.status}`,
+        fileUrlHost,
+        entryPath
+      }, { status: 500 });
+    }
+    
+    const compressedData = await compressedDataResp.arrayBuffer();
+    const actualCompressedSize = compressedData.byteLength;
+    
+    console.log(`[getArchiveEntryRanged] Fetched compressed data: expected=${compressedSize} actual=${actualCompressedSize}`);
+    
+    // PHASE 4: Decompress
+    stage = 'decompress';
+    let decompressedData;
+    
+    if (compressionMethod === 0) {
+      // Stored (no compression)
+      decompressedData = new Uint8Array(compressedData);
+      console.log(`[getArchiveEntryRanged] No decompression needed (stored)`);
+    } else if (compressionMethod === 8) {
+      // Deflate
+      decompressedData = await inflateRawAsync(Buffer.from(compressedData));
+      console.log(`[getArchiveEntryRanged] Decompressed: ${decompressedData.byteLength} bytes`);
+    } else {
+      return Response.json({
+        ok: false,
+        stage,
+        message: `Unsupported compression method: ${compressionMethod}`,
+        fileUrlHost,
+        entryPath
+      }, { status: 500 });
+    }
+    
+    const elapsed = Date.now() - startTime;
+    
+    // PHASE 5: Return response based on type
+    stage = 'build_response';
     
     if (responseType === 'text') {
-      const writer = new TextWriter();
-      const text = await entry.getData(writer);
-      
-      const elapsed = Date.now() - startTime;
+      const text = new TextDecoder('utf-8').decode(decompressedData);
       const responseBytes = text.length;
       
-      console.log(`[getArchiveEntryRanged] ENTRY_FETCH_OK uncompressedBytes=${uncompressedSize} responseBytes=${responseBytes} ms=${elapsed}`);
+      console.log(`[getArchiveEntryRanged] ENTRY_FETCH_OK text uncompressed=${uncompressedSize} responseBytes=${responseBytes} bytesFetched=${actualCompressedSize} ms=${elapsed}`);
       
       return Response.json({ 
         ok: true,
@@ -182,22 +217,20 @@ Deno.serve(async (req) => {
         content: text,
         filename: entryPath.split('/').pop(),
         stats: { 
-          compressedSize, 
-          uncompressedSize,
+          compressedSize: actualCompressedSize, 
+          uncompressedSize: decompressedData.byteLength,
           responseBytes,
           elapsed, 
-          strategy: 'range',
-          stages: { total: elapsed }
+          strategy: 'range-manual',
+          bytesFetched: actualCompressedSize
         }
       });
     }
-      
+    
     if (responseType === 'json') {
-      const writer = new TextWriter();
-      const text = await entry.getData(writer);
+      const text = new TextDecoder('utf-8').decode(decompressedData);
       const data = JSON.parse(text);
       
-      const elapsed = Date.now() - startTime;
       console.log(`[getArchiveEntryRanged] ENTRY_FETCH_OK json ms=${elapsed}`);
       
       return Response.json({ 
@@ -205,18 +238,16 @@ Deno.serve(async (req) => {
         type: 'json', 
         content: data,
         filename: entryPath.split('/').pop(),
-        stats: { elapsed, strategy: 'range' }
+        stats: { 
+          elapsed, 
+          strategy: 'range-manual',
+          bytesFetched: actualCompressedSize
+        }
       });
     }
     
-    if (responseType === 'base64' || responseType === 'binary') {
-      stage = 'extract_binary';
-      const writer = new BlobWriter();
-      const blob = await entry.getData(writer);
-      
-      const arrayBuffer = await blob.arrayBuffer();
-      const elapsed = Date.now() - startTime;
-      
+    if (responseType === 'binary') {
+      // Return raw binary (no base64)
       const ext = entryPath.split('.').pop().toLowerCase();
       const mimeTypes = {
         'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
@@ -225,16 +256,21 @@ Deno.serve(async (req) => {
       };
       const mime = mimeTypes[ext] || 'application/octet-stream';
       
-      console.log(`[getArchiveEntryRanged] ENTRY_FETCH_OK binary uncompressed=${uncompressedSize} responseBytes=${arrayBuffer.byteLength} ms=${elapsed}`);
+      console.log(`[getArchiveEntryRanged] ENTRY_FETCH_OK binary uncompressed=${uncompressedSize} mime=${mime} bytesFetched=${actualCompressedSize} ms=${elapsed}`);
       
-      // Return raw binary (no base64 encoding)
-      return new Response(arrayBuffer, {
+      return new Response(decompressedData, {
         status: 200,
         headers: {
           'Content-Type': mime,
-          'Content-Length': arrayBuffer.byteLength.toString(),
+          'Content-Length': decompressedData.byteLength.toString(),
           'Content-Disposition': `inline; filename="${entryPath.split('/').pop()}"`,
-          'X-Stats': JSON.stringify({ elapsed, strategy: 'range', compressedSize, uncompressedSize })
+          'X-Stats': JSON.stringify({ 
+            elapsed, 
+            strategy: 'range-manual', 
+            compressedSize: actualCompressedSize,
+            uncompressedSize: decompressedData.byteLength,
+            bytesFetched: actualCompressedSize
+          })
         }
       });
     }
@@ -249,7 +285,7 @@ Deno.serve(async (req) => {
     
   } catch (error) {
     const elapsed = Date.now() - startTime;
-    const fileUrlHost = error.zipUrl ? new URL(error.zipUrl).hostname : 'unknown';
+    const fileUrlHost = 'unknown';
     
     console.error(`[getArchiveEntryRanged] ENTRY_FETCH_ERROR stage=${stage} error=${error.message} ms=${elapsed}`);
     console.error(`[getArchiveEntryRanged] Stack:`, error.stack);

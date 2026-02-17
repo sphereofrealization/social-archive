@@ -237,6 +237,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                 const batchResp = await base44.functions.invoke('getArchiveEntriesBatch', {
                   zipUrl: archiveUrl,
                   paths: batch,
+                  entriesByPath: data?.entriesByPath || {},
                   responseType: 'text'
                 });
 
@@ -306,15 +307,46 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   }
 
                   } catch (batchErr) {
-                  const errorData = batchErr.response?.data;
-                  const errorMsg = errorData?.ok === false 
-                    ? `stage=${errorData.stage} message=${errorData.message}` 
-                    : batchErr.message;
-                  addLog(sectionName, 'BATCH_FATAL', `Batch ${Math.floor(i/batchSize) + 1} failed: ${errorMsg}`, 'error');
+                    const errorData = batchErr.response?.data;
+                    const status = batchErr.response?.status || 'none';
+                    const errorMsg = errorData?.ok === false 
+                      ? `stage=${errorData.stage} message=${errorData.message}` 
+                      : batchErr.message;
+                    addLog(sectionName, 'BATCH_FATAL', `Batch ${Math.floor(i/batchSize) + 1} failed: status=${status} ${errorMsg}`, 'error');
 
-                  if (errorData) {
-                    console.error('[FacebookViewer] Batch error details:', errorData);
-                  }
+                    console.error('[FacebookViewer] Batch error details:', {
+                      status,
+                      errorData,
+                      batchPaths: batch,
+                      responseHeaders: batchErr.response?.headers
+                    });
+
+                    // On 502, retry with batchSize=1 (one file at a time)
+                    if (status === 502 && batchSize > 1) {
+                      addLog(sectionName, 'BATCH_RETRY', `502 detected - retrying batch with size=1...`, 'warn');
+
+                      for (const singlePath of batch) {
+                        try {
+                          await new Promise(r => setTimeout(r, 1000)); // 1s delay
+
+                          const singleResp = await base44.functions.invoke('getArchiveEntriesBatch', {
+                            zipUrl: archiveUrl,
+                            paths: [singlePath],
+                            entriesByPath: data?.entriesByPath || {},
+                            responseType: 'text'
+                          });
+
+                          if (singleResp.data?.results?.[singlePath]) {
+                            const result = await parsePostsFromHtml(singleResp.data.results[singlePath], singlePath);
+                            // ... resolve media refs ...
+                            allPosts.push(...result.items || []);
+                            addLog(sectionName, 'BATCH_RETRY_OK', `Recovered ${singlePath}`, 'success');
+                          }
+                        } catch (retryErr) {
+                          addLog(sectionName, 'BATCH_RETRY_FAIL', `${singlePath}: ${retryErr.message}`, 'error');
+                        }
+                      }
+                    }
                   }
 
                   addLog(sectionName, 'PROGRESS', `Processed ${Math.min(i + batchSize, htmlFiles.length)}/${htmlFiles.length} files → ${allPosts.length} total posts`);

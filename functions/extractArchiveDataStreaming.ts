@@ -380,7 +380,20 @@ Deno.serve(async (req) => {
         if (!fileName.endsWith('/')) {
           const pathLower = fileName.toLowerCase();
           const ext = fileName.split('.').pop()?.toLowerCase() || '';
-          const entry = { path: fileName, size: uncompressedSize, name: fileName.split('/').pop(), ext };
+          const compressionMethod = entryView.getUint16(10, true); // compression method
+          const compressedSize = entryView.getUint32(20, true); // compressed size
+          const localHeaderOffset = entryView.getUint32(42, true); // local file header offset
+          
+          const entry = { 
+            path: fileName, 
+            size: uncompressedSize, 
+            name: fileName.split('/').pop(), 
+            ext,
+            localHeaderOffset,
+            compressedSize,
+            uncompressedSize,
+            compressionMethod
+          };
           
           fileIndex.allPaths.push(fileName);
           
@@ -520,6 +533,42 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
+    // Build entriesByPath map for range-based access
+    const entriesByPath = {};
+    for (const path of fileIndex.allPaths) {
+      // Find the entry in any of the categorized arrays
+      let foundEntry = null;
+      
+      // Check all arrays
+      const allEntries = [
+        ...fileIndex.postsHtml, ...fileIndex.postsJson,
+        ...fileIndex.friendsHtml, ...fileIndex.friendsJson,
+        ...fileIndex.commentsHtml, ...fileIndex.commentsJson,
+        ...fileIndex.likesHtml, ...fileIndex.likesJson,
+        ...fileIndex.groupsHtml, ...fileIndex.groupsJson,
+        ...fileIndex.reviewsHtml, ...fileIndex.reviewsJson,
+        ...fileIndex.marketplaceHtml, ...fileIndex.marketplaceJson,
+        ...fileIndex.eventsHtml, ...fileIndex.eventsJson,
+        ...fileIndex.reelsHtml, ...fileIndex.reelsJson,
+        ...fileIndex.checkinsHtml, ...fileIndex.checkinsJson,
+        ...fileIndex.mediaAll,
+        ...fileIndex.otherHtml
+      ];
+      
+      foundEntry = allEntries.find(e => e.path === path);
+      
+      if (foundEntry && foundEntry.localHeaderOffset !== undefined) {
+        entriesByPath[path] = {
+          localHeaderOffset: foundEntry.localHeaderOffset,
+          compressedSize: foundEntry.compressedSize,
+          uncompressedSize: foundEntry.uncompressedSize,
+          compressionMethod: foundEntry.compressionMethod
+        };
+      }
+    }
+    
+    console.log('[extractArchiveDataStreaming] Built entriesByPath map:', Object.keys(entriesByPath).length, 'entries');
+
     // Return full index with all categories
     const lengths = {
       photos: fileIndex.photos.length,
@@ -559,6 +608,7 @@ Deno.serve(async (req) => {
       entriesParsed: entriesProcessed,
       eocdFound: debug.eocdFound,
       rootPrefix: rootPrefix,
+      entriesByPath,
       indexKeys: Object.keys(fileIndex).filter(k => !k.startsWith('_') && k !== 'allPaths' && k !== 'messageThreads'),
       countsKeys: Object.keys({
         photos: fileIndex.photos.length,

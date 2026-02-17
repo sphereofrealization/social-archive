@@ -1,9 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { BlobReader, BlobWriter, ZipReader, HttpRangeReader, TextWriter } from 'npm:@zip.js/zip.js@2.7.34';
+import { inflateRaw } from 'node:zlib';
+import { promisify } from 'node:util';
+import { gzip } from 'node:zlib';
 
-// Shared cache with getArchiveEntryRanged
-const centralDirCache = new Map();
-const CACHE_TTL_MS = 30 * 60 * 1000;
+const inflateRawAsync = promisify(inflateRaw);
+const gzipAsync = promisify(gzip);
+
+const MAX_TOTAL_UNCOMPRESSED_BYTES = 5 * 1024 * 1024; // 5MB safety limit
+const DEFAULT_BATCH_SIZE = 1; // Start conservatively
 
 Deno.serve(async (req) => {
   const startTime = Date.now();
@@ -20,7 +24,7 @@ Deno.serve(async (req) => {
 
     stage = 'parse_body';
     const body = await req.json();
-    const { zipUrl, paths, responseType = 'text' } = body;
+    const { zipUrl, paths, entriesByPath, responseType = 'text' } = body;
     
     const fileUrlHost = new URL(zipUrl).hostname;
     const batchCount = paths?.length || 0;
@@ -37,87 +41,111 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
     
-    if (paths.length > 50) {
+    if (!entriesByPath) {
+      return Response.json({
+        ok: false,
+        stage,
+        message: 'Missing entriesByPath metadata',
+        fileUrlHost,
+        batchCount
+      }, { status: 400 });
+    }
+    
+    if (paths.length > 10) {
       return Response.json({ 
         ok: false, 
         stage, 
-        message: 'Maximum 50 paths per batch',
+        message: 'Maximum 10 paths per batch (safety limit)',
         fileUrlHost,
         batchCount: paths.length 
       }, { status: 400 });
     }
 
-    // Get or build central directory (ONCE per request)
-    stage = 'get_central_dir';
-    let centralDir = centralDirCache.get(zipUrl);
-    let zipReader = null;
-    
-    if (!centralDir || Date.now() - centralDir.timestamp > CACHE_TTL_MS) {
-      stage = 'build_central_dir';
-      console.log(`[getArchiveEntriesBatch] Building central directory for ${zipUrl}...`);
-      
-      const cdStartTime = Date.now();
-      
-      // Use HttpRangeReader for range-based access
-      const httpReader = new HttpRangeReader(zipUrl);
-      zipReader = new ZipReader(httpReader);
-      
-      const entries = await zipReader.getEntries();
-      
-      const entryMap = new Map();
-      entries.forEach(entry => {
-        entryMap.set(entry.filename, entry);
-      });
-      
-      centralDir = {
-        entryMap,
-        timestamp: Date.now(),
-        entryCount: entries.length
-      };
-      
-      centralDirCache.set(zipUrl, centralDir);
-      
-      const cdElapsed = Date.now() - cdStartTime;
-      console.log(`[getArchiveEntriesBatch] Central directory built: ${entries.length} entries in ${cdElapsed}ms`);
-    } else {
-      console.log(`[getArchiveEntriesBatch] Using cached central directory (${centralDir.entryMap.size} entries)`);
-    }
-
-    // Extract all requested entries (sequentially, no internal concurrency)
+    // Extract all requested entries sequentially
     stage = 'extract_entries';
     const results = {};
     const errors = {};
     let successCount = 0;
     let errorCount = 0;
     let totalUncompressedBytes = 0;
-    let totalResponseBytes = 0;
+    let totalCompressedBytesFetched = 0;
     
     for (const entryPath of paths) {
       try {
-        const entry = centralDir.entryMap.get(entryPath);
+        const entryMeta = entriesByPath[entryPath];
         
-        if (!entry) {
-          errors[entryPath] = 'Entry not found';
+        if (!entryMeta) {
+          errors[entryPath] = 'Entry not found in manifest';
           errorCount++;
           continue;
         }
         
-        const uncompressedSize = entry.uncompressedSize || 0;
-        totalUncompressedBytes += uncompressedSize;
+        const { localHeaderOffset, compressedSize, uncompressedSize, compressionMethod } = entryMeta;
+        
+        // Safety check: abort if we exceed total uncompressed bytes limit
+        if (totalUncompressedBytes + uncompressedSize > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+          errors[entryPath] = `Skipped: would exceed safety limit (${MAX_TOTAL_UNCOMPRESSED_BYTES} bytes)`;
+          errorCount++;
+          console.log(`[getArchiveEntriesBatch] Safety limit reached at ${totalUncompressedBytes} bytes`);
+          break;
+        }
+        
+        // Fetch local header
+        const localHeaderResp = await fetch(zipUrl, {
+          headers: { 'Range': `bytes=${localHeaderOffset}-${localHeaderOffset + 29}` }
+        });
+        
+        if (!localHeaderResp.ok || localHeaderResp.status !== 206) {
+          errors[entryPath] = `Failed to fetch local header: HTTP ${localHeaderResp.status}`;
+          errorCount++;
+          continue;
+        }
+        
+        const localHeaderBuf = await localHeaderResp.arrayBuffer();
+        const localHeaderView = new DataView(localHeaderBuf);
+        
+        const fileNameLen = localHeaderView.getUint16(26, true);
+        const extraFieldLen = localHeaderView.getUint16(28, true);
+        const dataOffset = localHeaderOffset + 30 + fileNameLen + extraFieldLen;
+        
+        // Fetch compressed data
+        const compressedDataResp = await fetch(zipUrl, {
+          headers: { 'Range': `bytes=${dataOffset}-${dataOffset + compressedSize - 1}` }
+        });
+        
+        if (!compressedDataResp.ok || compressedDataResp.status !== 206) {
+          errors[entryPath] = `Failed to fetch data: HTTP ${compressedDataResp.status}`;
+          errorCount++;
+          continue;
+        }
+        
+        const compressedData = await compressedDataResp.arrayBuffer();
+        totalCompressedBytesFetched += compressedData.byteLength;
+        
+        // Decompress
+        let decompressedData;
+        
+        if (compressionMethod === 0) {
+          decompressedData = new Uint8Array(compressedData);
+        } else if (compressionMethod === 8) {
+          decompressedData = await inflateRawAsync(Buffer.from(compressedData));
+        } else {
+          errors[entryPath] = `Unsupported compression method: ${compressionMethod}`;
+          errorCount++;
+          continue;
+        }
+        
+        totalUncompressedBytes += decompressedData.byteLength;
         
         if (responseType === 'text') {
-          const writer = new TextWriter();
-          const text = await entry.getData(writer);
+          const text = new TextDecoder('utf-8').decode(decompressedData);
           results[entryPath] = text;
-          totalResponseBytes += text.length;
           successCount++;
           
-          console.log(`[getArchiveEntriesBatch] Extracted ${entryPath}: uncompressed=${uncompressedSize} textLen=${text.length}`);
+          console.log(`[getArchiveEntriesBatch] Extracted ${entryPath}: compressed=${compressedData.byteLength} uncompressed=${decompressedData.byteLength} textLen=${text.length}`);
         } else if (responseType === 'json') {
-          const writer = new TextWriter();
-          const text = await entry.getData(writer);
+          const text = new TextDecoder('utf-8').decode(decompressedData);
           results[entryPath] = JSON.parse(text);
-          totalResponseBytes += text.length;
           successCount++;
         } else {
           errors[entryPath] = 'Unsupported responseType for batch (use text or json)';
@@ -131,15 +159,8 @@ Deno.serve(async (req) => {
       }
     }
     
-    // Close ZipReader if we opened it
-    if (zipReader) {
-      await zipReader.close();
-    }
-    
     const elapsed = Date.now() - startTime;
-    console.log(`[getArchiveEntriesBatch] BATCH_FETCH_OK success=${successCount} errors=${errorCount} totalUncompressedBytes=${totalUncompressedBytes} totalResponseBytes=${totalResponseBytes} ms=${elapsed}`);
-    
-    return Response.json({
+    const responsePayload = {
       ok: true,
       results,
       errors: Object.keys(errors).length > 0 ? errors : undefined,
@@ -148,15 +169,35 @@ Deno.serve(async (req) => {
         success: successCount,
         errors: errorCount,
         totalUncompressedBytes,
-        totalResponseBytes,
+        totalCompressedBytesFetched,
         elapsed,
-        strategy: 'range-batch'
+        strategy: 'range-manual-batch'
       }
-    });
+    };
+    
+    // Gzip response if large
+    const responseJson = JSON.stringify(responsePayload);
+    const shouldGzip = responseJson.length > 50000;
+    
+    console.log(`[getArchiveEntriesBatch] BATCH_FETCH_OK success=${successCount} errors=${errorCount} totalUncompressedBytes=${totalUncompressedBytes} totalCompressedBytesFetched=${totalCompressedBytesFetched} responseBytes=${responseJson.length} gzipped=${shouldGzip} ms=${elapsed}`);
+    
+    if (shouldGzip) {
+      const gzipped = await gzipAsync(Buffer.from(responseJson));
+      return new Response(gzipped, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Encoding': 'gzip',
+          'Content-Length': gzipped.byteLength.toString()
+        }
+      });
+    }
+    
+    return Response.json(responsePayload);
     
   } catch (error) {
     const elapsed = Date.now() - startTime;
-    const fileUrlHost = error.zipUrl ? new URL(error.zipUrl).hostname : 'unknown';
+    const fileUrlHost = 'unknown';
     
     console.error(`[getArchiveEntriesBatch] BATCH_FETCH_ERROR stage=${stage} error=${error.message} ms=${elapsed}`);
     console.error(`[getArchiveEntriesBatch] Stack:`, error.stack);
