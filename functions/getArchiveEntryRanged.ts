@@ -1,20 +1,16 @@
-// CRITICAL: Ensure Buffer exists BEFORE any imports that might need it
-import { Buffer as NodeBuffer } from "https://deno.land/std@0.224.0/node/buffer.ts";
-if (typeof globalThis.Buffer === 'undefined') {
-  globalThis.Buffer = NodeBuffer;
-}
-
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw } from 'npm:fflate';
 
 const VERSION = '2026-02-17T03:30:00Z';
 
-// Verify Buffer is available
-console.log('[BUFFER_CHECK]', {
-  bufferDefined: typeof Buffer !== 'undefined',
-  globalBufferDefined: typeof globalThis.Buffer !== 'undefined',
+// Runtime check
+const runtimeInfo = {
+  bufferType: typeof Buffer,
+  bufferDefined: typeof Buffer !== "undefined",
+  hasTextDecoder: typeof TextDecoder !== "undefined",
   version: VERSION
-});
+};
+console.log(`[RANGE_RUNTIME]`, runtimeInfo);
 
 // Cache for range probe results (by URL)
 const rangeProbeCache = new Map();
