@@ -49,9 +49,31 @@ function getEntryPath(mediaItem) {
   return null;
 }
 
-export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "", debugMode = false }) {
+export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "", debugMode = false, archive = null }) {
   // Normalize data on mount
   const normalized = normalizeArchiveAnalysis(data);
+  
+  // Load manifest if archive is materialized
+  const [manifest, setManifest] = useState(null);
+  
+  React.useEffect(() => {
+    const loadManifest = async () => {
+      if (archive?.materialization_status === 'done' && archive?.manifest_url) {
+        try {
+          const response = await fetch(archive.manifest_url);
+          const manifestData = await response.json();
+          setManifest(manifestData);
+          console.log('[MANIFEST_LOADED]', {
+            entriesCount: manifestData.entries?.length,
+            materializedCount: manifestData.totals?.materializedCount
+          });
+        } catch (err) {
+          console.error('[MANIFEST_LOAD_ERROR]', err);
+        }
+      }
+    };
+    loadManifest();
+  }, [archive]);
   
   // Build knownMediaPathSet from ALL media entries (not just gallery)
   const knownMediaPathSet = React.useMemo(() => {
@@ -224,6 +246,38 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
     }));
   };
 
+  // Helper to fetch from materialized URL or fallback to ZIP
+  const fetchEntryContent = async (entryPath, responseType = 'text') => {
+    // Try manifest first
+    if (manifest?.entries) {
+      const entry = manifest.entries.find(e => e.entryPath === entryPath);
+      if (entry?.url) {
+        console.log(`[FETCH_SOURCE] ${entryPath} source=materializedUrl`);
+        const response = await fetch(entry.url);
+        if (responseType === 'text') {
+          return { content: await response.text() };
+        } else if (responseType === 'json') {
+          return { content: await response.json() };
+        }
+      }
+    }
+
+    // Fallback to ZIP extraction (old method)
+    console.log(`[FETCH_SOURCE] ${entryPath} source=zipRange`);
+    const funcName = isLargeArchive ? 'getArchiveEntryRanged' : 'getArchiveEntry';
+    const params = {
+      zipUrl: archiveUrl,
+      entryPath,
+      responseType
+    };
+
+    if (isLargeArchive) {
+      params.entriesByPath = data?.index?.entriesByPath || data?.entriesByPath || {};
+    }
+
+    return await base44.functions.invoke(funcName, params);
+  };
+
   // Load section data on demand
   const loadSection = async (sectionName) => {
     if (loadedSections[sectionName]) return;
@@ -249,24 +303,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
 
         if (jsonFiles.length > 0) {
           const filePath = jsonFiles[0];
-          const funcName = isLargeArchive ? 'getArchiveEntryRanged' : 'getArchiveEntry';
-          addLog(sectionName, 'FETCH_JSON', `Using ${funcName} for JSON file`, 'info');
+          addLog(sectionName, 'FETCH_JSON', `Fetching JSON file (manifest=${!!manifest})`, 'info');
 
-          const params = {
-            zipUrl: archiveUrl,
-            entryPath: filePath,
-            responseType: 'json'
-          };
-
-          if (isLargeArchive) {
-            params.entriesByPath = data?.index?.entriesByPath || data?.entriesByPath || {};
-            
-            if (Object.keys(params.entriesByPath).length === 0) {
-              throw new Error('Range access unavailable: entriesByPath metadata missing');
-            }
-          }
-
-          const response = await base44.functions.invoke(funcName, params);
+          const response = await fetchEntryContent(filePath, 'json');
           const result = parseJsonGeneric(response.data.content, filePath);
           parsedData = result.items.slice(0, 50);
           addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
@@ -432,8 +471,8 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                             responseType: 'text'
                           });
 
-                          if (singleResp.data?.results?.[singlePath]) {
-                            const result = await parsePostsFromHtml(singleResp.data.results[singlePath], singlePath);
+                          if (singleResp?.content) {
+                            const result = await parsePostsFromHtml(singleResp.content, singlePath);
                             // ... resolve media refs ...
                             allPosts.push(...result.items || []);
                             addLog(sectionName, 'BATCH_RETRY_OK', `Recovered ${singlePath}`, 'success');
