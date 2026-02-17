@@ -1,8 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { inflateRaw } from 'node:zlib';
-import { promisify } from 'node:util';
-
-const inflateRawAsync = promisify(inflateRaw);
+import { inflateRaw } from 'npm:fflate';
 
 // Cache for range probe results (by URL)
 const rangeProbeCache = new Map();
@@ -187,8 +184,9 @@ Deno.serve(async (req) => {
       decompressedData = new Uint8Array(compressedData);
       console.log(`[getArchiveEntryRanged] No decompression needed (stored)`);
     } else if (compressionMethod === 8) {
-      // Deflate
-      decompressedData = await inflateRawAsync(Buffer.from(compressedData));
+      // Deflate using fflate (pure JS, no Buffer needed)
+      const compressedU8 = new Uint8Array(compressedData);
+      decompressedData = inflateRaw(compressedU8);
       console.log(`[getArchiveEntryRanged] Decompressed: ${decompressedData.byteLength} bytes`);
     } else {
       return Response.json({
@@ -294,9 +292,13 @@ Deno.serve(async (req) => {
       ok: false,
       stage,
       message: error.message || 'Unknown error',
-      stack: error.stack,
+      stack: error.stack?.slice(0, 500),
       fileUrlHost,
-      elapsed
+      elapsed,
+      runtime: {
+        buffer: typeof Buffer !== 'undefined',
+        deno: typeof Deno !== 'undefined'
+      }
     }, { status: 500 });
   }
 });

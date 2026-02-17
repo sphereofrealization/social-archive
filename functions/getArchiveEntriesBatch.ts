@@ -1,10 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import { inflateRaw } from 'node:zlib';
-import { promisify } from 'node:util';
-import { gzip } from 'node:zlib';
-
-const inflateRawAsync = promisify(inflateRaw);
-const gzipAsync = promisify(gzip);
+import { inflateRaw, gzipSync } from 'npm:fflate';
 
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 5 * 1024 * 1024; // 5MB safety limit
 const DEFAULT_BATCH_SIZE = 1; // Start conservatively
@@ -128,7 +123,8 @@ Deno.serve(async (req) => {
         if (compressionMethod === 0) {
           decompressedData = new Uint8Array(compressedData);
         } else if (compressionMethod === 8) {
-          decompressedData = await inflateRawAsync(Buffer.from(compressedData));
+          const compressedU8 = new Uint8Array(compressedData);
+          decompressedData = inflateRaw(compressedU8);
         } else {
           errors[entryPath] = `Unsupported compression method: ${compressionMethod}`;
           errorCount++;
@@ -182,7 +178,8 @@ Deno.serve(async (req) => {
     console.log(`[getArchiveEntriesBatch] BATCH_FETCH_OK success=${successCount} errors=${errorCount} totalUncompressedBytes=${totalUncompressedBytes} totalCompressedBytesFetched=${totalCompressedBytesFetched} responseBytes=${responseJson.length} gzipped=${shouldGzip} ms=${elapsed}`);
     
     if (shouldGzip) {
-      const gzipped = await gzipAsync(Buffer.from(responseJson));
+      const encoder = new TextEncoder();
+      const gzipped = gzipSync(encoder.encode(responseJson));
       return new Response(gzipped, {
         status: 200,
         headers: {
@@ -206,10 +203,14 @@ Deno.serve(async (req) => {
       ok: false,
       stage,
       message: error.message || 'Unknown error',
-      stack: error.stack,
+      stack: error.stack?.slice(0, 500),
       fileUrlHost,
       batchCount: 0,
-      elapsed
+      elapsed,
+      runtime: {
+        buffer: typeof Buffer !== 'undefined',
+        deno: typeof Deno !== 'undefined'
+      }
     }, { status: 500 });
   }
 });
