@@ -1,8 +1,8 @@
-import './_polyfills.js';
+import './_polyfills.ts';
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw, gzipSync } from 'npm:fflate';
 
-const VERSION = '2026-02-17T00:00:00Z';
+const VERSION = '2026-02-17T01:00:00Z';
 
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 5 * 1024 * 1024; // 5MB safety limit
 const DEFAULT_BATCH_SIZE = 1; // Start conservatively
@@ -13,8 +13,9 @@ Deno.serve(async (req) => {
   
   // Runtime check
   const runtimeInfo = {
+    bufferType: typeof Buffer,
     bufferDefined: typeof Buffer !== "undefined",
-    textDecoderDefined: typeof TextDecoder !== "undefined",
+    hasTextDecoder: typeof TextDecoder !== "undefined",
     inflateRawDefined: typeof inflateRaw !== "undefined",
     gzipSyncDefined: typeof gzipSync !== "undefined",
     version: VERSION
@@ -222,8 +223,10 @@ Deno.serve(async (req) => {
       batchCount: 0,
       elapsed,
       runtime: {
+        bufferType: typeof Buffer,
         bufferDefined: typeof Buffer !== 'undefined',
         bufferConstructor: typeof Buffer !== 'undefined' ? Buffer.constructor.name : 'N/A',
+        hasTextDecoder: typeof TextDecoder !== 'undefined',
         deno: typeof Deno !== 'undefined',
         version: VERSION
       }

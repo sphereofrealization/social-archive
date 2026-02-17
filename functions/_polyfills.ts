@@ -1,5 +1,6 @@
+
 // Polyfill Buffer for Edge/Deno runtime
-import { Buffer } from "npm:buffer";
+import { Buffer } from "npm:buffer@6.0.3";
 
 if (!globalThis.Buffer) {
   globalThis.Buffer = Buffer;

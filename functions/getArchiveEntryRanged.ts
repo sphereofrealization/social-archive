@@ -1,8 +1,8 @@
-import './_polyfills.js';
+import './_polyfills.ts';
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw } from 'npm:fflate';
 
-const VERSION = '2026-02-17T00:00:00Z';
+const VERSION = '2026-02-17T01:00:00Z';
 
 // Cache for range probe results (by URL)
 const rangeProbeCache = new Map();
@@ -48,8 +48,9 @@ Deno.serve(async (req) => {
   
   // Runtime check
   const runtimeInfo = {
+    bufferType: typeof Buffer,
     bufferDefined: typeof Buffer !== "undefined",
-    textDecoderDefined: typeof TextDecoder !== "undefined",
+    hasTextDecoder: typeof TextDecoder !== "undefined",
     inflateRawDefined: typeof inflateRaw !== "undefined",
     version: VERSION
   };
@@ -309,8 +310,10 @@ Deno.serve(async (req) => {
       fileUrlHost,
       elapsed,
       runtime: {
+        bufferType: typeof Buffer,
         bufferDefined: typeof Buffer !== 'undefined',
         bufferConstructor: typeof Buffer !== 'undefined' ? Buffer.constructor.name : 'N/A',
+        hasTextDecoder: typeof TextDecoder !== 'undefined',
         deno: typeof Deno !== 'undefined',
         version: VERSION
       }
