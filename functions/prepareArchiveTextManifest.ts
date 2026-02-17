@@ -1,6 +1,7 @@
-import { inflateRaw } from 'npm:fflate';
+import { inflateRaw } from 'npm:fflate@0.8.2';
+import { createHmac } from 'node:crypto';
 
-const VERSION = '2026-02-17T07:00:00Z';
+const VERSION = '2026-02-17T08:00:00Z';
 const MAX_UNCOMPRESSED_BYTES_PER_ENTRY = 50 * 1024 * 1024; // 50MB
 const MAX_CONCURRENCY = 2;
 const DREAMHOST_ENDPOINT = Deno.env.get('DREAMHOST_ENDPOINT');
@@ -16,80 +17,66 @@ async function authenticateUser(req) {
   return token ? { email: 'user@app.local' } : null;
 }
 
-// S3 signature helper
-async function signS3Request(method, path, body = null) {
-  const encoder = new TextEncoder();
-  const date = new Date().toISOString().replace(/[:\-]|\.\d{3}/g, '').slice(0, 15) + 'Z';
-  const dateStamp = date.slice(0, 8);
-  
-  const canonicalUri = path;
-  const canonicalQueryString = '';
-  const canonicalHeaders = `host:${DREAMHOST_ENDPOINT}\nx-amz-date:${date}\n`;
-  const signedHeaders = 'host;x-amz-date';
-  
-  const payloadHash = body ? 
-    Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(body))))
-      .map(b => b.toString(16).padStart(2, '0')).join('') : 
-    'UNSIGNED-PAYLOAD';
-  
-  const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQueryString}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
-  
-  const canonicalRequestHash = Array.from(new Uint8Array(
-    await crypto.subtle.digest('SHA-256', encoder.encode(canonicalRequest))
-  )).map(b => b.toString(16).padStart(2, '0')).join('');
-  
-  const credentialScope = `${dateStamp}/us-east-1/s3/aws4_request`;
-  const stringToSign = `AWS4-HMAC-SHA256\n${date}\n${credentialScope}\n${canonicalRequestHash}`;
-  
-  // Signing key derivation
-  const kDate = await crypto.subtle.importKey(
-    'raw', encoder.encode(`AWS4${DREAMHOST_SECRET_KEY}`), 
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-  );
-  const kDateSig = await crypto.subtle.sign('HMAC', kDate, encoder.encode(dateStamp));
-  
-  const kRegion = await crypto.subtle.importKey('raw', kDateSig, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const kRegionSig = await crypto.subtle.sign('HMAC', kRegion, encoder.encode('us-east-1'));
-  
-  const kService = await crypto.subtle.importKey('raw', kRegionSig, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const kServiceSig = await crypto.subtle.sign('HMAC', kService, encoder.encode('s3'));
-  
-  const kSigning = await crypto.subtle.importKey('raw', kServiceSig, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const signature = Array.from(new Uint8Array(
-    await crypto.subtle.sign('HMAC', kSigning, encoder.encode(stringToSign))
-  )).map(b => b.toString(16).padStart(2, '0')).join('');
-  
-  const authHeader = `AWS4-HMAC-SHA256 Credential=${DREAMHOST_ACCESS_KEY}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-  
-  return {
-    headers: {
-      'Authorization': authHeader,
-      'x-amz-date': date,
-      'Host': DREAMHOST_ENDPOINT
-    }
-  };
+// AWS Signature V4
+function getSignatureKey(key, dateStamp, regionName, serviceName) {
+  const kDate = createHmac('sha256', 'AWS4' + key).update(dateStamp).digest();
+  const kRegion = createHmac('sha256', kDate).update(regionName).digest();
+  const kService = createHmac('sha256', kRegion).update(serviceName).digest();
+  const kSigning = createHmac('sha256', kService).update('aws4_request').digest();
+  return kSigning;
 }
 
-// Upload to S3
+function sha256(data) {
+  const hash = createHmac('sha256', '').update(data).digest('hex');
+  return hash;
+}
+
 async function uploadToS3(key, data, contentType) {
-  const path = `/${DREAMHOST_BUCKET}/${key}`;
-  const { headers } = await signS3Request('PUT', path, data);
+  const region = 'us-east-1';
+  const service = 's3';
+  const host = DREAMHOST_ENDPOINT;
+  const endpoint = `https://${host}/${DREAMHOST_BUCKET}/${key}`;
   
-  const response = await fetch(`https://${DREAMHOST_ENDPOINT}${path}`, {
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.substring(0, 8);
+  
+  const payloadHash = sha256(typeof data === 'string' ? data : new TextDecoder().decode(data));
+  
+  const canonicalUri = `/${DREAMHOST_BUCKET}/${key}`;
+  const canonicalQueryString = '';
+  const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+  
+  const canonicalRequest = `PUT\n${canonicalUri}\n${canonicalQueryString}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  
+  const algorithm = 'AWS4-HMAC-SHA256';
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${sha256(canonicalRequest)}`;
+  
+  const signingKey = getSignatureKey(DREAMHOST_SECRET_KEY, dateStamp, region, service);
+  const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+  
+  const authorizationHeader = `${algorithm} Credential=${DREAMHOST_ACCESS_KEY}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  
+  const response = await fetch(endpoint, {
     method: 'PUT',
     headers: {
-      ...headers,
-      'Content-Type': contentType,
-      'Content-Length': data.byteLength.toString()
+      'Host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': payloadHash,
+      'Authorization': authorizationHeader,
+      'Content-Type': contentType
     },
     body: data
   });
   
   if (!response.ok) {
-    throw new Error(`S3 upload failed: ${response.status} ${await response.text()}`);
+    const errorText = await response.text();
+    throw new Error(`S3 upload failed: ${response.status} ${errorText}`);
   }
   
-  return `https://${DREAMHOST_ENDPOINT}${path}`;
+  return endpoint;
 }
 
 Deno.serve(async (req) => {
@@ -117,13 +104,17 @@ Deno.serve(async (req) => {
     }
     
     const fileUrlHost = new URL(fileUrl).hostname;
-    console.log(`[PREP_START] archiveId=${archiveId} fileUrlHost=${fileUrlHost}`);
+    console.log(`[PREP_START] archiveId=${archiveId} fileUrlHost=${fileUrlHost} version=${VERSION}`);
     
-    // Step 1: Get ZIP metadata by calling existing working extractor
+    // Step 1: Get ZIP metadata via HTTP request to extractArchiveDataStreaming
     stage = 'get_index';
     console.log(`[PREP_INDEX] Fetching archive index...`);
     
-    const indexResp = await fetch(req.url.replace('/prepareArchiveTextManifest', '/extractArchiveDataStreaming'), {
+    // Build the full URL to the extraction endpoint
+    const baseUrl = new URL(req.url);
+    const extractUrl = `${baseUrl.origin}/extractArchiveDataStreaming`;
+    
+    const indexResp = await fetch(extractUrl, {
       method: 'POST',
       headers: {
         'Authorization': req.headers.get('authorization'),
@@ -133,7 +124,8 @@ Deno.serve(async (req) => {
     });
     
     if (!indexResp.ok) {
-      throw new Error(`Failed to fetch index: HTTP ${indexResp.status}`);
+      const errorText = await indexResp.text();
+      throw new Error(`Failed to fetch index: HTTP ${indexResp.status} - ${errorText}`);
     }
     
     const indexData = await indexResp.json();
@@ -192,9 +184,9 @@ Deno.serve(async (req) => {
             return;
           }
           
-          // Fetch local header
+          // Fetch local header to get filename and extra field lengths
           const localHeaderResp = await fetch(fileUrl, {
-            headers: { 'Range': `bytes=${localHeaderOffset}-${localHeaderOffset + 64}` }
+            headers: { 'Range': `bytes=${localHeaderOffset}-${localHeaderOffset + 29}` }
           });
           
           if (localHeaderResp.status !== 206) {
@@ -217,14 +209,14 @@ Deno.serve(async (req) => {
             throw new Error(`Failed to fetch data: HTTP ${compressedDataResp.status}`);
           }
           
-          const compressedData = await compressedDataResp.arrayBuffer();
+          const compressedData = new Uint8Array(await compressedDataResp.arrayBuffer());
           
           // Decompress
           let decompressedData;
           if (compressionMethod === 0) {
-            decompressedData = new Uint8Array(compressedData);
+            decompressedData = compressedData;
           } else if (compressionMethod === 8) {
-            decompressedData = inflateRaw(new Uint8Array(compressedData));
+            decompressedData = inflateRaw(compressedData);
           } else {
             throw new Error(`Unsupported compression method: ${compressionMethod}`);
           }
@@ -283,7 +275,7 @@ Deno.serve(async (req) => {
     const manifestKey = `archives/${archiveId}/manifest.json`;
     const manifestUrl = await uploadToS3(
       manifestKey,
-      new TextEncoder().encode(JSON.stringify(manifest, null, 2)),
+      JSON.stringify(manifest, null, 2),
       'application/json'
     );
     
