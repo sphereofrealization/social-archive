@@ -1,10 +1,11 @@
-// CRITICAL: Import Node globals FIRST to ensure Buffer exists before npm packages load
-import "https://deno.land/std@0.224.0/node/global.ts";
+// CRITICAL: Set up Buffer polyfill BEFORE any npm imports
+import { Buffer } from "https://deno.land/std@0.224.0/node/buffer.ts";
+globalThis.Buffer = Buffer;
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw } from 'npm:fflate';
 
-const VERSION = '2026-02-17T02:30:00Z';
+const VERSION = '2026-02-17T03:00:00Z';
 
 // Cache for range probe results (by URL)
 const rangeProbeCache = new Map();
