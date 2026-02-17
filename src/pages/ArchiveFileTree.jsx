@@ -15,20 +15,49 @@ export default function ArchiveFileTree() {
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [archive, setArchive] = useState(null);
+  const [manifest, setManifest] = useState(null);
   const [fileTree, setFileTree] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState(new Set(["root"]));
   const [openHtmlFiles, setOpenHtmlFiles] = useState([]);
   const [loadingFile, setLoadingFile] = useState(null);
 
   useEffect(() => {
-    loadFileTree();
-  }, [archiveUrl]);
+    loadArchiveAndTree();
+  }, [archiveId, archiveUrl]);
 
-  const loadFileTree = async () => {
+  const loadArchiveAndTree = async () => {
     try {
       setLoading(true);
-      // Request file tree from backend instead of processing on frontend
-      const response = await base44.functions.invoke('getFileTree', { fileUrl: archiveUrl });
+      
+      // Load archive metadata if archiveId provided
+      let archiveData = null;
+      let manifestData = null;
+      
+      if (archiveId) {
+        const archives = await base44.entities.Archive.filter({ id: archiveId });
+        if (archives.length > 0) {
+          archiveData = archives[0];
+          setArchive(archiveData);
+          
+          // Load manifest if available
+          if (archiveData.manifest_url) {
+            try {
+              const manifestResp = await fetch(archiveData.manifest_url);
+              manifestData = await manifestResp.json();
+              setManifest(manifestData);
+            } catch (err) {
+              console.warn('Failed to load manifest:', err);
+            }
+          }
+        }
+      }
+      
+      // Request file tree with manifest if available
+      const response = await base44.functions.invoke('getFileTree', { 
+        fileUrl: archiveUrl,
+        manifestUrl: manifestData ? archiveData.manifest_url : null
+      });
       setFileTree(response.data.tree);
     } catch (err) {
       setError(err.message);
@@ -71,6 +100,26 @@ export default function ArchiveFileTree() {
     
     setLoadingFile(filePath);
     try {
+      // Try manifest first for materialized files
+      if (manifest?.entries) {
+        const entry = manifest.entries.find(e => e.entryPath === filePath);
+        if (entry?.url) {
+          const response = await fetch(entry.url);
+          const content = await response.text();
+          
+          setOpenHtmlFiles(prev => [...prev, { 
+            path: filePath, 
+            content,
+            type: entry.mimeType?.includes('html') ? 'html' : 
+                  entry.mimeType?.includes('json') ? 'json' : 'text',
+            name: filePath.split('/').pop()
+          }]);
+          setLoadingFile(null);
+          return;
+        }
+      }
+      
+      // Fallback to ZIP extraction
       const response = await base44.functions.invoke('getArchiveFile_simple', { 
         fileUrl: archiveUrl,
         filePath 

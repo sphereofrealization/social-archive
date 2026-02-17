@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
-import JSZip from 'npm:jszip@3.10.1';
 
 Deno.serve(async (req) => {
   try {
@@ -11,47 +10,92 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const fileUrl = body.fileUrl;
+    const { fileUrl, manifestUrl } = body;
     
     if (!fileUrl) {
       return Response.json({ error: 'Missing fileUrl parameter' }, { status: 400 });
     }
 
-    console.log("Downloading archive for file tree:", fileUrl);
+    console.log('[getFileTree] Building tree from manifest or index...');
     
-    // Fetch the file from public S3 bucket
-    const response = await fetch(fileUrl);
+    let allPaths = [];
     
-    if (!response.ok) {
-      console.error(`Fetch failed with status ${response.status}`, response.statusText);
-      const errorText = await response.text();
-      console.error("Error response:", errorText);
-      return Response.json({ error: `Failed to fetch file: ${response.status} ${response.statusText}` }, { status: 400 });
+    // Try manifest first (for materialized archives)
+    if (manifestUrl) {
+      try {
+        console.log('[getFileTree] Loading from manifest:', manifestUrl);
+        const manifestResp = await fetch(manifestUrl);
+        const manifest = await manifestResp.json();
+        allPaths = manifest.entries?.map(e => e.entryPath) || [];
+        console.log(`[getFileTree] Loaded ${allPaths.length} paths from manifest`);
+      } catch (err) {
+        console.warn('[getFileTree] Manifest load failed, falling back to index:', err.message);
+      }
     }
     
-    const blob = await response.blob();
-    const zip = await JSZip.loadAsync(blob);
+    // Fallback: fetch archive index
+    if (allPaths.length === 0) {
+      console.log('[getFileTree] Fetching archive index via extractArchiveDataStreaming...');
+      const indexResp = await base44.functions.invoke('extractArchiveDataStreaming', { fileUrl });
+      
+      if (indexResp.data?.index) {
+        const index = indexResp.data.index;
+        
+        // Derive all paths from index
+        const pathSet = new Set();
+        
+        if (index.all && Array.isArray(index.all)) {
+          index.all.forEach(p => pathSet.add(p));
+        }
+        
+        if (index.entriesByPath) {
+          Object.keys(index.entriesByPath).forEach(p => pathSet.add(p));
+        }
+        
+        // Flatten category arrays
+        Object.values(index).forEach(value => {
+          if (Array.isArray(value)) {
+            value.forEach(item => {
+              if (typeof item === 'string') pathSet.add(item);
+              else if (item?.path) pathSet.add(item.path);
+            });
+          } else if (value && typeof value === 'object') {
+            Object.values(value).forEach(subValue => {
+              if (Array.isArray(subValue)) {
+                subValue.forEach(item => {
+                  if (typeof item === 'string') pathSet.add(item);
+                  else if (item?.path) pathSet.add(item.path);
+                });
+              }
+            });
+          }
+        });
+        
+        allPaths = Array.from(pathSet);
+        console.log(`[getFileTree] Derived ${allPaths.length} paths from index`);
+      }
+    }
     
-    // Build file tree
+    if (allPaths.length === 0) {
+      return Response.json({ error: 'No paths found in manifest or index' }, { status: 500 });
+    }
+    
+    // Build tree from paths
     const tree = {};
     
-    for (const [path, file] of Object.entries(zip.files)) {
-      const parts = path.split('/');
+    for (const path of allPaths) {
+      const parts = path.split('/').filter(Boolean);
       let current = tree;
       
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
-        if (!part) continue;
         
         if (i === parts.length - 1) {
           // File
-          if (!file.dir) {
-            current[part] = {
-              type: 'file',
-              size: file._data?.uncompressedSize || 0,
-              path
-            };
-          }
+          current[part] = {
+            type: 'file',
+            path
+          };
         } else {
           // Directory
           if (!current[part]) {
@@ -62,10 +106,11 @@ Deno.serve(async (req) => {
       }
     }
     
+    console.log('[getFileTree] Tree built successfully');
     return Response.json({ tree });
     
   } catch (error) {
-    console.error("Error:", error);
+    console.error('[getFileTree] Error:', error);
     return Response.json({ error: error.message || 'Failed to process file tree' }, { status: 500 });
   }
 });
