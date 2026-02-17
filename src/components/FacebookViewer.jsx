@@ -213,11 +213,17 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           const funcName = isLargeArchive ? 'getArchiveEntryRanged' : 'getArchiveEntry';
           addLog(sectionName, 'FETCH_JSON', `Using ${funcName} for JSON file`, 'info');
 
-          const response = await base44.functions.invoke(funcName, {
+          const params = {
             zipUrl: archiveUrl,
             entryPath: filePath,
             responseType: 'json'
-          });
+          };
+
+          if (isLargeArchive) {
+            params.entriesByPath = data?.entriesByPath || {};
+          }
+
+          const response = await base44.functions.invoke(funcName, params);
           const result = parseJsonGeneric(response.data.content, filePath);
           parsedData = result.items.slice(0, 50);
           addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);
