@@ -1,8 +1,10 @@
-import './_polyfills.ts';
+// CRITICAL: Import Node globals FIRST to ensure Buffer exists before npm packages load
+import "https://deno.land/std@0.224.0/node/global.ts";
+
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw } from 'npm:fflate';
 
-const VERSION = '2026-02-17T02:00:00Z';
+const VERSION = '2026-02-17T02:30:00Z';
 
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 5 * 1024 * 1024; // 5MB safety limit
 const DEFAULT_BATCH_SIZE = 1; // Start conservatively
