@@ -43,6 +43,9 @@ Deno.serve(async (req) => {
   const startTime = Date.now();
   let stage = 'init';
   
+  // Runtime check
+  console.log(`[RANGE_RUNTIME] bufferDefined=${typeof Buffer !== "undefined"} textDecoderDefined=${typeof TextDecoder !== "undefined"} inflateRawDefined=${typeof inflateRaw !== "undefined"}`);
+  
   try {
     stage = 'auth';
     const base44 = createClientFromRequest(req);
