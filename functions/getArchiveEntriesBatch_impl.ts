@@ -1,6 +1,34 @@
-import { inflateRaw } from 'npm:fflate';
+const VERSION = '2026-02-17T08:30:00Z';
 
-const VERSION = '2026-02-17T06:00:00Z';
+// Native decompression helper using Web Streams API (no Node.js dependencies)
+async function inflateRawData(compressedU8) {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(compressedU8);
+      controller.close();
+    }
+  });
+  
+  const decompressedStream = stream.pipeThrough(new DecompressionStream('deflate-raw'));
+  const chunks = [];
+  
+  const reader = decompressedStream.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  
+  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  
+  return result;
+}
 
 // Minimal SDK shim to avoid Buffer usage in @base44/sdk
 async function authenticateUser(req) {
@@ -27,7 +55,7 @@ export default async function handler(req) {
     bufferType: bufferExists ? typeof globalThis.Buffer : "undefined",
     bufferDefined: bufferExists,
     hasTextDecoder: typeof TextDecoder !== "undefined",
-    inflateRawDefined: typeof inflateRaw !== "undefined",
+    hasDecompressionStream: typeof DecompressionStream !== "undefined",
     version: VERSION
   };
   console.log(`[RANGE_RUNTIME]`, runtimeInfo);
@@ -153,7 +181,7 @@ export default async function handler(req) {
           decompressedData = new Uint8Array(compressedData);
         } else if (compressionMethod === 8) {
           const compressedU8 = new Uint8Array(compressedData);
-          decompressedData = inflateRaw(compressedU8);
+          decompressedData = await inflateRawData(compressedU8);
         } else {
           errors[entryPath] = `Unsupported compression method: ${compressionMethod}`;
           errorCount++;
