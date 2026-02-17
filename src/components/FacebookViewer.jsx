@@ -302,11 +302,19 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   }
 
                   if (batchResp.data?.stats) {
-                  addLog(sectionName, 'BATCH_STATS', `success=${batchResp.data.stats.success} errors=${batchResp.data.stats.errors} ms=${batchResp.data.stats.elapsed}`, 'info');
+                    addLog(sectionName, 'BATCH_STATS', `success=${batchResp.data.stats.success} errors=${batchResp.data.stats.errors} uncompressed=${batchResp.data.stats.totalUncompressedBytes} response=${batchResp.data.stats.totalResponseBytes} ms=${batchResp.data.stats.elapsed}`, 'info');
                   }
 
                   } catch (batchErr) {
-                  addLog(sectionName, 'BATCH_FATAL', `Batch ${Math.floor(i/batchSize) + 1} failed: ${batchErr.message}`, 'error');
+                  const errorData = batchErr.response?.data;
+                  const errorMsg = errorData?.ok === false 
+                    ? `stage=${errorData.stage} message=${errorData.message}` 
+                    : batchErr.message;
+                  addLog(sectionName, 'BATCH_FATAL', `Batch ${Math.floor(i/batchSize) + 1} failed: ${errorMsg}`, 'error');
+
+                  if (errorData) {
+                    console.error('[FacebookViewer] Batch error details:', errorData);
+                  }
                   }
 
                   addLog(sectionName, 'PROGRESS', `Processed ${Math.min(i + batchSize, htmlFiles.length)}/${htmlFiles.length} files → ${allPosts.length} total posts`);
