@@ -1,5 +1,8 @@
+import './_polyfills.js';
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw } from 'npm:fflate';
+
+const VERSION = '2026-02-17T00:00:00Z';
 
 // Cache for range probe results (by URL)
 const rangeProbeCache = new Map();
@@ -44,7 +47,13 @@ Deno.serve(async (req) => {
   let stage = 'init';
   
   // Runtime check
-  console.log(`[RANGE_RUNTIME] bufferDefined=${typeof Buffer !== "undefined"} textDecoderDefined=${typeof TextDecoder !== "undefined"} inflateRawDefined=${typeof inflateRaw !== "undefined"}`);
+  const runtimeInfo = {
+    bufferDefined: typeof Buffer !== "undefined",
+    textDecoderDefined: typeof TextDecoder !== "undefined",
+    inflateRawDefined: typeof inflateRaw !== "undefined",
+    version: VERSION
+  };
+  console.log(`[RANGE_RUNTIME]`, runtimeInfo);
   
   try {
     stage = 'auth';
@@ -224,7 +233,8 @@ Deno.serve(async (req) => {
           elapsed, 
           strategy: 'range-manual',
           bytesFetched: actualCompressedSize
-        }
+        },
+        runtime: runtimeInfo
       });
     }
     
@@ -295,12 +305,14 @@ Deno.serve(async (req) => {
       ok: false,
       stage,
       message: error.message || 'Unknown error',
-      stack: error.stack?.slice(0, 500),
+      stack: error.stack,
       fileUrlHost,
       elapsed,
       runtime: {
-        buffer: typeof Buffer !== 'undefined',
-        deno: typeof Deno !== 'undefined'
+        bufferDefined: typeof Buffer !== 'undefined',
+        bufferConstructor: typeof Buffer !== 'undefined' ? Buffer.constructor.name : 'N/A',
+        deno: typeof Deno !== 'undefined',
+        version: VERSION
       }
     }, { status: 500 });
   }

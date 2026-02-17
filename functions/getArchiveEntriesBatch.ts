@@ -1,5 +1,8 @@
+import './_polyfills.js';
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw, gzipSync } from 'npm:fflate';
+
+const VERSION = '2026-02-17T00:00:00Z';
 
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 5 * 1024 * 1024; // 5MB safety limit
 const DEFAULT_BATCH_SIZE = 1; // Start conservatively
@@ -9,7 +12,14 @@ Deno.serve(async (req) => {
   let stage = 'init';
   
   // Runtime check
-  console.log(`[RANGE_RUNTIME] bufferDefined=${typeof Buffer !== "undefined"} textDecoderDefined=${typeof TextDecoder !== "undefined"} inflateRawDefined=${typeof inflateRaw !== "undefined"} gzipSyncDefined=${typeof gzipSync !== "undefined"}`);
+  const runtimeInfo = {
+    bufferDefined: typeof Buffer !== "undefined",
+    textDecoderDefined: typeof TextDecoder !== "undefined",
+    inflateRawDefined: typeof inflateRaw !== "undefined",
+    gzipSyncDefined: typeof gzipSync !== "undefined",
+    version: VERSION
+  };
+  console.log(`[RANGE_RUNTIME]`, runtimeInfo);
   
   try {
     stage = 'auth';
@@ -171,7 +181,8 @@ Deno.serve(async (req) => {
         totalCompressedBytesFetched,
         elapsed,
         strategy: 'range-manual-batch'
-      }
+      },
+      runtime: runtimeInfo
     };
     
     // Gzip response if large
@@ -206,13 +217,15 @@ Deno.serve(async (req) => {
       ok: false,
       stage,
       message: error.message || 'Unknown error',
-      stack: error.stack?.slice(0, 500),
+      stack: error.stack,
       fileUrlHost,
       batchCount: 0,
       elapsed,
       runtime: {
-        buffer: typeof Buffer !== 'undefined',
-        deno: typeof Deno !== 'undefined'
+        bufferDefined: typeof Buffer !== 'undefined',
+        bufferConstructor: typeof Buffer !== 'undefined' ? Buffer.constructor.name : 'N/A',
+        deno: typeof Deno !== 'undefined',
+        version: VERSION
       }
     }, { status: 500 });
   }
