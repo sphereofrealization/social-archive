@@ -44,38 +44,36 @@ export default function ArchiveMaterializationPanel({ archive, onMaterialization
     setError(null);
     
     try {
-      // First fetch the archive index to get entriesByPath
-      console.log('[MATERIALIZE_INIT] Fetching archive index...');
+      const fileUrlHost = new URL(archive.file_url).hostname;
+      console.log('[PREP_REQUEST]', {
+        endpoint: 'prepareArchiveTextManifest',
+        archiveId: archive.id,
+        fileUrlHost
+      });
       
-      const indexResp = await base44.functions.invoke('extractArchiveDataStreaming', {
+      const response = await base44.functions.invoke('prepareArchiveTextManifest', {
+        archiveId: archive.id,
         fileUrl: archive.file_url
       });
       
-      if (!indexResp.data?.index?.entriesByPath) {
-        throw new Error('Failed to get entriesByPath from archive index');
-      }
-      
-      console.log('[MATERIALIZE_START] Starting materialization job...');
-      
-      const response = await base44.functions.invoke('materializeArchiveTextEntries', {
-        archiveId: archive.id,
-        fileUrl: archive.file_url,
-        entriesByPath: indexResp.data.index.entriesByPath
+      console.log('[PREP_RESPONSE]', {
+        status: response.status,
+        ok: response.data?.ok,
+        version: response.data?.version,
+        counts: response.data?.counts
       });
-      
-      console.log('[MATERIALIZE_RESPONSE]', response.data);
       
       if (response.data?.ok) {
         // Update archive record
         await base44.entities.Archive.update(archive.id, {
           materialization_status: 'done',
           materialization_finished_at: new Date().toISOString(),
-          materialized_count: response.data.manifestSummary?.materializedCount,
+          materialized_count: response.data.counts?.materializedCount,
           manifest_url: response.data.manifestUrl
         });
         
         setStatus('done');
-        setProgress(response.data.manifestSummary);
+        setProgress(response.data.counts);
         
         if (onMaterializationComplete) {
           onMaterializationComplete(response.data);
@@ -85,8 +83,14 @@ export default function ArchiveMaterializationPanel({ archive, onMaterialization
       }
       
     } catch (err) {
-      console.error('[MATERIALIZE_ERROR]', err);
-      setError(err.message);
+      const errorDetails = {
+        message: err.message,
+        status: err.response?.status,
+        responseUrl: err.config?.url,
+        responseData: err.response?.data
+      };
+      console.error('[PREP_ERROR]', errorDetails);
+      setError(`${err.message} (HTTP ${err.response?.status || 'unknown'})`);
       setStatus('failed');
       
       // Update archive record

@@ -252,18 +252,16 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
     if (manifest?.entries) {
       const entry = manifest.entries.find(e => e.entryPath === entryPath);
       if (entry?.url) {
-        console.log(`[FETCH_SOURCE] ${entryPath} source=materializedUrl`);
+        console.log(`[FETCH_SOURCE] ${entryPath} source=materializedUrl urlLen=${entry.url.length}`);
         const response = await fetch(entry.url);
-        if (responseType === 'text') {
-          return { content: await response.text() };
-        } else if (responseType === 'json') {
-          return { content: await response.json() };
-        }
+        const content = responseType === 'json' ? await response.json() : await response.text();
+        console.log(`[PARSE_FILE] ${entryPath} bytesLen=${response.headers.get('content-length') || 'unknown'}`);
+        return { data: { content } };
       }
     }
 
     // Fallback to ZIP extraction (old method)
-    console.log(`[FETCH_SOURCE] ${entryPath} source=zipRange`);
+    console.log(`[FETCH_SOURCE] ${entryPath} source=zipRange (manifest not available)`);
     const funcName = isLargeArchive ? 'getArchiveEntryRanged' : 'getArchiveEntry';
     const params = {
       zipUrl: archiveUrl,
@@ -306,6 +304,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           addLog(sectionName, 'FETCH_JSON', `Fetching JSON file (manifest=${!!manifest})`, 'info');
 
           const response = await fetchEntryContent(filePath, 'json');
+          console.log(`[PARSE_FILE] ${filePath} extracted=parsing`);
           const result = parseJsonGeneric(response.data.content, filePath);
           parsedData = result.items.slice(0, 50);
           addLog(sectionName, 'PARSE', `Parsed ${parsedData.length} items from JSON`, 'success', parsedData.length);

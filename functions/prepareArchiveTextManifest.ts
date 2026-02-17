@@ -1,6 +1,6 @@
 import { inflateRaw } from 'npm:fflate';
 
-const VERSION = '2026-02-17T06:30:00Z';
+const VERSION = '2026-02-17T07:00:00Z';
 const MAX_UNCOMPRESSED_BYTES_PER_ENTRY = 50 * 1024 * 1024; // 50MB
 const MAX_CONCURRENCY = 2;
 const DREAMHOST_ENDPOINT = Deno.env.get('DREAMHOST_ENDPOINT');
@@ -105,33 +105,63 @@ Deno.serve(async (req) => {
 
     stage = 'parse_body';
     const body = await req.json();
-    const { archiveId, fileUrl, entriesByPath } = body;
+    const { archiveId, fileUrl } = body;
     
-    if (!archiveId || !fileUrl || !entriesByPath) {
+    if (!archiveId || !fileUrl) {
       return Response.json({ 
         ok: false, 
         stage, 
-        message: 'Missing archiveId, fileUrl, or entriesByPath',
+        message: 'Missing archiveId or fileUrl',
         version: VERSION
       }, { status: 400 });
     }
     
-    console.log(`[MATERIALIZE_START] archiveId=${archiveId} fileUrlHost=${new URL(fileUrl).hostname} candidates=${Object.keys(entriesByPath).length}`);
+    const fileUrlHost = new URL(fileUrl).hostname;
+    console.log(`[PREP_START] archiveId=${archiveId} fileUrlHost=${fileUrlHost}`);
     
-    // Filter to text entries only
+    // Step 1: Get ZIP metadata by calling existing working extractor
+    stage = 'get_index';
+    console.log(`[PREP_INDEX] Fetching archive index...`);
+    
+    const indexResp = await fetch(req.url.replace('/prepareArchiveTextManifest', '/extractArchiveDataStreaming'), {
+      method: 'POST',
+      headers: {
+        'Authorization': req.headers.get('authorization'),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ fileUrl })
+    });
+    
+    if (!indexResp.ok) {
+      throw new Error(`Failed to fetch index: HTTP ${indexResp.status}`);
+    }
+    
+    const indexData = await indexResp.json();
+    
+    if (!indexData.index?.entriesByPath) {
+      throw new Error('Index missing entriesByPath');
+    }
+    
+    const entriesByPath = indexData.index.entriesByPath;
+    const allPaths = indexData.index.all || Object.keys(entriesByPath);
+    
+    console.log(`[PREP_INDEX_OK] totalEntries=${allPaths.length} entriesByPathCount=${Object.keys(entriesByPath).length}`);
+    
+    // Step 2: Filter to text entries only
+    stage = 'filter_entries';
     const TEXT_EXTENSIONS = ['.html', '.json', '.txt', '.csv'];
     const textEntries = Object.entries(entriesByPath).filter(([path]) => 
       TEXT_EXTENSIONS.some(ext => path.toLowerCase().endsWith(ext))
     );
     
-    console.log(`[MATERIALIZE_FILTER] totalEntries=${Object.keys(entriesByPath).length} textEntries=${textEntries.length}`);
+    console.log(`[PREP_FILTER] totalEntries=${Object.keys(entriesByPath).length} textEntries=${textEntries.length}`);
     
     const manifest = {
       archiveId,
       status: 'running',
       startedAt: new Date().toISOString(),
       totals: {
-        totalZipEntries: Object.keys(entriesByPath).length,
+        totalZipEntries: allPaths.length,
         totalTextEntries: textEntries.length,
         materializedCount: 0,
         skippedCount: 0,
@@ -158,7 +188,7 @@ Deno.serve(async (req) => {
               reason: 'too_large',
               message: `Uncompressed size ${uncompressedSize} exceeds 50MB limit`
             });
-            console.log(`[MATERIALIZE_SKIP] ${entryPath} size=${uncompressedSize} reason=too_large`);
+            console.log(`[PREP_SKIP] ${entryPath} size=${uncompressedSize} reason=too_large`);
             return;
           }
           
@@ -199,7 +229,7 @@ Deno.serve(async (req) => {
             throw new Error(`Unsupported compression method: ${compressionMethod}`);
           }
           
-          console.log(`[MATERIALIZE_ENTRY] ${entryPath} size=${uncompressedSize} method=${compressionMethod} compressed=${compressedSize}`);
+          console.log(`[PREP_EXTRACT_OK] ${entryPath} bytes=${decompressedData.byteLength}`);
           
           // Determine content type
           const ext = entryPath.toLowerCase().split('.').pop();
@@ -215,14 +245,14 @@ Deno.serve(async (req) => {
           const storageKey = `archives/${archiveId}/entries/${entryPath}`;
           const url = await uploadToS3(storageKey, decompressedData, contentType);
           
-          console.log(`[MATERIALIZE_UPLOAD_OK] ${entryPath} storageKey=${storageKey} urlLen=${url.length}`);
+          console.log(`[PREP_UPLOAD_OK] ${entryPath} urlLen=${url.length}`);
           
           manifest.entries.push({
             entryPath,
-            size: uncompressedSize,
-            mimeType: contentType,
-            storageKey,
             url,
+            mimeType: contentType,
+            uncompressedSize: decompressedData.byteLength,
+            compressedSize: compressedSize,
             materializedAt: new Date().toISOString()
           });
           
@@ -235,13 +265,13 @@ Deno.serve(async (req) => {
             reason: 'extraction_failed',
             message: err.message
           });
-          console.error(`[MATERIALIZE_ERROR] ${entryPath} error=${err.message}`);
+          console.error(`[PREP_ERROR_ENTRY] ${entryPath} error=${err.message}`);
         }
       }));
       
       // Progress log every batch
       if ((i + MAX_CONCURRENCY) % 10 === 0 || i + MAX_CONCURRENCY >= textEntries.length) {
-        console.log(`[MATERIALIZE_PROGRESS] processed=${Math.min(i + MAX_CONCURRENCY, textEntries.length)}/${textEntries.length} materialized=${manifest.totals.materializedCount} skipped=${manifest.totals.skippedCount} errors=${manifest.totals.errorCount}`);
+        console.log(`[PREP_PROGRESS] processed=${Math.min(i + MAX_CONCURRENCY, textEntries.length)}/${textEntries.length} materialized=${manifest.totals.materializedCount} skipped=${manifest.totals.skippedCount} errors=${manifest.totals.errorCount}`);
       }
     }
     
@@ -249,6 +279,7 @@ Deno.serve(async (req) => {
     manifest.finishedAt = new Date().toISOString();
     
     // Upload manifest
+    stage = 'upload_manifest';
     const manifestKey = `archives/${archiveId}/manifest.json`;
     const manifestUrl = await uploadToS3(
       manifestKey,
@@ -257,13 +288,12 @@ Deno.serve(async (req) => {
     );
     
     const elapsed = Date.now() - startTime;
-    console.log(`[MATERIALIZE_DONE] materializedCount=${manifest.totals.materializedCount} skippedCount=${manifest.totals.skippedCount} errorCount=${manifest.totals.errorCount} msTotal=${elapsed}`);
+    console.log(`[PREP_DONE] materializedCount=${manifest.totals.materializedCount} skippedCount=${manifest.totals.skippedCount} errorCount=${manifest.totals.errorCount} msTotal=${elapsed} version=${VERSION}`);
     
     return Response.json({
       ok: true,
-      status: 'done',
       manifestUrl,
-      manifestSummary: {
+      counts: {
         materializedCount: manifest.totals.materializedCount,
         skippedCount: manifest.totals.skippedCount,
         errorCount: manifest.totals.errorCount,
@@ -275,8 +305,8 @@ Deno.serve(async (req) => {
     
   } catch (error) {
     const elapsed = Date.now() - startTime;
-    console.error(`[MATERIALIZE_FATAL] stage=${stage} error=${error.message} elapsed=${elapsed}`);
-    console.error(`[MATERIALIZE_STACK]`, error.stack);
+    console.error(`[PREP_FATAL] stage=${stage} error=${error.message} elapsed=${elapsed}`);
+    console.error(`[PREP_STACK]`, error.stack);
     
     return Response.json({
       ok: false,
