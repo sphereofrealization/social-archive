@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Sparkles, FileText, Image as ImageIcon, MessageSquare, Users } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import FacebookViewer from "./FacebookViewer";
+import ArchiveMaterializationPanel from "./ArchiveMaterializationPanel";
 
 export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
   const [extracting, setExtracting] = useState(false);
@@ -240,6 +241,18 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
 
   return (
     <div>
+      {/* Archive Materialization Panel */}
+      <ArchiveMaterializationPanel 
+        archive={archive} 
+        onMaterializationComplete={(result) => {
+          console.log('[MATERIALIZE_COMPLETE]', result);
+          // Trigger re-extraction with new manifest
+          if (archive?.file_url) {
+            analyzeFile(archive.file_url);
+          }
+        }}
+      />
+      
       <div className="mb-4 flex justify-end">
         <button
           onClick={() => setShowDebug(!showDebug)}
@@ -277,7 +290,7 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
           </CardContent>
         </Card>
       )}
-      <FacebookViewer data={extractedData} archiveUrl={archive.file_url} />
+      <FacebookViewer data={extractedData} archiveUrl={archive.file_url} archive={archive} />
     </div>
   );
 }
