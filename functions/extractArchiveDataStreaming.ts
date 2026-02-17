@@ -316,6 +316,9 @@ Deno.serve(async (req) => {
       otherHtml: [],
       allPaths: []
     };
+    
+    // CRITICAL: Build entriesByPath map directly during parsing
+    const entriesByPath = {};
 
     let offset = 0;
     let entriesProcessed = 0;
@@ -383,6 +386,7 @@ Deno.serve(async (req) => {
           const compressionMethod = entryView.getUint16(10, true); // compression method
           const compressedSize = entryView.getUint32(20, true); // compressed size
           const localHeaderOffset = entryView.getUint32(42, true); // local file header offset
+          const crc32 = entryView.getUint32(16, true); // CRC-32
           
           const entry = { 
             path: fileName, 
@@ -393,6 +397,15 @@ Deno.serve(async (req) => {
             compressedSize,
             uncompressedSize,
             compressionMethod
+          };
+          
+          // CRITICAL: Add to entriesByPath map for ALL entries
+          entriesByPath[fileName] = {
+            localHeaderOffset,
+            compressedSize,
+            uncompressedSize,
+            compressionMethod,
+            crc32
           };
           
           fileIndex.allPaths.push(fileName);
@@ -533,41 +546,17 @@ Deno.serve(async (req) => {
       }, { status: 400 });
     }
 
-    // Build entriesByPath map for range-based access
-    const entriesByPath = {};
-    for (const path of fileIndex.allPaths) {
-      // Find the entry in any of the categorized arrays
-      let foundEntry = null;
-      
-      // Check all arrays
-      const allEntries = [
-        ...fileIndex.postsHtml, ...fileIndex.postsJson,
-        ...fileIndex.friendsHtml, ...fileIndex.friendsJson,
-        ...fileIndex.commentsHtml, ...fileIndex.commentsJson,
-        ...fileIndex.likesHtml, ...fileIndex.likesJson,
-        ...fileIndex.groupsHtml, ...fileIndex.groupsJson,
-        ...fileIndex.reviewsHtml, ...fileIndex.reviewsJson,
-        ...fileIndex.marketplaceHtml, ...fileIndex.marketplaceJson,
-        ...fileIndex.eventsHtml, ...fileIndex.eventsJson,
-        ...fileIndex.reelsHtml, ...fileIndex.reelsJson,
-        ...fileIndex.checkinsHtml, ...fileIndex.checkinsJson,
-        ...fileIndex.mediaAll,
-        ...fileIndex.otherHtml
-      ];
-      
-      foundEntry = allEntries.find(e => e.path === path);
-      
-      if (foundEntry && foundEntry.localHeaderOffset !== undefined) {
-        entriesByPath[path] = {
-          localHeaderOffset: foundEntry.localHeaderOffset,
-          compressedSize: foundEntry.compressedSize,
-          uncompressedSize: foundEntry.uncompressedSize,
-          compressionMethod: foundEntry.compressionMethod
-        };
-      }
-    }
-    
     console.log('[extractArchiveDataStreaming] Built entriesByPath map:', Object.keys(entriesByPath).length, 'entries');
+    
+    // Log sample for validation
+    const sampleKey = fileIndex.allPaths.find(p => p.includes('your_photos.html')) || fileIndex.allPaths[0];
+    if (sampleKey) {
+      console.log('[extractArchiveDataStreaming] Sample entriesByPath check:', {
+        key: sampleKey,
+        exists: !!entriesByPath[sampleKey],
+        meta: entriesByPath[sampleKey]
+      });
+    }
 
     // Return full index with all categories
     const lengths = {
@@ -638,6 +627,7 @@ Deno.serve(async (req) => {
       lengths,
       index: {
         all: fileIndex.allPaths,
+        entriesByPath: entriesByPath, // CRITICAL: metadata for range-based access
         mediaAll: fileIndex.mediaAll.map(m => ({ path: m.path, name: m.name, size: m.size, ext: m.ext })),
         photos: fileIndex.photos.map(p => ({ path: p.path, name: p.name, size: p.size, ext: p.ext })),
         videos: fileIndex.videos.map(v => ({ path: v.path, name: v.name, size: v.size, ext: v.ext })),

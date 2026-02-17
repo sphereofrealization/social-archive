@@ -69,6 +69,12 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
   
   // Log what we received and normalized
   React.useEffect(() => {
+    const entriesByPathCount = data?.index?.entriesByPath ? Object.keys(data.index.entriesByPath).length : 
+                                (data?.entriesByPath ? Object.keys(data.entriesByPath).length : 0);
+    
+    const sampleKey = 'your_facebook_activity/posts/your_photos.html';
+    const hasSampleKey = data?.index?.entriesByPath?.[sampleKey] || data?.entriesByPath?.[sampleKey];
+    
     console.log("[FacebookViewer] received data:", {
       buildId: data?.buildId,
       mode: data?.mode,
@@ -79,6 +85,9 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
       normalizedVideosLength: normalized.videos.length,
       knownMediaPathCount: knownMediaPathSet.size,
       normalizedCounts: normalized.counts,
+      entriesByPathCount,
+      hasSampleKey: !!hasSampleKey,
+      sampleKeyMeta: hasSampleKey,
       fullNormalized: normalized
     });
   }, [data, normalized, knownMediaPathSet]);
@@ -127,10 +136,16 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
       
       if (isLargeArchive) {
         // For large archives: fetch raw binary with metadata
+        const entriesByPath = data?.index?.entriesByPath || data?.entriesByPath || {};
+        
+        if (Object.keys(entriesByPath).length === 0) {
+          throw new Error('Range access unavailable: entriesByPath metadata missing');
+        }
+        
         const response = await base44.functions.invoke(funcName, {
           zipUrl: archiveUrl,
           entryPath: entryPath,
-          entriesByPath: data?.entriesByPath || {},
+          entriesByPath,
           responseType: 'binary'
         });
         
@@ -244,7 +259,11 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           };
 
           if (isLargeArchive) {
-            params.entriesByPath = data?.entriesByPath || {};
+            params.entriesByPath = data?.index?.entriesByPath || data?.entriesByPath || {};
+            
+            if (Object.keys(params.entriesByPath).length === 0) {
+              throw new Error('Range access unavailable: entriesByPath metadata missing');
+            }
           }
 
           const response = await base44.functions.invoke(funcName, params);
@@ -264,10 +283,16 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               try {
                 addLog(sectionName, 'BATCH_FETCH', `Fetching batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(htmlFiles.length/batchSize)} (${batch.length} files)...`);
 
+                const entriesByPath = data?.index?.entriesByPath || data?.entriesByPath || {};
+                
+                if (Object.keys(entriesByPath).length === 0) {
+                  throw new Error('Range access unavailable: entriesByPath metadata missing from archive index');
+                }
+                
                 const batchResp = await base44.functions.invoke('getArchiveEntriesBatch', {
                   zipUrl: archiveUrl,
                   paths: batch,
-                  entriesByPath: data?.entriesByPath || {},
+                  entriesByPath,
                   responseType: 'text'
                 });
 
@@ -362,7 +387,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                           const singleResp = await base44.functions.invoke('getArchiveEntriesBatch', {
                             zipUrl: archiveUrl,
                             paths: [singlePath],
-                            entriesByPath: data?.entriesByPath || {},
+                            entriesByPath: data?.index?.entriesByPath || data?.entriesByPath || {},
                             responseType: 'text'
                           });
 
@@ -1412,7 +1437,12 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               <div>• Entries Parsed: {data?.entriesParsed || data?.debug?.entriesParsed || 0}</div>
               <div>• EOCD Found: {data?.eocdFound || data?.debug?.eocdFound ? 'Yes' : 'No'}</div>
               <div>• Root Prefix: {data?.rootPrefix || data?.debug?.rootPrefix || 'none'}</div>
-              <div>• EntriesByPath Map: {data?.entriesByPath ? Object.keys(data.entriesByPath).length : 0} entries (for range-based access)</div>
+              <div>• EntriesByPath Map: {(data?.index?.entriesByPath ? Object.keys(data.index.entriesByPath).length : (data?.entriesByPath ? Object.keys(data.entriesByPath).length : 0))} entries (for range-based access)</div>
+              {(data?.index?.entriesByPath || data?.entriesByPath) && (
+                <div className="ml-4">
+                  Sample check: "your_facebook_activity/posts/your_photos.html" → {(data?.index?.entriesByPath?.['your_facebook_activity/posts/your_photos.html'] || data?.entriesByPath?.['your_facebook_activity/posts/your_photos.html']) ? '✓ EXISTS' : '✗ MISSING'}
+                </div>
+              )}
               <div className="mt-2"><strong>Data Sources:</strong></div>
               <div>• Photos Source: {normalized.photos.length > 0 ? 'index.photos' : 'data.photos'} → {normalized.photos.length} items</div>
               <div>• Videos Source: {normalized.videos.length > 0 ? 'index.videos' : 'data.videos'} → {normalized.videos.length} items</div>
