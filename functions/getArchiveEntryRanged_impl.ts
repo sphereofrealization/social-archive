@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw } from 'npm:fflate';
 
-const VERSION = '2026-02-17T04:30:00Z';
+const VERSION = '2026-02-17T05:00:00Z';
 
 // Cache for range probe results (by URL)
 const rangeProbeCache = new Map();
@@ -45,10 +45,11 @@ export default async function handler(req) {
   const startTime = Date.now();
   let stage = 'init';
   
-  // Runtime check
+  // Runtime check - avoid any Buffer references
+  const bufferExists = typeof globalThis.Buffer !== "undefined";
   const runtimeInfo = {
-    bufferType: typeof Buffer,
-    bufferDefined: typeof Buffer !== "undefined",
+    bufferType: bufferExists ? typeof globalThis.Buffer : "undefined",
+    bufferDefined: bufferExists,
     hasTextDecoder: typeof TextDecoder !== "undefined",
     inflateRawDefined: typeof inflateRaw !== "undefined",
     version: VERSION
@@ -333,9 +334,7 @@ export default async function handler(req) {
       version: VERSION,
       runtime: {
         bufferGlobalType: typeof globalThis.Buffer,
-        bufferType: typeof Buffer,
-        bufferDefined: typeof Buffer !== 'undefined',
-        bufferConstructor: typeof Buffer !== 'undefined' ? Buffer.constructor.name : 'N/A',
+        bufferDefined: typeof globalThis.Buffer !== 'undefined',
         hasTextDecoder: typeof TextDecoder !== 'undefined',
         deno: globalThis.Deno?.version?.deno ?? null,
         node: globalThis.process?.version ?? null
