@@ -455,13 +455,13 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                       responseHeaders: batchErr.response?.headers
                     });
 
-                    // On 502, retry with batchSize=1 (one file at a time)
-                    if (status === 502 && batchSize > 1) {
-                      addLog(sectionName, 'BATCH_RETRY', `502 detected - retrying batch with size=1...`, 'warn');
+                    // On 500 or 502, retry with batchSize=1 (one file at a time)
+                    if ((status === 500 || status === 502) && batchSize > 1) {
+                      addLog(sectionName, 'BATCH_RETRY', `${status} detected - retrying batch with size=1...`, 'warn');
 
                       for (const singlePath of batch) {
                         try {
-                          await new Promise(r => setTimeout(r, 1000)); // 1s delay
+                          await new Promise(r => setTimeout(r, 500)); // 500ms delay
 
                           const singleResp = await base44.functions.invoke('getArchiveEntriesBatch', {
                             zipUrl: archiveUrl,
@@ -470,11 +470,14 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                             responseType: 'text'
                           });
 
-                          if (singleResp?.content) {
-                            const result = await parsePostsFromHtml(singleResp.content, singlePath);
+                          const content = singleResp?.data?.results?.[singlePath];
+                          if (content) {
+                            const result = await parsePostsFromHtml(content, singlePath);
                             // ... resolve media refs ...
                             allPosts.push(...result.items || []);
                             addLog(sectionName, 'BATCH_RETRY_OK', `Recovered ${singlePath}`, 'success');
+                          } else {
+                            addLog(sectionName, 'BATCH_RETRY_FAIL', `${singlePath}: No content in response`, 'error');
                           }
                         } catch (retryErr) {
                           addLog(sectionName, 'BATCH_RETRY_FAIL', `${singlePath}: ${retryErr.message}`, 'error');
