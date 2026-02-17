@@ -2,7 +2,7 @@ import './_polyfills.ts';
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw } from 'npm:fflate';
 
-const VERSION = '2026-02-17T01:00:00Z';
+const VERSION = '2026-02-17T01:30:00Z';
 
 // Cache for range probe results (by URL)
 const rangeProbeCache = new Map();
@@ -300,22 +300,24 @@ Deno.serve(async (req) => {
     const fileUrlHost = 'unknown';
     
     console.error(`[getArchiveEntryRanged] ENTRY_FETCH_ERROR stage=${stage} error=${error.message} ms=${elapsed}`);
-    console.error(`[getArchiveEntryRanged] Stack:`, error.stack);
+    console.error(`[getArchiveEntryRanged] Full stack:`, String(error?.stack || ''));
     
     return Response.json({ 
       ok: false,
       stage,
-      message: error.message || 'Unknown error',
-      stack: error.stack,
+      message: String(error?.message || 'Unknown error'),
+      stack: String(error?.stack || ''),
       fileUrlHost,
       elapsed,
+      version: VERSION,
       runtime: {
+        bufferGlobalType: typeof globalThis.Buffer,
         bufferType: typeof Buffer,
         bufferDefined: typeof Buffer !== 'undefined',
         bufferConstructor: typeof Buffer !== 'undefined' ? Buffer.constructor.name : 'N/A',
         hasTextDecoder: typeof TextDecoder !== 'undefined',
-        deno: typeof Deno !== 'undefined',
-        version: VERSION
+        deno: globalThis.Deno?.version?.deno ?? null,
+        node: globalThis.process?.version ?? null
       }
     }, { status: 500 });
   }

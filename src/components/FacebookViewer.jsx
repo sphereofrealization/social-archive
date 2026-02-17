@@ -358,7 +358,11 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   }
 
                   if (batchResp.data?.stats) {
-                    addLog(sectionName, 'BATCH_STATS', `success=${batchResp.data.stats.success} errors=${batchResp.data.stats.errors} uncompressed=${batchResp.data.stats.totalUncompressedBytes} response=${batchResp.data.stats.totalResponseBytes} ms=${batchResp.data.stats.elapsed}`, 'info');
+                    addLog(sectionName, 'BATCH_STATS', `success=${batchResp.data.stats.success} errors=${batchResp.data.stats.errors} uncompressed=${batchResp.data.stats.totalUncompressedBytes} ms=${batchResp.data.stats.elapsed}`, 'info');
+                  }
+
+                  if (batchResp.data?.version) {
+                    addLog(sectionName, 'BATCH_VERSION', `Backend version: ${batchResp.data.version}`, 'info');
                   }
 
                   } catch (batchErr) {
@@ -367,7 +371,23 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                     const errorMsg = errorData?.ok === false 
                       ? `stage=${errorData.stage} message=${errorData.message}` 
                       : batchErr.message;
+
+                    // Log full error JSON for diagnostics
+                    console.error('[FacebookViewer] BATCH_FATAL Full Error JSON:', JSON.stringify(errorData, null, 2));
+
                     addLog(sectionName, 'BATCH_FATAL', `Batch ${Math.floor(i/batchSize) + 1} failed: status=${status} ${errorMsg}`, 'error');
+
+                    if (errorData?.stack) {
+                      addLog(sectionName, 'BATCH_STACK', errorData.stack.slice(0, 500), 'error');
+                    }
+
+                    if (errorData?.version) {
+                      addLog(sectionName, 'BATCH_VERSION', `Backend version: ${errorData.version}`, 'info');
+                    }
+
+                    if (errorData?.runtime) {
+                      addLog(sectionName, 'BATCH_RUNTIME', `Runtime: ${JSON.stringify(errorData.runtime)}`, 'info');
+                    }
 
                     console.error('[FacebookViewer] Batch error details:', {
                       status,

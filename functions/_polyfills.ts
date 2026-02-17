@@ -1,10 +1,6 @@
 
 // Polyfill Buffer for Edge/Deno runtime
-import { Buffer } from "npm:buffer@6.0.3";
+import { Buffer } from "node:buffer";
 
-if (!globalThis.Buffer) {
-  globalThis.Buffer = Buffer;
-  console.log('[POLYFILL] Buffer added to globalThis');
-} else {
-  console.log('[POLYFILL] Buffer already defined');
-}
+globalThis.Buffer ??= Buffer;
+console.log('[POLYFILL] Buffer polyfill applied, type:', typeof globalThis.Buffer);
