@@ -1,7 +1,14 @@
+// Ensure Buffer exists before any npm imports that might need it
+if (typeof globalThis.Buffer === 'undefined') {
+  await import("https://deno.land/std@0.224.0/node/buffer.ts").then(m => {
+    globalThis.Buffer = m.Buffer;
+  });
+}
+
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw } from 'npm:fflate';
 
-const VERSION = '2026-02-17T05:00:00Z';
+const VERSION = '2026-02-17T05:30:00Z';
 
 // Cache for range probe results (by URL)
 const rangeProbeCache = new Map();
