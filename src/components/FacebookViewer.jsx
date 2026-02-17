@@ -677,11 +677,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         const probeResults = [];
         for (const candidate of tryOrder) {
           try {
-            const response = await base44.functions.invoke('getArchiveEntry', {
-              zipUrl: archiveUrl,
-              entryPath: candidate.path,
-              responseType: 'text'
-            });
+            const response = await fetchEntryContent(candidate.path, 'text');
             
             if (response.data?.content) {
               const probe = probeFacebookHtmlStructure(response.data.content, candidate.path);
@@ -1070,11 +1066,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           try {
             addLog(sectionName, 'COMMENTS_FETCH', `Fetching: ${candidate.path}...`);
             
-            const response = await base44.functions.invoke('getArchiveEntry', {
-              zipUrl: archiveUrl,
-              entryPath: candidate.path,
-              responseType: 'text'
-            });
+            const response = await fetchEntryContent(candidate.path, 'text');
             
             if (!response.data?.content) continue;
             
@@ -1284,11 +1276,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
           try {
             addLog(sectionName, 'GROUPS_FETCH', `Fetching: ${candidate.path}...`);
             
-            const response = await base44.functions.invoke('getArchiveEntry', {
-              zipUrl: archiveUrl,
-              entryPath: candidate.path,
-              responseType: 'text'
-            });
+            const response = await fetchEntryContent(candidate.path, 'text');
             
             if (!response.data?.content) continue;
             
