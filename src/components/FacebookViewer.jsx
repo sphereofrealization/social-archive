@@ -365,6 +365,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                     addLog(sectionName, 'BATCH_VERSION', `Backend version: ${batchResp.data.version}`, 'info');
                   }
 
+                  if (batchResp.data?.runtime) {
+                    addLog(sectionName, 'BATCH_RUNTIME', `bufferType=${batchResp.data.runtime.bufferType} bufferDefined=${batchResp.data.runtime.bufferDefined}`, 'info');
+                  }
+
                   } catch (batchErr) {
                     const errorData = batchErr.response?.data;
                     const status = batchErr.response?.status || 'none';
@@ -386,7 +390,8 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                     }
 
                     if (errorData?.runtime) {
-                      addLog(sectionName, 'BATCH_RUNTIME', `Runtime: ${JSON.stringify(errorData.runtime)}`, 'info');
+                      const rt = errorData.runtime;
+                      addLog(sectionName, 'BATCH_RUNTIME', `bufferType=${rt.bufferType} bufferDefined=${rt.bufferDefined} bufferConstructor=${rt.bufferConstructor}`, 'info');
                     }
 
                     console.error('[FacebookViewer] Batch error details:', {
