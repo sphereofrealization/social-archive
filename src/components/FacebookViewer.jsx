@@ -119,39 +119,63 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
     
     if (loadedMedia[entryPath] !== undefined) return;
     
-    addMediaLog(`[MEDIA_CLICK] entryPath=${entryPath} postSourceFile=${postSourceFile || 'N/A'} type=${type} resolvedFromRef=${originalRef || 'N/A'}`);
+    addMediaLog(`[MEDIA_CLICK] entryPath=${entryPath} postSourceFile=${postSourceFile || 'N/A'} type=${type} strategy=${isLargeArchive ? 'ranged-binary' : 'legacy-base64'}`);
     setLoadedMedia(prev => ({ ...prev, [entryPath]: 'loading' }));
     
     try {
       const funcName = isLargeArchive ? 'getArchiveEntryRanged' : 'getArchiveEntry';
-      const response = await base44.functions.invoke(funcName, {
-        zipUrl: archiveUrl,
-        entryPath: entryPath,
-        responseType: 'base64'
-      });
       
-      addMediaLog(`[MEDIA_RESPONSE] ok=${response.status === 200} status=${response.status} mimeType=${response.data?.mime || 'N/A'} base64Len=${response.data?.content?.length || 0} error=${response.data?.error || 'none'}`);
-      
-      if (response.data?.content && response.data?.mime) {
-        // Decode base64 to check magic bytes
-        const binary = atob(response.data.content.substring(0, 100)); // First ~75 bytes
-        const magicHex = Array.from(binary.slice(0, 16)).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ');
-        addMediaLog(`[MEDIA_MAGIC] first16Hex=${magicHex}`);
+      if (isLargeArchive) {
+        // For large archives: fetch raw binary with metadata
+        const response = await base44.functions.invoke(funcName, {
+          zipUrl: archiveUrl,
+          entryPath: entryPath,
+          entriesByPath: data?.entriesByPath || {},
+          responseType: 'binary'
+        });
         
-        const blobUrl = base64ToBlobUrl(response.data.content, response.data.mime);
-        if (blobUrl) {
-          addMediaLog(`[MEDIA_OBJECT_URL] created=${blobUrl} byteLength=${response.data.content.length}`);
-          setLoadedMedia(prev => ({ ...prev, [entryPath]: { url: blobUrl, mime: response.data.mime } }));
+        if (response.status === 200 && response.data instanceof Blob) {
+          const blobUrl = URL.createObjectURL(response.data);
+          const mime = response.headers?.['content-type'] || 'application/octet-stream';
+          const stats = response.headers?.['x-stats'] ? JSON.parse(response.headers['x-stats']) : {};
+          
+          addMediaLog(`[MEDIA_RESPONSE] ok=true strategy=binary mime=${mime} blobSize=${response.data.size} bytesFetched=${stats.bytesFetched || 'unknown'}`);
+          setLoadedMedia(prev => ({ ...prev, [entryPath]: { url: blobUrl, mime } }));
         } else {
-          throw new Error('Failed to create blob URL');
+          const errorData = response.data?.ok === false ? response.data : { message: 'Unknown error' };
+          throw new Error(`Binary fetch failed: stage=${errorData.stage} message=${errorData.message}`);
         }
       } else {
-        throw new Error(`Invalid response: status=${response.status} hasContent=${!!response.data?.content} hasMime=${!!response.data?.mime}`);
+        // Legacy path: base64
+        const response = await base44.functions.invoke(funcName, {
+          zipUrl: archiveUrl,
+          entryPath: entryPath,
+          responseType: 'base64'
+        });
+        
+        addMediaLog(`[MEDIA_RESPONSE] ok=${response.status === 200} status=${response.status} mimeType=${response.data?.mime || 'N/A'} base64Len=${response.data?.content?.length || 0}`);
+        
+        if (response.data?.content && response.data?.mime) {
+          const blobUrl = base64ToBlobUrl(response.data.content, response.data.mime);
+          if (blobUrl) {
+            addMediaLog(`[MEDIA_OBJECT_URL] created=${blobUrl}`);
+            setLoadedMedia(prev => ({ ...prev, [entryPath]: { url: blobUrl, mime: response.data.mime } }));
+          } else {
+            throw new Error('Failed to create blob URL');
+          }
+        } else {
+          throw new Error(`Invalid response: status=${response.status} hasContent=${!!response.data?.content} hasMime=${!!response.data?.mime}`);
+        }
       }
     } catch (err) {
-      const errorMsg = `${err.message || err}`;
-      addMediaLog(`[MEDIA_ERROR] ${errorMsg}`);
-      console.error(`[FacebookViewer] Failed to load ${type}:`, err);
+      const status = err.response?.status || 'none';
+      const errorData = err.response?.data;
+      const errorMsg = errorData?.ok === false 
+        ? `stage=${errorData.stage} msg=${errorData.message}` 
+        : (errorData ? JSON.stringify(errorData).slice(0, 200) : err.message);
+      
+      addMediaLog(`[MEDIA_ERROR] status=${status} error=${errorMsg}`);
+      console.error(`[FacebookViewer] Failed to load ${type}:`, { status, errorData, entryPath });
       setLoadedMedia(prev => ({ ...prev, [entryPath]: { error: errorMsg } }));
     }
   };
@@ -1388,6 +1412,7 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
               <div>• Entries Parsed: {data?.entriesParsed || data?.debug?.entriesParsed || 0}</div>
               <div>• EOCD Found: {data?.eocdFound || data?.debug?.eocdFound ? 'Yes' : 'No'}</div>
               <div>• Root Prefix: {data?.rootPrefix || data?.debug?.rootPrefix || 'none'}</div>
+              <div>• EntriesByPath Map: {data?.entriesByPath ? Object.keys(data.entriesByPath).length : 0} entries (for range-based access)</div>
               <div className="mt-2"><strong>Data Sources:</strong></div>
               <div>• Photos Source: {normalized.photos.length > 0 ? 'index.photos' : 'data.photos'} → {normalized.photos.length} items</div>
               <div>• Videos Source: {normalized.videos.length > 0 ? 'index.videos' : 'data.videos'} → {normalized.videos.length} items</div>
