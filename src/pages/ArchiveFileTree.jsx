@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, ChevronDown, ChevronRight, FileText, Folder, X } from "lucide-react";
-import { HttpReader, ZipReader } from "@zip.js/zip.js";
+import { BlobWriter, HttpReader, TextWriter, ZipReader } from "@zip.js/zip.js";
 
 export default function ArchiveFileTree() {
   const [searchParams] = useSearchParams();
@@ -15,6 +15,8 @@ export default function ArchiveFileTree() {
   const archiveName = searchParams.get("archiveName");
   
   const [loading, setLoading] = useState(true);
+  const [loadingStep, setLoadingStep] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState("Preparing file tree request...");
   const [error, setError] = useState(null);
   const [archive, setArchive] = useState(null);
   const [manifest, setManifest] = useState(null);
@@ -26,6 +28,52 @@ export default function ArchiveFileTree() {
   useEffect(() => {
     loadArchiveAndTree();
   }, [archiveId, archiveUrl]);
+
+  // Timeout wrapper
+  const runWithTimeout = (promise, timeoutMs, timeoutLabel) => {
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error(`${timeoutLabel} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs)
+    );
+    return Promise.race([promise, timeoutPromise]);
+  };
+
+  // Detect file type from path
+  const detectFileType = (filePath) => {
+    const lower = filePath.toLowerCase();
+    if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+    if (lower.endsWith('.json')) return 'json';
+    if (lower.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/)) return 'image';
+    if (lower.match(/\.(mp4|mov|m4v|webm|avi)$/)) return 'video';
+    return 'text';
+  };
+
+  // Read file from archive in browser
+  const readArchiveFileInBrowser = async (url, filePath) => {
+    const httpReader = new HttpReader(url);
+    const zipReader = new ZipReader(httpReader);
+    
+    try {
+      const entries = await zipReader.getEntries();
+      const entry = entries.find(e => e.filename === filePath);
+      
+      if (!entry) {
+        throw new Error(`Entry not found: ${filePath}`);
+      }
+      
+      const fileType = detectFileType(filePath);
+      
+      if (fileType === 'image') {
+        const blob = await entry.getData(new BlobWriter());
+        const url = URL.createObjectURL(blob);
+        return { content: url, type: 'image' };
+      } else {
+        const text = await entry.getData(new TextWriter());
+        return { content: text, type: fileType };
+      }
+    } finally {
+      await zipReader.close();
+    }
+  };
 
   // Build file tree from remote ZIP using client-side @zip.js/zip.js
   const buildFileTreeFromRemoteZip = async (url) => {
@@ -67,8 +115,12 @@ export default function ArchiveFileTree() {
   };
 
   const loadArchiveAndTree = async () => {
+    const strategyErrors = [];
+    
     try {
       setLoading(true);
+      setLoadingStep(0);
+      setLoadingMessage("Loading archive metadata...");
       
       // Load archive metadata if archiveId provided
       let archiveData = null;
@@ -94,25 +146,39 @@ export default function ArchiveFileTree() {
       }
       
       // Strategy 1: Try getFileTree backend (manifest-first or index-based)
+      setLoadingStep(1);
+      setLoadingMessage("Attempt 1/3: Backend file tree generation...");
       try {
         console.log('[ArchiveFileTree] Strategy 1: getFileTree backend');
-        const response = await base44.functions.invoke('getFileTree', { 
-          fileUrl: archiveUrl,
-          manifestUrl: manifestData ? archiveData.manifest_url : null
-        });
+        const response = await runWithTimeout(
+          base44.functions.invoke('getFileTree', { 
+            fileUrl: archiveUrl,
+            manifestUrl: manifestData ? archiveData.manifest_url : null
+          }),
+          30000,
+          'getFileTree'
+        );
         setFileTree(response.data.tree);
         console.log('[ArchiveFileTree] Strategy 1: SUCCESS');
         return;
       } catch (err) {
-        console.warn('[ArchiveFileTree] Strategy 1 failed:', err.message);
+        const errorMsg = `Strategy 1 (getFileTree): ${err.message}`;
+        strategyErrors.push(errorMsg);
+        console.warn('[ArchiveFileTree]', errorMsg);
       }
       
       // Strategy 2: Try extractArchiveDataStreaming to get index, then derive tree
+      setLoadingStep(2);
+      setLoadingMessage("Attempt 2/3: Streaming archive index...");
       try {
         console.log('[ArchiveFileTree] Strategy 2: extractArchiveDataStreaming');
-        const indexResp = await base44.functions.invoke('extractArchiveDataStreaming', { 
-          fileUrl: archiveUrl 
-        });
+        const indexResp = await runWithTimeout(
+          base44.functions.invoke('extractArchiveDataStreaming', { 
+            fileUrl: archiveUrl 
+          }),
+          45000,
+          'extractArchiveDataStreaming'
+        );
         
         if (indexResp.data?.index) {
           const index = indexResp.data.index;
@@ -173,22 +239,33 @@ export default function ArchiveFileTree() {
           return;
         }
       } catch (err) {
-        console.warn('[ArchiveFileTree] Strategy 2 failed:', err.message);
+        const errorMsg = `Strategy 2 (extractArchiveDataStreaming): ${err.message}`;
+        strategyErrors.push(errorMsg);
+        console.warn('[ArchiveFileTree]', errorMsg);
       }
       
       // Strategy 3: Client-side zip.js fallback
+      setLoadingStep(3);
+      setLoadingMessage("Attempt 3/3: Browser-side ZIP parsing...");
       try {
-        const tree = await buildFileTreeFromRemoteZip(archiveUrl);
+        const tree = await runWithTimeout(
+          buildFileTreeFromRemoteZip(archiveUrl),
+          60000,
+          'Client-side zip.js'
+        );
         setFileTree(tree);
         console.log('[ArchiveFileTree] Strategy 3: SUCCESS');
       } catch (err) {
+        const errorMsg = `Strategy 3 (client zip.js): ${err.message}`;
+        strategyErrors.push(errorMsg);
         console.error('[ArchiveFileTree] All strategies failed');
-        throw new Error(`Failed to load file tree: ${err.message}`);
+        throw new Error(strategyErrors.join(' | '));
       }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+      setLoadingStep(0);
     }
   };
 
@@ -245,19 +322,37 @@ export default function ArchiveFileTree() {
         }
       }
       
-      // Fallback to ZIP extraction
-      const response = await base44.functions.invoke('getArchiveFile_simple', { 
-        fileUrl: archiveUrl,
-        filePath 
-      });
-      
-      setOpenHtmlFiles(prev => [...prev, { 
-        path: filePath, 
-        content: response.data.content,
-        type: response.data.type,
-        message: response.data.message,
-        name: filePath.split('/').pop()
-      }]);
+      // Strategy 1: Try backend extraction with timeout
+      try {
+        const response = await runWithTimeout(
+          base44.functions.invoke('getArchiveFile_simple', { 
+            fileUrl: archiveUrl,
+            filePath 
+          }),
+          30000,
+          'Backend file extraction'
+        );
+        
+        setOpenHtmlFiles(prev => [...prev, { 
+          path: filePath, 
+          content: response.data.content,
+          type: response.data.type,
+          message: response.data.message,
+          name: filePath.split('/').pop()
+        }]);
+        return;
+      } catch (backendErr) {
+        console.warn(`[ArchiveFileTree] Backend extraction failed: ${backendErr.message}, trying browser fallback...`);
+        
+        // Strategy 2: Browser-side fallback
+        const result = await readArchiveFileInBrowser(archiveUrl, filePath);
+        setOpenHtmlFiles(prev => [...prev, { 
+          path: filePath, 
+          content: result.content,
+          type: result.type,
+          name: filePath.split('/').pop()
+        }]);
+      }
     } catch (err) {
       alert(`Failed to load file: ${err.message}`);
     } finally {
@@ -266,6 +361,13 @@ export default function ArchiveFileTree() {
   };
 
   const closeHtmlFile = (filePath) => {
+    const file = openHtmlFiles.find(f => f.path === filePath);
+    
+    // Revoke blob URLs to free memory
+    if (file?.type === 'image' && file.content?.startsWith('blob:')) {
+      URL.revokeObjectURL(file.content);
+    }
+    
     setOpenHtmlFiles(prev => prev.filter(f => f.path !== filePath));
   };
 
@@ -338,9 +440,24 @@ export default function ArchiveFileTree() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                Loading file structure...
+              <div className="flex flex-col items-center justify-center py-12 gap-4">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  <span className="text-gray-700">{loadingMessage}</span>
+                </div>
+                {loadingStep > 0 && (
+                  <div className="w-64">
+                    <div className="bg-gray-200 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="bg-blue-600 h-full transition-all duration-300"
+                        style={{ width: `${(loadingStep / 3) * 100}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2 text-center">
+                      Trying multiple methods with automatic fallback...
+                    </p>
+                  </div>
+                )}
               </div>
             ) : error ? (
               <Alert className="border-red-200 bg-red-50">
