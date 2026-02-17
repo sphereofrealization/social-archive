@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, ChevronDown, ChevronRight, FileText, Folder, X } from "lucide-react";
+import { HttpReader, ZipReader } from "@zip.js/zip.js";
 
 export default function ArchiveFileTree() {
   const [searchParams] = useSearchParams();
@@ -25,6 +26,45 @@ export default function ArchiveFileTree() {
   useEffect(() => {
     loadArchiveAndTree();
   }, [archiveId, archiveUrl]);
+
+  // Build file tree from remote ZIP using client-side @zip.js/zip.js
+  const buildFileTreeFromRemoteZip = async (url) => {
+    console.log('[ArchiveFileTree] Strategy 3: Client-side zip.js over HTTP Range');
+    
+    const httpReader = new HttpReader(url);
+    const zipReader = new ZipReader(httpReader);
+    const entries = await zipReader.getEntries();
+    
+    const tree = {};
+    
+    for (const entry of entries) {
+      const path = entry.filename;
+      const parts = path.split('/').filter(Boolean);
+      let current = tree;
+      
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        
+        if (i === parts.length - 1 && !entry.directory) {
+          // File
+          current[part] = {
+            type: 'file',
+            path,
+            size: entry.uncompressedSize
+          };
+        } else {
+          // Directory
+          if (!current[part]) {
+            current[part] = { type: 'folder', children: {} };
+          }
+          current = current[part].children;
+        }
+      }
+    }
+    
+    await zipReader.close();
+    return tree;
+  };
 
   const loadArchiveAndTree = async () => {
     try {
@@ -53,12 +93,98 @@ export default function ArchiveFileTree() {
         }
       }
       
-      // Request file tree with manifest if available
-      const response = await base44.functions.invoke('getFileTree', { 
-        fileUrl: archiveUrl,
-        manifestUrl: manifestData ? archiveData.manifest_url : null
-      });
-      setFileTree(response.data.tree);
+      // Strategy 1: Try getFileTree backend (manifest-first or index-based)
+      try {
+        console.log('[ArchiveFileTree] Strategy 1: getFileTree backend');
+        const response = await base44.functions.invoke('getFileTree', { 
+          fileUrl: archiveUrl,
+          manifestUrl: manifestData ? archiveData.manifest_url : null
+        });
+        setFileTree(response.data.tree);
+        console.log('[ArchiveFileTree] Strategy 1: SUCCESS');
+        return;
+      } catch (err) {
+        console.warn('[ArchiveFileTree] Strategy 1 failed:', err.message);
+      }
+      
+      // Strategy 2: Try extractArchiveDataStreaming to get index, then derive tree
+      try {
+        console.log('[ArchiveFileTree] Strategy 2: extractArchiveDataStreaming');
+        const indexResp = await base44.functions.invoke('extractArchiveDataStreaming', { 
+          fileUrl: archiveUrl 
+        });
+        
+        if (indexResp.data?.index) {
+          const index = indexResp.data.index;
+          const pathSet = new Set();
+          
+          // Derive all paths from index
+          if (index.all && Array.isArray(index.all)) {
+            index.all.forEach(p => pathSet.add(p));
+          }
+          
+          if (index.entriesByPath) {
+            Object.keys(index.entriesByPath).forEach(p => pathSet.add(p));
+          }
+          
+          Object.values(index).forEach(value => {
+            if (Array.isArray(value)) {
+              value.forEach(item => {
+                if (typeof item === 'string') pathSet.add(item);
+                else if (item?.path) pathSet.add(item.path);
+              });
+            } else if (value && typeof value === 'object') {
+              Object.values(value).forEach(subValue => {
+                if (Array.isArray(subValue)) {
+                  subValue.forEach(item => {
+                    if (typeof item === 'string') pathSet.add(item);
+                    else if (item?.path) pathSet.add(item.path);
+                  });
+                }
+              });
+            }
+          });
+          
+          const allPaths = Array.from(pathSet);
+          console.log(`[ArchiveFileTree] Strategy 2: Derived ${allPaths.length} paths from index`);
+          
+          // Build tree from paths
+          const tree = {};
+          for (const path of allPaths) {
+            const parts = path.split('/').filter(Boolean);
+            let current = tree;
+            
+            for (let i = 0; i < parts.length; i++) {
+              const part = parts[i];
+              
+              if (i === parts.length - 1) {
+                current[part] = { type: 'file', path };
+              } else {
+                if (!current[part]) {
+                  current[part] = { type: 'folder', children: {} };
+                }
+                current = current[part].children;
+              }
+            }
+          }
+          
+          setFileTree(tree);
+          console.log('[ArchiveFileTree] Strategy 2: SUCCESS');
+          return;
+        }
+      } catch (err) {
+        console.warn('[ArchiveFileTree] Strategy 2 failed:', err.message);
+      }
+      
+      // Strategy 3: Client-side zip.js fallback
+      try {
+        const tree = await buildFileTreeFromRemoteZip(archiveUrl);
+        setFileTree(tree);
+        console.log('[ArchiveFileTree] Strategy 3: SUCCESS');
+      } catch (err) {
+        console.error('[ArchiveFileTree] All strategies failed');
+        throw new Error(`Failed to load file tree: ${err.message}`);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
