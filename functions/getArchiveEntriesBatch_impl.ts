@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw } from 'npm:fflate';
 
-const VERSION = '2026-02-17T04:00:00Z';
+const VERSION = '2026-02-17T04:30:00Z';
 
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 5 * 1024 * 1024; // 5MB safety limit
 const DEFAULT_BATCH_SIZE = 1; // Start conservatively

@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { inflateRaw } from 'npm:fflate';
 
-const VERSION = '2026-02-17T04:00:00Z';
+const VERSION = '2026-02-17T04:30:00Z';
 
 // Cache for range probe results (by URL)
 const rangeProbeCache = new Map();

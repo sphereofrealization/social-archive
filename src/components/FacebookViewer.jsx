@@ -289,12 +289,15 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   throw new Error('Range access unavailable: entriesByPath metadata missing from archive index');
                 }
                 
+                console.log(`[FacebookViewer] Calling getArchiveEntriesBatch for batch ${Math.floor(i/batchSize) + 1}...`);
                 const batchResp = await base44.functions.invoke('getArchiveEntriesBatch', {
                   zipUrl: archiveUrl,
                   paths: batch,
                   entriesByPath,
                   responseType: 'text'
                 });
+
+                console.log(`[FacebookViewer] Batch response status=${batchResp.status} version=${batchResp.data?.version} bufferType=${batchResp.data?.runtime?.bufferType}`);
 
                 if (batchResp.data?.results) {
                   for (const [filePath, content] of Object.entries(batchResp.data.results)) {
@@ -370,14 +373,15 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
                   }
 
                   } catch (batchErr) {
-                    const errorData = batchErr.response?.data;
-                    const status = batchErr.response?.status || 'none';
-                    const errorMsg = errorData?.ok === false 
-                      ? `stage=${errorData.stage} message=${errorData.message}` 
-                      : batchErr.message;
+                      const errorData = batchErr.response?.data;
+                      const status = batchErr.response?.status || 'none';
+                      const errorMsg = errorData?.ok === false 
+                        ? `stage=${errorData.stage} message=${errorData.message}` 
+                        : batchErr.message;
 
-                    // Log full error JSON for diagnostics
-                    console.error('[FacebookViewer] BATCH_FATAL Full Error JSON:', JSON.stringify(errorData, null, 2));
+                      // Log full error JSON for diagnostics
+                      console.error('[FacebookViewer] BATCH_FATAL Full Error JSON:', JSON.stringify(errorData, null, 2));
+                      console.error('[FacebookViewer] Backend version from error:', errorData?.version, 'bufferType:', errorData?.runtime?.bufferType);
 
                     addLog(sectionName, 'BATCH_FATAL', `Batch ${Math.floor(i/batchSize) + 1} failed: status=${status} ${errorMsg}`, 'error');
 
