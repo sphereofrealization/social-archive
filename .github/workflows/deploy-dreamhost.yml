@@ -1,0 +1,192 @@
+name: Deploy to DreamHost
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-dreamhost-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Show workflow context
+        run: |
+          echo "event=$GITHUB_EVENT_NAME"
+          echo "ref=$GITHUB_REF"
+          echo "sha=$GITHUB_SHA"
+
+      - name: Validate required secrets
+        env:
+          DREAMHOST_HOST: ${{ secrets.DREAMHOST_HOST }}
+          DREAMHOST_USER: ${{ secrets.DREAMHOST_USER }}
+          DREAMHOST_PASSWORD: ${{ secrets.DREAMHOST_PASSWORD }}
+          DREAMHOST_SSH_PRIVATE_KEY: ${{ secrets.DREAMHOST_SSH_PRIVATE_KEY }}
+          DREAMHOST_SSH_PUBLIC_KEY: ${{ secrets.DREAMHOST_SSH_PUBLIC_KEY }}
+          DREAMHOST_APP_DIR: ${{ secrets.DREAMHOST_APP_DIR }}
+          DREAMHOST_WEB_ROOT: ${{ secrets.DREAMHOST_WEB_ROOT }}
+          DREAMHOST_IP_WEB_ROOT: ${{ secrets.DREAMHOST_IP_WEB_ROOT }}
+        run: |
+          set -euo pipefail
+          for name in DREAMHOST_HOST DREAMHOST_USER DREAMHOST_APP_DIR DREAMHOST_WEB_ROOT; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required secret: $name" >&2
+              exit 1
+            fi
+          done
+          if [ -z "${DREAMHOST_PASSWORD:-}" ] && [ -z "${DREAMHOST_SSH_PRIVATE_KEY:-}" ]; then
+            echo "Missing auth secret: set DREAMHOST_PASSWORD or DREAMHOST_SSH_PRIVATE_KEY" >&2
+            exit 1
+          fi
+          if [ -n "${DREAMHOST_SSH_PRIVATE_KEY:-}" ] && [ -z "${DREAMHOST_SSH_PUBLIC_KEY:-}" ]; then
+            echo "Missing DREAMHOST_SSH_PUBLIC_KEY while using DREAMHOST_SSH_PRIVATE_KEY" >&2
+            exit 1
+          fi
+
+      - name: Deploy on DreamHost (pull/build/publish)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DREAMHOST_HOST }}
+          username: ${{ secrets.DREAMHOST_USER }}
+          password: ${{ secrets.DREAMHOST_PASSWORD }}
+          key: ${{ secrets.DREAMHOST_SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.DREAMHOST_SSH_PASSPHRASE }}
+          port: 22
+          timeout: 90s
+          command_timeout: 20m
+          script_stop: true
+          script: |
+            set -euo pipefail
+            APP_DIR_RAW="${{ secrets.DREAMHOST_APP_DIR }}"
+            WEB_ROOT_RAW="${{ secrets.DREAMHOST_WEB_ROOT }}"
+            IP_WEB_ROOT_RAW="${{ secrets.DREAMHOST_IP_WEB_ROOT }}"
+            REPO_URL="https://github.com/sphereofrealization/social-archive.git"
+            BRANCH="main"
+
+            APP_DIR="${APP_DIR_RAW/#\~/$HOME}"
+            WEB_ROOT="${WEB_ROOT_RAW/#\~/$HOME}"
+            IP_WEB_ROOT="${IP_WEB_ROOT_RAW:-$HOME}"
+            IP_WEB_ROOT="${IP_WEB_ROOT/#\~/$HOME}"
+            SSH_PUBLIC_KEY="${{ secrets.DREAMHOST_SSH_PUBLIC_KEY }}"
+
+            echo "Resolved APP_DIR=$APP_DIR"
+            echo "Resolved WEB_ROOT=$WEB_ROOT"
+            echo "Resolved IP_WEB_ROOT=$IP_WEB_ROOT"
+
+            if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
+              install -d -m 700 "$HOME/.ssh"
+              touch "$HOME/.ssh/authorized_keys"
+              chmod 600 "$HOME/.ssh/authorized_keys"
+              grep -Fqx "$SSH_PUBLIC_KEY" "$HOME/.ssh/authorized_keys" || echo "$SSH_PUBLIC_KEY" >> "$HOME/.ssh/authorized_keys"
+              echo "Ensured deploy SSH public key in authorized_keys"
+            fi
+
+            mkdir -p "$(dirname "$APP_DIR")"
+            if [ -d "$APP_DIR/.git" ]; then
+              cd "$APP_DIR"
+              git remote set-url origin "$REPO_URL"
+              git fetch --depth 1 origin "$BRANCH"
+              git checkout -f "$BRANCH"
+              git reset --hard "origin/$BRANCH"
+              git clean -fd
+            else
+              rm -rf "$APP_DIR"
+              git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            npm ci --no-audit --no-fund
+            npm run build
+            mkdir -p "$WEB_ROOT"
+            rsync -av --delete dist/ "$WEB_ROOT/"
+            mkdir -p "$WEB_ROOT/great"
+            rsync -av --delete dist/ "$WEB_ROOT/great/"
+
+            mkdir -p "$IP_WEB_ROOT"
+            rsync -av --delete dist/ "$IP_WEB_ROOT/"
+            mkdir -p "$IP_WEB_ROOT/great"
+            rsync -av --delete dist/ "$IP_WEB_ROOT/great/"
+
+            if [ -f deploy/dreamhost/.htaccess ]; then
+              cp deploy/dreamhost/.htaccess "$WEB_ROOT/.htaccess"
+              cp deploy/dreamhost/.htaccess "$WEB_ROOT/great/.htaccess"
+              cp deploy/dreamhost/.htaccess "$IP_WEB_ROOT/.htaccess"
+              cp deploy/dreamhost/.htaccess "$IP_WEB_ROOT/great/.htaccess"
+            fi
+
+            echo "Published files in $WEB_ROOT:"
+            ls -la "$WEB_ROOT" | sed -n '1,40p'
+
+            if [ ! -f "$WEB_ROOT/index.html" ]; then
+              echo "ERROR: $WEB_ROOT/index.html not found after publish" >&2
+              exit 1
+            fi
+            if [ ! -d "$WEB_ROOT/assets" ]; then
+              echo "ERROR: $WEB_ROOT/assets not found after publish" >&2
+              exit 1
+            fi
+            echo "index head:"
+            sed -n '1,20p' "$WEB_ROOT/index.html"
+
+            cat > publish-on-dreamhost.sh <<'EOF'
+            #!/usr/bin/env bash
+            set -euo pipefail
+            cd "$APP_DIR"
+            npm ci --no-audit --no-fund
+            npm run build
+            rsync -av --delete dist/ "$WEB_ROOT/"
+            mkdir -p "$WEB_ROOT/great"
+            rsync -av --delete dist/ "$WEB_ROOT/great/"
+            mkdir -p "$IP_WEB_ROOT"
+            rsync -av --delete dist/ "$IP_WEB_ROOT/"
+            mkdir -p "$IP_WEB_ROOT/great"
+            rsync -av --delete dist/ "$IP_WEB_ROOT/great/"
+            if [ -f deploy/dreamhost/.htaccess ]; then
+              cp deploy/dreamhost/.htaccess "$WEB_ROOT/.htaccess"
+              cp deploy/dreamhost/.htaccess "$WEB_ROOT/great/.htaccess"
+              cp deploy/dreamhost/.htaccess "$IP_WEB_ROOT/.htaccess"
+              cp deploy/dreamhost/.htaccess "$IP_WEB_ROOT/great/.htaccess"
+            fi
+            EOF
+            chmod +x publish-on-dreamhost.sh
+
+      - name: Verify deploy by IP (non-fatal diagnostics)
+        env:
+          DREAMHOST_PUBLIC_IP: ${{ secrets.DREAMHOST_PUBLIC_IP }}
+          DREAMHOST_HOST_HEADER: ${{ secrets.DREAMHOST_HOST_HEADER }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DREAMHOST_PUBLIC_IP:-}" ]; then
+            echo "DREAMHOST_PUBLIC_IP secret not set; skipping HTTP verification"
+            exit 0
+          fi
+
+          ROOT_URL="http://$DREAMHOST_PUBLIC_IP/"
+          DEEP_URL="http://$DREAMHOST_PUBLIC_IP/archives/test-route"
+          CURL_OPTS=(--max-time 30)
+          if [ -n "${DREAMHOST_HOST_HEADER:-}" ]; then
+            CURL_OPTS+=( -H "Host: $DREAMHOST_HOST_HEADER" )
+          fi
+
+          if ! curl -fsS --max-time 30 "http://$DREAMHOST_PUBLIC_IP/" >/dev/null; then
+            echo "::warning::Raw IP verification failed for http://$DREAMHOST_PUBLIC_IP/"
+          fi
+
+          if ! curl -fsS "${CURL_OPTS[@]}" "$ROOT_URL" >/dev/null; then
+            echo "::warning::Root URL verification failed for $ROOT_URL"
+            exit 0
+          fi
+
+          if ! curl -fsS "${CURL_OPTS[@]}" "$DEEP_URL" >/dev/null; then
+            echo "::warning::Deep-link verification failed for $DEEP_URL (likely missing/ignored SPA rewrite)."
+            exit 0
+          fi
+
+          echo "Verified: $ROOT_URL"
