@@ -23,6 +23,36 @@ jobs:
           echo "ref=$GITHUB_REF"
           echo "sha=$GITHUB_SHA"
 
+      - name: Resolve SSH target
+        id: target
+        env:
+          DREAMHOST_REMOTE: ${{ secrets.DREAMHOST_REMOTE }}
+          DREAMHOST_HOST: ${{ secrets.DREAMHOST_HOST }}
+          DREAMHOST_USER: ${{ secrets.DREAMHOST_USER }}
+        run: |
+          set -euo pipefail
+          host="${DREAMHOST_HOST:-}"
+          user="${DREAMHOST_USER:-}"
+          remote="${DREAMHOST_REMOTE:-}"
+
+          if [ -n "$remote" ]; then
+            if [[ "$remote" != *"@"* ]]; then
+              echo "DREAMHOST_REMOTE must look like user@host" >&2
+              exit 1
+            fi
+            user="${remote%@*}"
+            host="${remote#*@}"
+          fi
+
+          if [ -z "$user" ] || [ -z "$host" ]; then
+            echo "Missing SSH target: set DREAMHOST_REMOTE or DREAMHOST_USER + DREAMHOST_HOST" >&2
+            exit 1
+          fi
+
+          echo "user=$user" >> "$GITHUB_OUTPUT"
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+          echo "Resolved SSH target: ${user}@${host}"
+
       - name: Validate required secrets
         env:
           DREAMHOST_HOST: ${{ secrets.DREAMHOST_HOST }}
@@ -53,8 +83,8 @@ jobs:
       - name: Deploy on DreamHost (pull/build/publish)
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.DREAMHOST_HOST }}
-          username: ${{ secrets.DREAMHOST_USER }}
+          host: ${{ steps.target.outputs.host }}
+          username: ${{ steps.target.outputs.user }}
           password: ${{ secrets.DREAMHOST_PASSWORD }}
           key: ${{ secrets.DREAMHOST_SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.DREAMHOST_SSH_PASSPHRASE }}

@@ -31,6 +31,7 @@ In that case, ask the repo owner to grant admin access or enable Actions first, 
 
 - `DREAMHOST_HOST` = `vps68725.dreamhostps.com`
 - `DREAMHOST_USER` = `parkertheemmerson`
+- `DREAMHOST_REMOTE` = `parkertheemmerson@vps68725.dreamhostps.com` *(optional shortcut instead of host+user)*
 - `DREAMHOST_PASSWORD` = `htl!2026` (or use SSH key secrets below)
 - `DREAMHOST_APP_DIR` = `/home/parkertheemmerson/apps/social-archive`
 - `DREAMHOST_WEB_ROOT` = `/home/parkertheemmerson/adaywithoutabillionaire.net`
@@ -44,7 +45,7 @@ In that case, ask the repo owner to grant admin access or enable Actions first, 
 
 ## SSH key auth (recommended)
 
-The workflow supports either password auth (`DREAMHOST_PASSWORD`) or key auth (`DREAMHOST_SSH_PRIVATE_KEY`).
+The workflow supports either password auth (`DREAMHOST_PASSWORD`) or key auth (`DREAMHOST_SSH_PRIVATE_KEY`). You can provide SSH target as either `DREAMHOST_REMOTE` (`user@host`) or as separate `DREAMHOST_USER` + `DREAMHOST_HOST`.
 
 If you use key auth:
 1. Add the private key content to GitHub secret `DREAMHOST_SSH_PRIVATE_KEY`.
