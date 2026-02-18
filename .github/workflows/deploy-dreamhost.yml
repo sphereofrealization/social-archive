@@ -74,11 +74,13 @@ jobs:
             WEB_ROOT="${WEB_ROOT_RAW/#\~/$HOME}"
             IP_WEB_ROOT="${IP_WEB_ROOT_RAW:-$HOME}"
             IP_WEB_ROOT="${IP_WEB_ROOT/#\~/$HOME}"
+            CANONICAL_WEB_ROOT="$HOME/adaywithoutabillionaire.net"
             SSH_PUBLIC_KEY="${{ secrets.DREAMHOST_SSH_PUBLIC_KEY }}"
 
             echo "Resolved APP_DIR=$APP_DIR"
             echo "Resolved WEB_ROOT=$WEB_ROOT"
             echo "Resolved IP_WEB_ROOT=$IP_WEB_ROOT"
+            echo "Resolved CANONICAL_WEB_ROOT=$CANONICAL_WEB_ROOT"
 
             if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
               install -d -m 700 "$HOME/.ssh"
@@ -104,36 +106,32 @@ jobs:
             cd "$APP_DIR"
             npm ci --no-audit --no-fund
             npm run build
-            mkdir -p "$WEB_ROOT"
-            rsync -av --delete dist/ "$WEB_ROOT/"
-            mkdir -p "$WEB_ROOT/great"
-            rsync -av --delete dist/ "$WEB_ROOT/great/"
+            CANONICAL_WEB_ROOT="$HOME/adaywithoutabillionaire.net"
+            TARGET_ROOTS="$WEB_ROOT $CANONICAL_WEB_ROOT $IP_WEB_ROOT"
+            for ROOT in $TARGET_ROOTS; do
+              mkdir -p "$ROOT"
+              rsync -av --delete dist/ "$ROOT/"
+              mkdir -p "$ROOT/great"
+              rsync -av --delete dist/ "$ROOT/great/"
+              if [ -f deploy/dreamhost/.htaccess ]; then
+                cp deploy/dreamhost/.htaccess "$ROOT/.htaccess"
+                cp deploy/dreamhost/.htaccess "$ROOT/great/.htaccess"
+              fi
+              date -u +"%Y-%m-%dT%H:%M:%SZ" > "$ROOT/deploy-marker.txt"
+              echo "Published files in $ROOT:"
+              ls -la "$ROOT" | sed -n '1,40p'
+            done
 
-            mkdir -p "$IP_WEB_ROOT"
-            rsync -av --delete dist/ "$IP_WEB_ROOT/"
-            mkdir -p "$IP_WEB_ROOT/great"
-            rsync -av --delete dist/ "$IP_WEB_ROOT/great/"
-
-            if [ -f deploy/dreamhost/.htaccess ]; then
-              cp deploy/dreamhost/.htaccess "$WEB_ROOT/.htaccess"
-              cp deploy/dreamhost/.htaccess "$WEB_ROOT/great/.htaccess"
-              cp deploy/dreamhost/.htaccess "$IP_WEB_ROOT/.htaccess"
-              cp deploy/dreamhost/.htaccess "$IP_WEB_ROOT/great/.htaccess"
-            fi
-
-            echo "Published files in $WEB_ROOT:"
-            ls -la "$WEB_ROOT" | sed -n '1,40p'
-
-            if [ ! -f "$WEB_ROOT/index.html" ]; then
-              echo "ERROR: $WEB_ROOT/index.html not found after publish" >&2
+            if [ ! -f "$CANONICAL_WEB_ROOT/index.html" ]; then
+              echo "ERROR: $CANONICAL_WEB_ROOT/index.html not found after publish" >&2
               exit 1
             fi
-            if [ ! -d "$WEB_ROOT/assets" ]; then
-              echo "ERROR: $WEB_ROOT/assets not found after publish" >&2
+            if [ ! -d "$CANONICAL_WEB_ROOT/assets" ]; then
+              echo "ERROR: $CANONICAL_WEB_ROOT/assets not found after publish" >&2
               exit 1
             fi
-            echo "index head:"
-            sed -n '1,20p' "$WEB_ROOT/index.html"
+            echo "index head (canonical root):"
+            sed -n '1,20p' "$CANONICAL_WEB_ROOT/index.html"
 
             cat > publish-on-dreamhost.sh <<'EOF'
             #!/usr/bin/env bash
@@ -141,19 +139,19 @@ jobs:
             cd "$APP_DIR"
             npm ci --no-audit --no-fund
             npm run build
-            rsync -av --delete dist/ "$WEB_ROOT/"
-            mkdir -p "$WEB_ROOT/great"
-            rsync -av --delete dist/ "$WEB_ROOT/great/"
-            mkdir -p "$IP_WEB_ROOT"
-            rsync -av --delete dist/ "$IP_WEB_ROOT/"
-            mkdir -p "$IP_WEB_ROOT/great"
-            rsync -av --delete dist/ "$IP_WEB_ROOT/great/"
-            if [ -f deploy/dreamhost/.htaccess ]; then
-              cp deploy/dreamhost/.htaccess "$WEB_ROOT/.htaccess"
-              cp deploy/dreamhost/.htaccess "$WEB_ROOT/great/.htaccess"
-              cp deploy/dreamhost/.htaccess "$IP_WEB_ROOT/.htaccess"
-              cp deploy/dreamhost/.htaccess "$IP_WEB_ROOT/great/.htaccess"
-            fi
+            CANONICAL_WEB_ROOT="$HOME/adaywithoutabillionaire.net"
+            TARGET_ROOTS="$WEB_ROOT $CANONICAL_WEB_ROOT $IP_WEB_ROOT"
+            for ROOT in $TARGET_ROOTS; do
+              mkdir -p "$ROOT"
+              rsync -av --delete dist/ "$ROOT/"
+              mkdir -p "$ROOT/great"
+              rsync -av --delete dist/ "$ROOT/great/"
+              if [ -f deploy/dreamhost/.htaccess ]; then
+                cp deploy/dreamhost/.htaccess "$ROOT/.htaccess"
+                cp deploy/dreamhost/.htaccess "$ROOT/great/.htaccess"
+              fi
+              date -u +"%Y-%m-%dT%H:%M:%SZ" > "$ROOT/deploy-marker.txt"
+            done
             EOF
             chmod +x publish-on-dreamhost.sh
 

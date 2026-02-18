@@ -92,6 +92,8 @@ For your VPS this means the workflow will try to place the built app at:
 - `http://69.163.205.13/`
 - `http://69.163.205.13/great/`
 
+It also writes `deploy-marker.txt` into each publish root so support can quickly confirm which directory is being updated.
+
 ## Temporary preview path
 
 The workflow also publishes the built site to `great/` under your web root for quick testing:
