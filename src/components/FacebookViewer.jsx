@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AIDataSearch from "./AIDataSearch";
-import EtoileSearchPanel from "./EtoileSearchPanel";
+import ArchiveSearch from "./ArchiveSearch";
 import { normalizeArchiveAnalysis } from "./normalizeArchiveData";
 import LoadDebugPanel from "./LoadDebugPanel";
 import {
@@ -1578,8 +1578,10 @@ export default function FacebookViewer({ data, photoFiles = {}, archiveUrl = "",
         </CardContent>
       </Card>
 
+      {/* Archive Search */}
+      <ArchiveSearch archiveId={archive?.id} platform={archive?.platform || 'facebook'} />
+
       {/* AI Search */}
-      <EtoileSearchPanel archiveId={archive?.id} platform={archive?.platform || 'facebook'} />
       {!isStreamingIndex && <AIDataSearch data={data} />}
 
       {/* Search */}
