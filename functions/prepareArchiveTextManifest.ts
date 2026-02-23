@@ -108,11 +108,29 @@ Deno.serve(async (req) => {
     
     // Step 1: Get ZIP metadata via HTTP request to extractArchiveDataStreaming
     stage = 'get_index';
-    console.log(`[PREP_INDEX] Fetching archive index...`);
+    console.log(`[PREP_INDEX] Fetching archive index from extractArchiveDataStreaming...`);
     
     // Build the full URL to the extraction endpoint
+    // Try to construct URL from environment or request context
+    let extractUrl;
     const baseUrl = new URL(req.url);
-    const extractUrl = `${baseUrl.origin}/extractArchiveDataStreaming`;
+    
+    // Check if we're on a function subdomain (e.g., https://functions-user-app.base44.workers.dev/)
+    if (baseUrl.hostname.includes('base44')) {
+      // Use same origin
+      extractUrl = `${baseUrl.origin}/extractArchiveDataStreaming`;
+    } else {
+      // Fallback: try to determine from Deno.env or use relative path
+      const appUrl = Deno.env.get('BASE44_APP_URL');
+      if (appUrl) {
+        extractUrl = `${appUrl}/extractArchiveDataStreaming`;
+      } else {
+        // Last resort: use relative to current function URL
+        extractUrl = baseUrl.origin.replace(/\/[^/]+$/, '/extractArchiveDataStreaming');
+      }
+    }
+    
+    console.log(`[PREP_INDEX] Calling ${extractUrl}...`);
     
     const indexResp = await fetch(extractUrl, {
       method: 'POST',
