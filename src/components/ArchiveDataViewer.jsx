@@ -64,6 +64,25 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
     try {
         console.log("Invoking backend extraction for:", fileUrl);
         
+        // Test if file is accessible first
+        try {
+          const testResponse = await fetch(fileUrl, { method: 'HEAD' });
+          console.log('[ArchiveDataViewer] File accessibility test:', {
+            status: testResponse.status,
+            ok: testResponse.ok,
+            headers: Object.fromEntries(testResponse.headers.entries())
+          });
+          
+          if (!testResponse.ok) {
+            throw new Error(`File not accessible: HTTP ${testResponse.status}`);
+          }
+        } catch (fetchErr) {
+          console.error('[ArchiveDataViewer] File fetch test failed:', fetchErr);
+          setError(`Cannot access archive file: ${fetchErr.message}\n\nURL: ${fileUrl}\n\nPlease check if the file URL is correct and the file is accessible.`);
+          setExtracting(false);
+          return;
+        }
+        
         // Try streaming first for large files
         const response = await base44.functions.invoke('extractArchiveDataStreaming', { fileUrl });
 
