@@ -147,6 +147,18 @@ export default function ArchiveDataViewer({ archive, onExtractionComplete }) {
           onExtractionComplete();
         }
 
+        // Index to etoile in background
+        try {
+          await base44.functions.invoke('indexArchiveToEtoile', {
+            archiveId: archive.id,
+            archiveData: response.data,
+            platform: archive.platform
+          });
+          console.log('[Etoile] Archive indexed successfully');
+        } catch (etoileErr) {
+          console.warn('[Etoile] Indexing failed:', etoileErr);
+        }
+
     } catch (err) {
       const errorMessage = err?.message || err?.toString() || "Unknown error";
       setError(`Failed to extract data: ${errorMessage}`);
